@@ -20,11 +20,11 @@ def _problems(env: dict[str, str], config_dir: Path = CONFIG_DIR) -> list[str]:
     return exc.value.problems
 
 
-def _fill_deployed_placeholders(raw: dict[str, Any]) -> None:
-    raw["app"]["public_base_url"] = "https://example.invalid"
-    raw["llm"]["roles"]["checker"]["model"] = "test-checker-model"
-    raw["embeddings"].update(model="test-embedding-model", dimension=1536)
-    raw["budget"].update(tokens=1_000_000, cost_micro_usd=2_000_000)
+def _restore_day1_placeholders(raw: dict[str, Any]) -> None:
+    raw["app"]["public_base_url"] = "<confirm day 1>"
+    raw["llm"]["roles"]["checker"]["model"] = "<confirm day 1>"
+    raw["embeddings"].update(model="<confirm day 1>", dimension=0)
+    raw["budget"].update(tokens=0, cost_micro_usd=0)
 
 
 # --- shipped configs -------------------------------------------------------
@@ -51,10 +51,13 @@ def test_local_allows_placeholders(valid_env: dict[str, str]) -> None:
     assert settings.config.embeddings.dimension == 0
 
 
-def test_deployed_refuses_day1_placeholders_and_zero_budgets(valid_env: dict[str, str]) -> None:
+def test_deployed_refuses_day1_placeholders_and_zero_budgets(
+    write_config: ConfigWriter, valid_env: dict[str, str]
+) -> None:
     valid_env["APP_ENV"] = "deployed"
+    config_dir = write_config("deployed", _restore_day1_placeholders)
 
-    problems = "\n".join(_problems(valid_env))
+    problems = "\n".join(_problems(valid_env, config_dir))
 
     for expected in (
         "app.public_base_url: placeholder",
@@ -67,14 +70,20 @@ def test_deployed_refuses_day1_placeholders_and_zero_budgets(valid_env: dict[str
         assert expected in problems
 
 
-def test_deployed_loads_once_placeholders_are_filled(
-    write_config: ConfigWriter, valid_env: dict[str, str]
-) -> None:
+def test_shipped_deployed_config_passes_validation(valid_env: dict[str, str]) -> None:
+    """BD-04: confirmed model IDs and provisional budgets; nothing left as a placeholder."""
     valid_env["APP_ENV"] = "deployed"
 
-    settings = load_settings(valid_env, write_config("deployed", _fill_deployed_placeholders))
+    config = load_settings(valid_env).config
 
-    assert settings.config.search.provider == "brave"
+    assert config.search.provider == "brave"
+    assert config.llm.roles.checker.model == "gpt-6-astra"
+    assert (config.embeddings.model, config.embeddings.dimension) == (
+        "text-embedding-3-small",
+        1536,
+    )
+    assert config.budget.tokens > 0
+    assert config.budget.cost_micro_usd > 0
 
 
 # --- file shape ---------------------------------------------------------------

@@ -188,19 +188,19 @@ Run as `uv run poe <task>`; tasks are defined in `pyproject.toml` under `[tool.p
 
 ## 5. Deployment files
 
-**Dockerfile** (multi-stage): stage 1 builds `web/out` with Node; stage 2 is a slim Python 3.12 image with system libraries for WeasyPrint `[verify]`, installs with `uv`, copies `app/`, `config/`, `reference/*.yaml`, and `web/out`. Entry point runs migrations, then Uvicorn.
+**Dockerfile** (multi-stage): stage 1 builds `web/out` with Node (D3-4; until then FastAPI serves `web/placeholder`); stage 2 is a slim Python 3.12 image with system libraries for WeasyPrint `[verify]`, installs with `uv`, downloads GeoNames during the build, and copies `app/`, `config/`, `reference/*.yaml`, `scripts/reference` and the web files. The start command (`scripts/start.sh`) runs Uvicorn only; migrations and reference loading run as Render's pre-deploy command (`scripts/predeploy.sh`) (BD-04).
 
-**render.yaml** (blueprint):
+**render.yaml** (blueprint; all services in `singapore`; plan IDs are Render's compute plans, BD-04):
 
 | Service | Type | Plan | Notes |
 |---|---|---|---|
-| `c4c-app` | Web service, Docker | Standard (2 GB) | Health check path `/api/v1/health`; auto-deploy off (R-91) |
-| `c4c-neo4j` | Private service, image `neo4j:5-community` | Standard (2 GB) | Disk mounted at `/data` |
-| `c4c-qdrant` | Private service, image `qdrant/qdrant` | Starter | Disk mounted at `/qdrant/storage` |
-| `c4c-db` | Managed Postgres | Basic-256mb | |
-| `c4c-keepalive` | Cron job, every 6 hours | Starter | Runs `scripts/keepalive.sh` |
+| `c4c-app` | Web service, Docker | `1c-2g` (2 GB) | Health check path `/api/v1/health`; pre-deploy `scripts/predeploy.sh`; auto-deploy off (R-91) |
+| `c4c-neo4j` | Private service, image `neo4j:5.26.31-community` | `1c-2g` (2 GB) | 5 GB disk at `/data`; heap 1 GB, page cache 512 MB as in compose |
+| `c4c-qdrant` | Private service, image `qdrant/qdrant:v1.19.1` | `0.5c-512mb` | 5 GB disk at `/qdrant/storage`; API key required |
+| `c4c-db` | Managed Postgres 16 | `basic-256mb` | Private network only |
+| `c4c-keepalive` | Cron job, image `curlimages/curl`, every 6 hours | `0.5c-512mb` | Calls `/api/v1/health`; `scripts/keepalive.sh` is the same request for manual use |
 
-Auto-deploy is off so nothing redeploys during rehearsals or the demo.
+Auto-deploy is off so nothing redeploys during rehearsals or the demo. Store credentials live in the env group `c4c-stores` with a `STORE_` prefix, because the Neo4j image treats every `NEO4J_*` variable as a setting.
 
 **docker-compose.yml** mirrors the same services locally, plus SearXNG, with no keep-alive job.
 

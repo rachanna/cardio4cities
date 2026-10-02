@@ -50,16 +50,18 @@ user:    <task> … </task>
 
 ### 2.3 Parameters
 
-| Role | Default model (config) | Temperature | Max output tokens | Retries |
-|---|---|---|---|---|
-| Planner | Claude Sonnet 5.5 | 0.3 | 2,000 | Repair once, then template fallback (LLD-2 §3.4) |
-| Extractor | Claude Haiku 4.5, escalating to Sonnet 5.5 | 0 | 4,000 | Repair once, escalate once, then skip window |
-| Checker | OpenAI frontier model `[ID day 1]`; fallback Claude Opus 5.5 | 0 | 600 | Retry twice, then labelled fallback |
-| Classifier | Claude Haiku 4.5 | 0 | 400 | Repair once, then `open` |
-| Answerer | Claude Sonnet 5.5 | 0.2 | 1,200 | Repair once, then full abstention |
-| Report writer | Claude Sonnet 5.5 | 0.3 | 800 | Repair once, then paragraph omitted |
+| Role | Default model (config) | Sampling and depth | Visible output (enforced by schema) | API output ceiling | Retries |
+|---|---|---|---|---|---|
+| Planner | Claude Sonnet 5.5 | Effort `medium`; no temperature | 2,000 tokens | 16,000 | Repair once, then template fallback (LLD-2 §3.4) |
+| Extractor | Claude Haiku 4.5, escalating to Sonnet 5.5 | Haiku: temperature 0, no thinking. Sonnet escalation: effort `low`; no temperature | 4,000 tokens | Haiku 4,000; Sonnet 16,000 | Repair once, escalate once, then skip window |
+| Checker | OpenAI `gpt-6-astra`; fallback Claude Opus 5.5 | Astra: provider defaults until spike S-6 confirms which sampling and reasoning parameters it accepts. Opus fallback: effort `high`; no temperature | 600 tokens (rationale ≤ 400 characters) | 8,000 | Retry twice, then labelled fallback |
+| Classifier | Claude Haiku 4.5 | Temperature 0, no thinking | 400 tokens | 400 | Repair once, then `open` |
+| Answerer | Claude Sonnet 5.5 | Effort `low`; no temperature | 1,200 tokens | 16,000 | Repair once, then full abstention |
+| Report writer | Claude Sonnet 5.5 | Effort `low`; no temperature | 800 tokens | 16,000 | Repair once, then paragraph omitted |
 
 "Repair" means one more call that includes the validation error and the previous output, asking for a corrected output only.
+
+**Why no temperature on Sonnet 5.5 and Opus 5.5 (BD-04).** Claude Sonnet 5.5 rejects any non-default `temperature` and Claude Opus 5.5 rejects it entirely, so those roles control depth with `effort`. Their thinking is adaptive and cannot be switched off on Opus 5.5, and thinking or reasoning tokens count against the API output ceiling, so the ceiling is set well above the visible output and the visible limit is enforced by the output schema and code (LLD-2). Reproducibility never relied on temperature: every output is stored with its `prompt_version` and model ID (§2.5). Effort levels are provisional until spike S-6 measures quality and cost.
 
 ### 2.4 Examples in prompts
 

@@ -1,0 +1,117 @@
+# Render Blueprint (REPO_STRUCTURE §5, BD-04).
+# Every service in Singapore on one private network; auto-deploy off (R-91):
+# deploy by hand from the dashboard, never on rehearsal or demo days.
+# Secrets marked `sync: false` are entered in the dashboard when the Blueprint is created.
+
+envVarGroups:
+  # Shared store credentials. The STORE_ prefix matters: the Neo4j image treats every
+  # NEO4J_* variable as a setting and refuses to start on an unknown one.
+  - name: c4c-stores
+    envVars:
+      - key: STORE_NEO4J_PASSWORD
+        generateValue: true
+      - key: STORE_QDRANT_API_KEY
+        generateValue: true
+
+databases:
+  - name: c4c-db
+    plan: basic-256mb
+    region: singapore
+    postgresMajorVersion: "16"
+    ipAllowList: []  # private network only (LLD-4 §10)
+
+services:
+  - type: web
+    name: c4c-app
+    runtime: docker
+    plan: 1c-2g
+    region: singapore
+    branch: main
+    dockerfilePath: ./Dockerfile
+    autoDeployTrigger: "off"
+    healthCheckPath: /api/v1/health
+    # Migrations and reference loading run before each release starts (BD-04).
+    preDeployCommand: sh scripts/predeploy.sh
+    envVars:
+      - key: APP_ENV
+        value: deployed
+      - key: DATABASE_URL
+        fromDatabase:
+          name: c4c-db
+          property: connectionString
+      # scripts/start.sh builds NEO4J_URI and QDRANT_URL from these hosts
+      - key: NEO4J_HOST
+        fromService:
+          type: pserv
+          name: c4c-neo4j
+          property: host
+      - key: QDRANT_HOST
+        fromService:
+          type: pserv
+          name: c4c-qdrant
+          property: host
+      - key: NEO4J_USER
+        value: neo4j
+      - fromGroup: c4c-stores
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: ACCESS_CODE  # 12+ characters, shared with the panel
+        sync: false
+      - key: ADMIN_CODE  # different from ACCESS_CODE
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: BRAVE_API_KEY
+        sync: false
+      - key: LANGSMITH_API_KEY
+        sync: false
+
+  - type: pserv
+    name: c4c-neo4j
+    runtime: image
+    image:
+      url: docker.io/library/neo4j:5.26.31-community
+    plan: 1c-2g
+    region: singapore
+    dockerCommand: /bin/sh -c 'export NEO4J_AUTH="neo4j/$STORE_NEO4J_PASSWORD"; exec /startup/docker-entrypoint.sh neo4j'
+    disk:
+      name: neo4j-data
+      mountPath: /data
+      sizeGB: 5
+    envVars:
+      - fromGroup: c4c-stores
+      # Same caps as docker-compose.yml
+      - key: NEO4J_server_memory_heap_initial__size
+        value: 1G
+      - key: NEO4J_server_memory_heap_max__size
+        value: 1G
+      - key: NEO4J_server_memory_pagecache_size
+        value: 512M
+
+  - type: pserv
+    name: c4c-qdrant
+    runtime: image
+    image:
+      url: docker.io/qdrant/qdrant:v1.19.1
+    plan: 0.5c-512mb
+    region: singapore
+    dockerCommand: /bin/sh -c 'export QDRANT__SERVICE__API_KEY="$STORE_QDRANT_API_KEY"; exec ./entrypoint.sh'
+    disk:
+      name: qdrant-storage
+      mountPath: /qdrant/storage
+      sizeGB: 5
+    envVars:
+      - fromGroup: c4c-stores
+
+  # Calls the public health endpoint every 6 hours (LLD-4 §7); same request as scripts/keepalive.sh.
+  - type: cron
+    name: c4c-keepalive
+    runtime: image
+    image:
+      url: docker.io/curlimages/curl:8.22.0
+    plan: 0.5c-512mb
+    region: singapore
+    schedule: "0 */6 * * *"
+    dockerCommand: curl -fsS --retry 3 --retry-delay 10 --max-time 30 https://c4c-app.onrender.com/api/v1/health

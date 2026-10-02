@@ -2,7 +2,7 @@
 # variables named by the *_env keys. Start-up refuses "<confirm day 1>" and
 # zero budgets here (LLD-4 §5.2).
 app:
-  public_base_url: "<confirm day 1>"
+  public_base_url: https://c4c-app.onrender.com   # confirmed after the Render service exists (BD-04)
   user_agent: "CARDIO4CitiesResearchBot/0.1 (+https://github.com/rachanna/cardio4cities)"
 access:
   access_code_env: ACCESS_CODE
@@ -13,7 +13,7 @@ llm:
     planner:    { provider: anthropic, model: claude-sonnet-5-5, family: anthropic }
     extractor:  { provider: anthropic, model: claude-haiku-4-5-20251001, family: anthropic,
                   escalate_to: { provider: anthropic, model: claude-sonnet-5-5 } }
-    checker:    { provider: openai, model: "<confirm day 1>", family: openai,
+    checker:    { provider: openai, model: gpt-6-astra, family: openai,
                   fallback: { provider: anthropic, model: claude-opus-5-5, family: anthropic } }
     classifier: { provider: anthropic, model: claude-haiku-4-5-20251001, family: anthropic }
     answerer:   { provider: anthropic, model: claude-sonnet-5-5, family: anthropic }
@@ -24,7 +24,7 @@ llm:
     ollama:    { base_url: http://ollama:11434 }
   concurrency: 4
   allow_same_family_checker: false   # BD-02; when true it is shown on every verdict and in /health
-embeddings: { provider: openai, model: "<confirm day 1>", dimension: 0, key: openai_small_v1 }
+embeddings: { provider: openai, model: text-embedding-3-small, dimension: 1536, key: openai_small_v1 }
 search:     { provider: brave, mode: links_only, api_key_env: BRAVE_API_KEY, rate_per_s: 1 }
 relational: { dsn_env: DATABASE_URL }
 vector:     { provider: qdrant, url_env: QDRANT_URL, api_key_env: QDRANT_API_KEY }
@@ -32,7 +32,8 @@ graph:      { provider: graphiti_neo4j, uri_env: NEO4J_URI, user_env: NEO4J_USER
 snapshots:  { provider: postgres, max_bytes: 10485760 }
 renderer:   { provider: weasyprint }
 tracing:    { providers: [events, langsmith], langsmith_api_key_env: LANGSMITH_API_KEY }
-budget:     { wall_clock_s: 300, searches: 48, fetches: 60, tokens: 0, cost_micro_usd: 0, wind_down_at: 0.85 }
+# tokens and cost_micro_usd are provisional until spike S-6 (BD-04): estimate ~1.5M tokens, ~$10.70 a run
+budget:     { wall_clock_s: 300, searches: 48, fetches: 60, tokens: 2500000, cost_micro_usd: 15000000, wind_down_at: 0.85 }
 limits:     { runs_per_day: 20, ask_per_min: 20, resolve_per_min: 30 }
 fetch:      { concurrency: 6, min_interval_s: 1, max_bytes: 10485760, connect_timeout_s: 5, read_timeout_s: 20 }
 verify:     { max_claims_per_slot: 5 }

@@ -13,6 +13,8 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.1.2",
     "asyncpg>=0.31.0",
     "alembic>=1.20.0",
+    "qdrant-client>=1.19.1",
+    "neo4j>=5.26,<6",
 ]
 
 [dependency-groups]
@@ -45,6 +47,9 @@ lint = { sequence = [
     "lint-imports",
 ], default_item_type = "cmd", help = "ruff, mypy, import-linter" }
 test = { cmd = "pytest", help = "Unit, contract, architecture and acceptance tests (recorded responses)" }
+smoke = { cmd = "pytest tests/smoke -p no:cacheprovider --smoke-url ${url}", args = [
+    { name = "url", positional = true, required = true, help = "Deployed base URL" },
+], help = "Smoke tests against a deployed URL (AT-29 partial)" }
 migrate = { cmd = "alembic upgrade head", help = "Run database migrations (needs DATABASE_URL only)" }
 geonames = { cmd = "python -m scripts.reference.load_geonames --download-only", help = "Download GeoNames dumps if missing" }
 reference = { sequence = [
@@ -100,7 +105,10 @@ ignore_missing_imports = true
 testpaths = ["tests"]
 asyncio_mode = "auto"
 addopts = "-ra --strict-markers"
-markers = ["db: needs PostgreSQL (TEST_DATABASE_URL); skipped locally if unreachable"]
+markers = [
+    "db: needs PostgreSQL (TEST_DATABASE_URL); skipped locally if unreachable",
+    "stores: needs Qdrant and Neo4j (TEST_QDRANT_URL, TEST_NEO4J_URI); skipped locally if unreachable",
+]
 
 # ---------------------------------------------------------------------------
 # Dependency rules, REPO_STRUCTURE §3 (AT-34).

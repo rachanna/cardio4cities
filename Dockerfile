@@ -1,6 +1,6 @@
-# Application image (REPO_STRUCTURE §5).
-# Still to come: a Node stage that builds web/out (D1-4) and WeasyPrint system
-# libraries (verified in a spike).
+# Application image (REPO_STRUCTURE §5, BD-04).
+# Still to come: a Node stage that builds web/out (D3-4) and WeasyPrint system
+# libraries (verified in a spike). Until then FastAPI serves web/placeholder at /.
 
 FROM python:3.12-slim AS app
 
@@ -17,17 +17,21 @@ WORKDIR /srv
 COPY pyproject.toml uv.lock .python-version ./
 RUN uv sync --locked --no-dev
 
-COPY app ./app
-COPY config ./config
-COPY reference/*.yaml ./reference/
-COPY reference/geonames/README.md ./reference/geonames/
 COPY scripts/__init__.py ./scripts/
 COPY scripts/reference ./scripts/reference
+COPY reference/geonames/README.md ./reference/geonames/
+COPY app ./app
+# GeoNames is downloaded at build time (BD-04): deploys never depend on download.geonames.org.
+RUN python -m scripts.reference.load_geonames --download-only
 
-# The reference loader downloads GeoNames into reference/geonames when run in the container.
-RUN useradd --system --uid 10001 c4c && chown -R c4c /srv/reference/geonames
+COPY config ./config
+COPY reference/*.yaml ./reference/
+COPY scripts/start.sh scripts/predeploy.sh ./scripts/
+COPY web/placeholder ./web/placeholder
+
+RUN useradd --system --uid 10001 c4c
 USER c4c
 
 EXPOSE 8000
-# Migrations need DATABASE_URL only; the app then refuses to start until reference data is loaded.
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# Migrations and reference loading run as Render's pre-deploy command (scripts/predeploy.sh).
+CMD ["sh", "scripts/start.sh"]

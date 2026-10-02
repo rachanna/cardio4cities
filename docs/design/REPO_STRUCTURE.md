@@ -61,15 +61,18 @@ cardio4cities/
 │   │   ├── badges.py             # LLD-2 §8
 │   │   ├── wording.py            # user-facing vocabulary (R-90)
 │   │   ├── params.py             # tunables passed into the rules, built from config (BD-06)
-│   │   └── dates.py              # calendar arithmetic; `today` is always passed in
+│   │   ├── dates.py              # calendar arithmetic; `today` is always passed in
+│   │   └── ids.py                # deterministic uuid5 IDs (Qdrant points, graph nodes)
 │   ├── workflow/
 │   │   ├── graph.py              # main graph and slot subgraph (LLD-2 §3)
 │   │   ├── state.py              # RunState, SlotState
 │   │   ├── runner.py             # run manager: start, background task, resume
 │   │   ├── budget.py             # BudgetLedger (LLD-2 §12)
 │   │   ├── events.py             # EventEmitter (LLD-2 §10)
+│   │   ├── collection.py         # Collector: gate, pinned fetch, parse for one URL (LLD-2 §9, BD-07)
+│   │   ├── ids.py                # prefixed ULIDs (LLD-1 §0)
 │   │   ├── nodes/                # one file per node
-│   │   └── rules/                # pure: crawl_gate, robots, content_usage, selection, quotes,
+│   │   └── rules/                # pure: crawl_gate, robots, content_usage, selection, chunking, quotes,
 │   │                             #       numbers, thresholds, comparability, consistency,
 │   │                             #       entity_resolution, slot_status, gap_notes, wave0_record,
 │   │                             #       labels (reference-period rule, derived flags)
@@ -84,9 +87,10 @@ cardio4cities/
 │       ├── llm/                  # anthropic.py, openai.py, ollama.py
 │       ├── embeddings/           # openai.py, sentence_transformers.py
 │       ├── search/               # brave.py, searxng.py, tavily.py
-│       ├── fetch/                # httpx_pinned.py
+│       ├── fetch/                # httpx_pinned.py (IP-pinned, httpx: BD-07), robots_protego.py
+│       ├── parse/                # documents.py: trafilatura (HTML), pdfplumber (PDF) (BD-07)
 │       ├── structured/           # who_gho.py, dhs.py, world_bank.py
-│       ├── vector/               # qdrant.py
+│       ├── vector/               # qdrant.py, qdrant_probe.py
 │       ├── graph/                # graphiti_neo4j.py
 │       ├── snapshots/            # postgres.py
 │       ├── renderer/             # weasyprint.py, browser_print.py
@@ -103,7 +107,8 @@ cardio4cities/
 ├── scripts/
 │   ├── reference/                # load_geonames.py, load_yaml_reference.py
 │   ├── spikes/                   # graphiti_triplets.py, who_endpoint.py, reachability.py,
-│   │                             # search_links_only.py, pdf_quotes.py, run_timing.py
+│   │                             # search_links_only.py, pdf_quotes.py, run_timing.py;
+│   │                             # results/ holds each spike's written outcome
 │   ├── purge_city.py             # LLD-1 §8
 │   ├── eval_prompts.py           # LLD-3 §9
 │   └── keepalive.sh              # calls /api/v1/health
@@ -112,7 +117,8 @@ cardio4cities/
 │   ├── unit/                     # rules and domain
 │   ├── contract/                 # one module per port (AT-35)
 │   ├── acceptance/               # AT map, LLD-4 §11
-│   ├── architecture/             # import-lint (AT-34), no-seeding scan (AT-02)
+│   ├── architecture/             # import-lint (AT-34), purity of domain and rules
+│   ├── support/                  # webworld.py: local fictional web for gate and fetch tests
 │   ├── smoke/                    # deployed URL (AT-17, AT-29)
 │   ├── prompts/golden/           # fictional snippets and expected outputs
 │   └── fixtures/                 # fictional city "Halden Bay, Norvania"; recorded provider responses
@@ -160,7 +166,9 @@ adapters → ports, domain                     (vendor SDKs allowed only here)
 container, main → everything                 (composition root)
 ```
 
-**Vendor packages allowed only under `app/adapters/`:** `anthropic`, `openai`, `ollama`, `sentence_transformers`, `qdrant_client`, `graphiti_core`, `neo4j`, `httpx`, `protego`, `trafilatura`, `pdfplumber`, `weasyprint`, `langsmith`, `opentelemetry`, `asyncpg`, `sqlalchemy`, `alembic`.
+The fetch adapter uses `httpx`, chosen over `httpx2` for the security-critical path (BD-07); `httpx2` is a test-only dependency.
+
+**Vendor packages allowed only under `app/adapters/`:** `anthropic`, `openai`, `ollama`, `sentence_transformers`, `qdrant_client`, `graphiti_core`, `neo4j`, `httpx`, `httpx2`, `httpcore`, `httpcore2`, `protego`, `trafilatura`, `pdfplumber`, `weasyprint`, `langsmith`, `opentelemetry`, `asyncpg`, `sqlalchemy`, `alembic`.
 
 Expressed as import-linter `layers` and `forbidden` contracts. The architecture test fails the build on any violation.
 

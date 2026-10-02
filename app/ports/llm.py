@@ -2,7 +2,9 @@ from typing import Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict
 
-Effort = Literal["low", "medium", "high", "xhigh", "max"]
+# Union of what Claude (`output_config.effort`) and OpenAI (`reasoning.effort`) accept;
+# each model accepts a subset, confirmed per binding (BD-05).
+Effort = Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"]
 
 
 class LLMParams(BaseModel):

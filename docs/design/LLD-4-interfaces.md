@@ -236,7 +236,7 @@ The UI builds progress, the coverage grid and Wave 0 findings from events alone;
 
 ### 5.1 Files and secrets
 
-`config/<env>.yaml` (`local`, `deployed`) selects adapters and parameters. Secrets come only from environment variables; YAML refers to them by name.
+`config/<env>.yaml` (`local`, `local-quality`, `deployed`; BD-05) selects adapters and parameters. Secrets come only from environment variables; YAML refers to them by name. Each model binding (role, `escalate_to`, `fallback`) may set `effort` or `temperature`, never both, and only what its model accepts; providers may name a `base_url_env`. The block below is the original baseline; `config/*.yaml` hold the current bindings.
 
 ```yaml
 app:

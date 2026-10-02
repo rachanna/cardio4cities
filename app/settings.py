@@ -17,17 +17,21 @@ import re
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, Literal, Self, cast
 
 import yaml
-from pydantic import BaseModel, ConfigDict, SecretStr, ValidationError
+from pydantic import BaseModel, ConfigDict, SecretStr, ValidationError, model_validator
+
+from app.ports.llm import Effort
 
 CONFIG_DIR = Path(__file__).resolve().parent.parent / "config"
 DAY1_PLACEHOLDER = "<confirm day 1>"
 MIN_ACCESS_CODE_LENGTH = 12
 EXPECTED_SLOT_IDS = frozenset(f"S{n:02d}" for n in range(1, 17))
 
-AppEnv = Literal["local", "deployed"]
+# local-quality: local stores with the deployed model bindings (BD-05)
+AppEnv = Literal["local", "local-quality", "deployed"]
+APP_ENVS: tuple[str, ...] = ("local", "local-quality", "deployed")
 
 
 class ConfigError(Exception):
@@ -55,15 +59,31 @@ class AccessSection(_Section):
     session_secret_env: str
 
 
-class ModelRef(_Section):
+class _Binding(_Section):
+    """A model with the sampling or depth setting it accepts (BD-05).
+
+    Claude Haiku 4.5 takes `temperature` and errors on `effort`; Claude Sonnet and
+    Opus 5.5 reject `temperature`; OpenAI reasoning models take `effort`
+    (`reasoning.effort`). So the setting belongs to the binding, not the role.
+    """
+
     provider: str
     model: str
+    effort: Effort | None = None
+    temperature: float | None = None
+
+    @model_validator(mode="after")
+    def _one_setting(self) -> Self:
+        if self.effort is not None and self.temperature is not None:
+            raise ValueError("set effort or temperature, not both")
+        return self
+
+
+class ModelRef(_Binding):
     family: str | None = None
 
 
-class RoleConfig(_Section):
-    provider: str
-    model: str
+class RoleConfig(_Binding):
     family: str
     escalate_to: ModelRef | None = None
     fallback: ModelRef | None = None
@@ -92,6 +112,7 @@ class Roles(_Section):
 class ProviderConfig(_Section):
     api_key_env: str | None = None
     base_url: str | None = None
+    base_url_env: str | None = None  # BD-05: e.g. OLLAMA_BASE_URL from .env
 
 
 class LLMSection(_Section):
@@ -262,8 +283,8 @@ def load_settings(env: Mapping[str, str] | None = None, config_dir: Path = CONFI
     """Load `config/<APP_ENV>.yaml`, resolve secrets from `env`, validate. Raises ConfigError."""
     env = os.environ if env is None else env
     app_env = env.get("APP_ENV", "local") or "local"
-    if app_env not in ("local", "deployed"):
-        raise ConfigError([f"APP_ENV must be 'local' or 'deployed', not {app_env!r}"])
+    if app_env not in APP_ENVS:
+        raise ConfigError([f"APP_ENV must be one of {', '.join(APP_ENVS)}, not {app_env!r}"])
 
     path = config_dir / f"{app_env}.yaml"
     try:
@@ -357,6 +378,7 @@ def required_secrets(config: Config) -> dict[str, str]:
     used.add(config.embeddings.provider)
     for name in sorted(used & providers.keys()):
         need(providers[name].api_key_env, f"llm.providers.{name}")
+        need(providers[name].base_url_env, f"llm.providers.{name}")
 
     need(config.search.api_key_env, "search.api_key_env")
     need(config.relational.dsn_env, "relational.dsn_env")

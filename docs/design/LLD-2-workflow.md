@@ -165,7 +165,7 @@ If the planner fails validation twice, the slot gets two template queries: `"{sl
 
 **Match:**
 
-1. `nq = normalise(quote)`; reject if fewer than 6 or more than 60 words `[tunable]`.
+1. `nq = normalise(quote)`; reject if fewer than 6 or more than 60 words `[tunable]` (`quote.min_words`, `quote.max_words`, BD-06).
 2. Find all occurrences of `nq` in `normalise(parsed_text)`, **case-sensitive, exact**.
 3. Zero occurrences: status `dropped`, event `claim_dropped` with reason `quote_not_found`.
 4. One or more: take the first; map back to original offsets for `span_start` and `span_end`.
@@ -231,6 +231,8 @@ def comparability_key(stat: Statistic, labels: Labels, indicator: IndicatorDef) 
 
 Two figures are comparable only if their keys are equal and not `None`.
 
+**Added by BD-06 (AT-21).** A figure whose `measure_type` is a care-cascade or prevalence measure and whose denominator is not stated also gets `None`, so it is never compared with, or combined with, figures from other sources. The age band uses explicit `None` checks, so an age bound of 0 counts as stated.
+
 **Tests:** 140/90 and 130/80 for the same city never share a key (F7); adults 18+ and 30–79 never share a key; unknown age band gives `None`.
 
 ---
@@ -286,6 +288,8 @@ For `GOVERNS` and `LEADS` (one current edge allowed): a new supported claim whos
 - Validity overlaps, or either validity is a proxy date within 12 months of the other → `conflicts`, contested pair, both written with `status = contested`.
 
 All other relation types: identical subject, type and object → `agrees`; otherwise `novel`.
+
+**Reading and ordering (BD-06).** For both `GOVERNS` and `LEADS`, two edges compete when they share the object (the place, or the organisation) and differ in subject. Because a current edge has no end date, ordering is decided in this order: the old edge ended on or before the new start → supersede; the new edge ended on or before the old start → the new claim is history (`superseded`); either start missing → `conflicts`; a proxy date within 12 months of the other → `conflicts`; explicit validity overlap → `conflicts`; new start in a later year → supersede; earlier year → history; same year → `conflicts`.
 
 **Tests (§5):** two compatible prevalence figures 0.3 points apart (agrees); 4 points apart (contested, headline by tier); different survey years (both novel); 140/90 vs 130/80 (not comparable); a newer GOVERNS with a later valid_from (supersedes); two GOVERNS from the same year (contested).
 

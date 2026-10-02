@@ -59,7 +59,9 @@ cardio4cities/
 │   │   ├── ranking.py            # LLD-2 §5.2
 │   │   ├── confidence.py         # LLD-2 §7
 │   │   ├── badges.py             # LLD-2 §8
-│   │   └── wording.py            # user-facing vocabulary (R-90)
+│   │   ├── wording.py            # user-facing vocabulary (R-90)
+│   │   ├── params.py             # tunables passed into the rules, built from config (BD-06)
+│   │   └── dates.py              # calendar arithmetic; `today` is always passed in
 │   ├── workflow/
 │   │   ├── graph.py              # main graph and slot subgraph (LLD-2 §3)
 │   │   ├── state.py              # RunState, SlotState
@@ -69,7 +71,8 @@ cardio4cities/
 │   │   ├── nodes/                # one file per node
 │   │   └── rules/                # pure: crawl_gate, robots, content_usage, selection, quotes,
 │   │                             #       numbers, thresholds, comparability, consistency,
-│   │                             #       entity_resolution, slot_status, gap_notes, wave0_record
+│   │                             #       entity_resolution, slot_status, gap_notes, wave0_record,
+│   │                             #       labels (reference-period rule, derived flags)
 │   ├── query/                    # classify, retrieve, bundle, answer, postcheck (LLD-2 §15)
 │   ├── report/                   # assemble, render, templates/report.{md,html}.j2 (LLD-2 §16)
 │   ├── prompts/

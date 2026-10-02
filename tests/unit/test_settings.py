@@ -45,8 +45,8 @@ def test_local_does_not_need_brave_qdrant_or_langsmith_keys(valid_env: dict[str,
     load_settings(valid_env)
 
 
-def test_local_allows_placeholders(valid_env: dict[str, str]) -> None:
-    settings = load_settings(valid_env)
+def test_local_allows_placeholders(write_config: ConfigWriter, valid_env: dict[str, str]) -> None:
+    settings = load_settings(valid_env, write_config("local", _restore_day1_placeholders))
 
     assert settings.config.embeddings.dimension == 0
 
@@ -71,13 +71,13 @@ def test_deployed_refuses_day1_placeholders_and_zero_budgets(
 
 
 def test_shipped_deployed_config_passes_validation(valid_env: dict[str, str]) -> None:
-    """BD-04: confirmed model IDs and provisional budgets; nothing left as a placeholder."""
+    """BD-04, BD-05: confirmed model IDs and provisional budgets; no placeholders."""
     valid_env["APP_ENV"] = "deployed"
 
     config = load_settings(valid_env).config
 
     assert config.search.provider == "brave"
-    assert config.llm.roles.checker.model == "gpt-6-astra"
+    assert config.llm.roles.checker.model == "gpt-6.1-sol"
     assert (config.embeddings.model, config.embeddings.dimension) == (
         "text-embedding-3-small",
         1536,
@@ -106,7 +106,9 @@ def test_search_mode_must_be_links_only(
 def test_invalid_app_env_refused(valid_env: dict[str, str]) -> None:
     valid_env["APP_ENV"] = "staging"
 
-    assert _problems(valid_env) == ["APP_ENV must be 'local' or 'deployed', not 'staging'"]
+    assert _problems(valid_env) == [
+        "APP_ENV must be one of local, local-quality, deployed, not 'staging'"
+    ]
 
 
 def test_missing_config_file_refused(tmp_path: Path, valid_env: dict[str, str]) -> None:

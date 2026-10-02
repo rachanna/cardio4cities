@@ -30,7 +30,8 @@ cardio4cities/
 │
 ├── config/                       # keys exactly as LLD-4 §5.1, plus BD-02 additions
 │   ├── searxng/settings.yml      # local SearXNG: JSON output, limiter off (BD-01)
-│   ├── local.yaml                # LLD-4 §5.1, local adapters
+│   ├── local.yaml                # LLD-4 §5.1, local adapters, low-cost models (BD-05)
+│   ├── local-quality.yaml        # local.yaml with the deployed model bindings (APP_ENV=local-quality)
 │   └── deployed.yaml             # LLD-4 §5.1, deployed adapters
 │
 ├── reference/                    # generic reference data only: never city facts (A-09, AT-02)

@@ -22,6 +22,19 @@ uv run poe test
 On Windows, use `127.0.0.1` rather than `localhost` in local URLs: `localhost` tries IPv6
 first and each new connection waits for that to fail.
 
+## Deploying to Render
+
+`render.yaml` is a Render Blueprint: the app, Neo4j, Qdrant, Postgres and a keep-alive
+cron, all in Singapore, with auto-deploy off. Deploy by hand, never on rehearsal or demo days.
+
+1. In Render, install the GitHub app for this repository only.
+2. New → Blueprint → this repository, branch `main`.
+3. Enter the prompted secrets: `ACCESS_CODE` (12+ characters), `ADMIN_CODE` (different),
+   `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `BRAVE_API_KEY`, `LANGSMITH_API_KEY`.
+   Store passwords and `SESSION_SECRET` are generated.
+4. Each deploy runs `scripts/predeploy.sh` (migrations and reference data) before the app starts.
+5. Check from outside: `uv run poe smoke https://<service>.onrender.com`.
+
 ## Data credits
 
 Place names, coordinates, populations, first-level regions and country languages come from

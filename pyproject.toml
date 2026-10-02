@@ -117,6 +117,11 @@ strict = true
 module = ["asyncpg", "asyncpg.*"]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+# optional dependency group (local-embeddings): absent in CI and the image
+module = ["sentence_transformers", "sentence_transformers.*"]
+ignore_missing_imports = true
+
 # ---------------------------------------------------------------------------
 [tool.pytest.ini_options]
 testpaths = ["tests"]

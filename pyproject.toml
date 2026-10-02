@@ -9,6 +9,7 @@ dependencies = [
     "uvicorn[standard]",
     "pydantic>=2",
     "pyyaml",
+    "python-dotenv>=1.2.4",
 ]
 
 [dependency-groups]

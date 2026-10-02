@@ -33,9 +33,9 @@
 
 | ID | Task | Load | Outputs | Done when | Est. |
 |---|---|---|---|---|---|
-| D1-1 | Repository scaffold | REPO_STRUCTURE | Layout, `pyproject.toml`, Makefile, Dockerfile, compose, `.env.example`, empty packages, CI running lint and tests | `make up`, `make lint`, `make test` succeed on an empty suite | 1 h |
+| D1-1 | Repository scaffold | REPO_STRUCTURE | Layout, `pyproject.toml` with poe tasks (BD-01), Dockerfile, compose, `.env.example`, empty packages, CI running lint and tests | `poe up`, `poe lint`, `poe test` succeed on an empty suite | 1 h |
 | D1-2 | Ports, config and validation | LLD-4 §5, §8 | Protocols; config loader; start-up validation; `container.py` | AT-36 passes; import-linter contracts active (AT-34) | 1 h |
-| D1-3 | Database and reference data | LLD-1 §3–4 | Alembic migrations for all tables and views; loaders for GeoNames and the YAML reference files | `make migrate reference` loads 16 slots and the gazetteer; AT-02 scan runs | 1.5 h |
+| D1-3 | Database and reference data | LLD-1 §3–4 | Alembic migrations for all tables and views; loaders for GeoNames and the YAML reference files | `poe migrate` then `poe reference` loads 16 slots and the gazetteer; AT-02 scan runs | 1.5 h |
 | D1-4 | Deployed skeleton | REPO_STRUCTURE §5, LLD-4 §3.1, §7 | `render.yaml`; app with session and `/health` touching Postgres, Qdrant, Neo4j; static placeholder page at `/` | Deployed URL serves `/` and `/api/v1/health` returns `ok` from outside (AT-29 partial) | 1 h |
 | D1-5 | Spikes (§2) | §2 below, LLD-1 §6.3 | Six spike scripts with written results | Each spike has a recorded outcome and a `BD-` row | 2.5 h |
 

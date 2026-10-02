@@ -90,7 +90,7 @@ Claude Code adds ruff and the import-lint check to this file in task D1-1.
 |---|---|
 | One branch per build task, named after it | `git switch -c day1/D1-1-scaffold` |
 | Commit messages start with the task ID | `D1-3: migrations for claims and verdicts` |
-| Merge into `main` only when `make lint test` passes | then delete the branch |
+| Merge into `main` only when `poe lint` and `poe test` pass | then delete the branch |
 | Spike results go into `docs/DECISIONS.md` in the same merge as the spike script | `D1-5: S-1 Graphiti triplets spike, BD-01` |
 | Design changes go into `docs/DECISIONS.md` in the same commit as the code | never a separate "update docs later" commit |
 

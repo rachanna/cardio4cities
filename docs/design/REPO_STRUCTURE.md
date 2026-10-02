@@ -16,9 +16,12 @@
 cardio4cities/
 ├── CLAUDE.md                     # read first, every session
 ├── README.md                     # URL, access, quick start, architecture summary, trust-test results
-├── pyproject.toml                # Python deps, ruff, mypy, pytest, import-linter contracts
+├── pyproject.toml                # Python deps, ruff, mypy, pytest, import-linter contracts, poe tasks (§4)
 ├── uv.lock
-├── Makefile                      # the commands in §4
+├── .python-version               # 3.12 (uv)
+├── .gitattributes                # * text=auto eol=lf (BD-01)
+├── .pre-commit-config.yaml       # gitleaks, ruff, import-linter
+├── .github/workflows/ci.yml      # lint and tests on push and PR
 ├── Dockerfile                    # multi-stage: build web → copy into the Python image
 ├── docker-compose.yml            # local: postgres, qdrant, neo4j, searxng, app
 ├── render.yaml                   # deployed: web service, private services, Postgres, keep-alive job
@@ -26,6 +29,7 @@ cardio4cities/
 ├── .gitignore                    # .env, reference/geonames/*.txt, node_modules, .next, out
 │
 ├── config/
+│   ├── searxng/settings.yml      # local SearXNG: JSON output, limiter off (BD-01)
 │   ├── local.yaml                # LLD-4 §5.1, local adapters
 │   └── deployed.yaml             # LLD-4 §5.1, deployed adapters
 │
@@ -158,22 +162,26 @@ Expressed as import-linter `layers` and `forbidden` contracts. The architecture 
 
 ---
 
-## 4. Commands (Makefile)
+## 4. Commands (poe tasks, BD-01)
+
+Run as `uv run poe <task>`; tasks are defined in `pyproject.toml` under `[tool.poe.tasks]`.
 
 | Command | Does |
 |---|---|
-| `make up` | Start local stores and SearXNG with Docker Compose |
-| `make migrate` | Run Alembic migrations |
-| `make reference` | Download GeoNames (if missing) and load all reference data |
-| `make dev` | API with reload on :8000, plus `web` dev server on :3000 proxying `/api` |
-| `make web` | Build the static export into `web/out` |
-| `make test` | Unit, contract, architecture and acceptance tests (recorded responses) |
-| `make lint` | ruff, mypy, import-linter |
-| `make types` | Regenerate `web/lib/api-types.ts` from the OpenAPI document |
-| `make spike NAME=…` | Run one script in `scripts/spikes/` |
-| `make eval` | Prompt golden set against real models (costs money) |
-| `make smoke URL=…` | Smoke tests against a deployed URL |
-| `make purge CITY=…` | Remove a city from all stores |
+| `poe up` | Start local stores and SearXNG with Docker Compose |
+| `poe migrate` | Run Alembic migrations |
+| `poe reference` | Download GeoNames (if missing) and load all reference data |
+| `poe dev` | API with reload on :8000, plus `web` dev server on :3000 proxying `/api` |
+| `poe web` | Build the static export into `web/out` |
+| `poe test` | Unit, contract, architecture and acceptance tests (recorded responses) |
+| `poe lint` | ruff, mypy, import-linter |
+| `poe fmt` | ruff format and auto-fix |
+| `poe down` | Stop local stores |
+| `poe types` | Regenerate `web/lib/api-types.ts` from the OpenAPI document |
+| `poe spike NAME` | Run one script in `scripts/spikes/` |
+| `poe eval` | Prompt golden set against real models (costs money) |
+| `poe smoke URL` | Smoke tests against a deployed URL |
+| `poe purge CITY` | Remove a city from all stores |
 
 ---
 

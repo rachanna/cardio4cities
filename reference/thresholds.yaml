@@ -1,0 +1,16 @@
+# Threshold coding (LLD-2 §4.3). Generic: describes no city.
+# Patterns are Python regular expressions, searched in the case definition after quote
+# normalisation (LLD-2 §4.1) and lower-casing. Rules are tried in order; first match wins.
+# No match gives no threshold code, and the claim is not comparable (§4.4).
+- code: bp_140_90
+  patterns:
+    - '(>=|≥) ?140\b'
+    - '\b140 ?/ ?90\b'
+- code: bp_130_80
+  patterns:
+    - '(>=|≥) ?130\b'
+    - '\b130 ?/ ?80\b'
+- code: fpg_7_0
+  patterns:
+    - '(>=|≥) ?7[.,]0 ?mmol'
+    - '(>=|≥) ?126 ?mg'

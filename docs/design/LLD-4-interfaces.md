@@ -278,6 +278,7 @@ verify:     { max_claims_per_slot: 5 }
 select:     { max_new_urls_per_slot_round: 4 }
 replan:     { max_rounds: 2, max_rounds_wider_geo: 1 }
 extract:    { window_tokens: 12000, overlap_tokens: 500 }
+quote:      { min_words: 6, max_words: 60 }   # BD-06
 consistency:{ agree_pp: 0.5, agree_rel: 0.02 }
 entity:     { merge_threshold: 0.92, candidate_threshold: 0.85 }
 badge:      { stale_years: 5, stale_years_people: 2, small_sample: 300 }

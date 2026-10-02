@@ -209,6 +209,11 @@ class ExtractSection(_Section):
     overlap_tokens: int
 
 
+class QuoteSection(_Section):
+    min_words: int  # LLD-2 §4.1 [tunable] (BD-06)
+    max_words: int
+
+
 class ConsistencySection(_Section):
     agree_pp: float
     agree_rel: float
@@ -252,6 +257,7 @@ class Config(_Section):
     select: SelectSection
     replan: ReplanSection
     extract: ExtractSection
+    quote: QuoteSection
     consistency: ConsistencySection
     entity: EntitySection
     badge: BadgeSection

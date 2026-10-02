@@ -69,7 +69,8 @@ Start each session by naming the task ID from `BUILD_PLAN.md` and reading the do
 ```text
 uv run poe up          # local stores and SearXNG
 uv run poe migrate     # database migrations
-uv run poe reference   # load gazetteer and reference YAML
+uv run poe reference   # load gazetteer and reference YAML (downloads GeoNames if missing)
+uv run poe geonames    # download GeoNames only (needed by the AT-02 scan)
 uv run poe dev         # API on :8000 and web on :3000
 uv run poe test        # unit, contract, architecture, acceptance (recorded responses)
 uv run poe lint        # ruff, mypy, import-linter

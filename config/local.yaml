@@ -25,7 +25,7 @@ llm:
   concurrency: 4
   allow_same_family_checker: false   # BD-02; when true it is shown on every verdict and in /health
 embeddings: { provider: openai, model: "<confirm day 1>", dimension: 0, key: openai_small_v1 }
-search:     { provider: searxng, mode: links_only, base_url: http://localhost:8888, rate_per_s: 1 }   # base_url: BD-02
+search:     { provider: searxng, mode: links_only, base_url: http://127.0.0.1:8888, rate_per_s: 1 }   # base_url: BD-02
 relational: { dsn_env: DATABASE_URL }
 vector:     { provider: qdrant, url_env: QDRANT_URL }   # no API key locally
 graph:      { provider: graphiti_neo4j, uri_env: NEO4J_URI, user_env: NEO4J_USER, password_env: NEO4J_PASSWORD }

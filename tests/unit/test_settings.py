@@ -211,6 +211,12 @@ def test_reference_slots_exactly_s01_to_s16() -> None:
     assert "unexpected: ['S17']" in check_reference_slots([*expected, "S17"])[0]
 
 
+def test_empty_reference_slots_point_to_the_loader() -> None:
+    assert check_reference_slots([]) == [
+        "ref_slot is empty: run `poe reference` against DATABASE_URL"
+    ]
+
+
 def test_placeholder_indicator_codes_refused() -> None:
     problems = check_indicator_codes(
         {

@@ -22,7 +22,7 @@ def test_registered_adapter_is_built_from_settings(valid_env: dict[str, str]) ->
     container = build_container(load_settings(valid_env), registry=registry)
 
     assert isinstance(container.search, FakeSearch)
-    assert container.search.base_url == "http://localhost:8888"
+    assert container.search.base_url == "http://127.0.0.1:8888"
     assert "search:searxng" not in container.missing
 
 

@@ -1,0 +1,3 @@
+# Justified exceptions to the AT-02 no-seeding scan (tests/acceptance/test_no_seeding.py).
+# Each entry: path (repo-relative), name (as reported), reason. Unused entries fail the test.
+[]

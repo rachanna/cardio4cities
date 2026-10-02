@@ -10,11 +10,35 @@ permissions:
 jobs:
   lint-test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16.15
+        env:
+          POSTGRES_USER: c4c
+          POSTGRES_PASSWORD: c4c
+          POSTGRES_DB: c4c
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U c4c -d c4c"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      TEST_DATABASE_URL: postgresql://c4c:c4c@127.0.0.1:5432/c4c_test
+      C4C_REQUIRE_DB: "1"  # database tests fail instead of skipping
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.2.0
         with:
           enable-cache: true
       - run: uv sync --locked
+      - id: month
+        run: echo "value=$(date +%Y-%m)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v6
+        with:
+          path: |
+            reference/geonames/cities15000.zip
+            reference/geonames/admin1CodesASCII.txt
+            reference/geonames/countryInfo.txt
+          key: geonames-${{ steps.month.outputs.value }}
+      - run: uv run poe geonames  # gazetteer for the AT-02 scan; no-op when cached
       - run: uv run poe lint
       - run: uv run poe test

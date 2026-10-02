@@ -1,0 +1,146 @@
+# Slot catalogue (LLD-1 §3.2), loaded into ref_slot. Generic: describes no city.
+# short_label is used in abstentions, "No confirmed {short_label} for {city}" (BD-03).
+- slot_id: S01
+  dimension: D1
+  question: Which body runs public health in the city today?
+  short_label: public health authority
+  answer_kind: relation
+  indicator_codes: []
+  relation_types: [GOVERNS]
+  headline: false
+  accepted_levels: [city_wide]
+- slot_id: S02
+  dimension: D1
+  question: Has that body been reorganised or replaced recently?
+  short_label: reorganisation of the health authority
+  answer_kind: relation
+  indicator_codes: []
+  relation_types: [REPLACED_BY]
+  headline: false
+  accepted_levels: [city_wide]
+- slot_id: S03
+  dimension: D2
+  question: What share of adults has hypertension?
+  short_label: hypertension prevalence
+  answer_kind: statistic
+  indicator_codes: [HTN_PREV]
+  relation_types: []
+  headline: false
+  accepted_levels: [city_wide]
+- slot_id: S04
+  dimension: D2
+  question: What share of people with hypertension have it under control?
+  short_label: hypertension control rate
+  answer_kind: statistic
+  indicator_codes: [HTN_CONTROL, HTN_TREATED, HTN_AWARE]
+  relation_types: []
+  headline: true
+  accepted_levels: [city_wide]
+- slot_id: S05
+  dimension: D2
+  question: What share of adults has diabetes?
+  short_label: diabetes prevalence
+  answer_kind: statistic
+  indicator_codes: [DM_PREV]
+  relation_types: []
+  headline: false
+  accepted_levels: [city_wide]
+- slot_id: S06
+  dimension: D2
+  question: How many people die from cardiovascular disease or stroke?
+  short_label: cardiovascular and stroke mortality
+  answer_kind: statistic
+  indicator_codes: [CVD_MORT, STROKE_MORT, NCD_PREMATURE_MORT]
+  relation_types: []
+  headline: false
+  accepted_levels: [city_wide]
+- slot_id: S07
+  dimension: D3
+  question: Which NCD or hypertension programmes operate in the city?
+  short_label: NCD or hypertension programmes
+  answer_kind: mixed
+  indicator_codes: []
+  relation_types: [RUNS, OPERATES_IN]
+  headline: false
+  accepted_levels: [city_wide, sub_city_area]
+- slot_id: S08
+  dimension: D3
+  question: Is there primary-care screening for these conditions?
+  short_label: primary-care screening
+  answer_kind: statement
+  indicator_codes: []
+  relation_types: []
+  headline: false
+  accepted_levels: [city_wide, sub_city_area]
+- slot_id: S09
+  dimension: D4
+  question: Which national NCD plan and targets apply?
+  short_label: national NCD plan and targets
+  answer_kind: mixed
+  indicator_codes: []
+  relation_types: [APPLIES_TO, ISSUED_BY]
+  headline: false
+  accepted_levels: [national, state_province, city_wide]
+- slot_id: S10
+  dimension: D4
+  question: Which hypertension treatment protocol is used?
+  short_label: hypertension treatment protocol
+  answer_kind: statement
+  indicator_codes: []
+  relation_types: []
+  headline: false
+  accepted_levels: [national, state_province, city_wide]
+- slot_id: S11
+  dimension: D4
+  question: What tobacco or salt policies apply?
+  short_label: tobacco or salt policies
+  answer_kind: statement
+  indicator_codes: []
+  relation_types: []
+  headline: false
+  accepted_levels: [national, state_province, city_wide]
+- slot_id: S12
+  dimension: D5
+  question: Who leads the health authority?
+  short_label: health authority leader
+  answer_kind: relation
+  indicator_codes: []
+  relation_types: [LEADS]
+  headline: false
+  accepted_levels: [city_wide]
+- slot_id: S13
+  dimension: D5
+  question: Which major hospitals and academic bodies are involved?
+  short_label: hospitals and academic bodies
+  answer_kind: relation
+  indicator_codes: []
+  relation_types: [PART_OF, PARTNERS_WITH]
+  headline: false
+  accepted_levels: [city_wide, metro_region]
+- slot_id: S14
+  dimension: D5
+  question: Which NGOs and partners work on these conditions?
+  short_label: NGOs and partners
+  answer_kind: relation
+  indicator_codes: []
+  relation_types: [PARTNERS_WITH, FUNDS, RUNS]
+  headline: false
+  accepted_levels: [city_wide, metro_region]
+- slot_id: S15
+  dimension: D6
+  question: Is health data published at city level or below?
+  short_label: city-level health data
+  answer_kind: statement
+  indicator_codes: []
+  relation_types: []
+  headline: false
+  accepted_levels: [city_wide, sub_city_area]
+- slot_id: S16
+  dimension: D6
+  question: Which health information system is used?
+  short_label: health information system
+  answer_kind: statement
+  indicator_codes: []
+  relation_types: []
+  headline: false
+  accepted_levels: [national, state_province, city_wide]

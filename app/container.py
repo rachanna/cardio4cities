@@ -21,6 +21,7 @@ from app.ports.fetch import FetchPort
 from app.ports.graph import GraphPort
 from app.ports.llm import LLMPort
 from app.ports.renderer import RendererPort
+from app.ports.repos import RelationalPort
 from app.ports.search import SearchPort
 from app.ports.snapshots import SnapshotPort
 from app.ports.structured import StructuredDataPort
@@ -30,12 +31,15 @@ from app.settings import Settings
 
 # port -> provider -> "module:factory"
 AdapterRegistry = Mapping[str, Mapping[str, str]]
-ADAPTERS: AdapterRegistry = {}
+ADAPTERS: AdapterRegistry = {
+    "relational": {"postgres": "app.adapters.postgres.relational:make"},
+}
 
 
 @dataclass
 class Container:
     settings: Settings
+    relational: RelationalPort | None = None
     llm: dict[str, LLMPort] = field(default_factory=dict)  # by provider
     embeddings: EmbeddingsPort | None = None
     search: SearchPort | None = None
@@ -62,6 +66,8 @@ def build_container(settings: Settings, registry: AdapterRegistry | None = None)
         module_name, _, attr = target.partition(":")
         factory: Callable[[Settings], Any] = getattr(importlib.import_module(module_name), attr)
         return factory(settings)
+
+    container.relational = build("relational", "postgres")  # fixed choice (CON-04)
 
     llm_providers = sorted(
         {ref.provider for _, role in config.llm.roles.items() for ref in role.model_refs()}

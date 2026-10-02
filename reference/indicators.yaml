@@ -1,0 +1,37 @@
+# Indicator catalogue (LLD-1 §3.3), loaded into ref_indicator. The comparability
+# key says which claims may be compared at all (R-35).
+- code: HTN_PREV
+  name: Hypertension prevalence
+  comparability_key: indicator + threshold_code + measure_type + age band + sex
+  notes: "Thresholds: bp_140_90 (WHO), bp_130_80 (ACC/AHA)"
+- code: HTN_AWARE
+  name: Aware of their hypertension (of those with it)
+  comparability_key: indicator + threshold_code + measure_type + age band + sex
+  notes: Denominator must be people with hypertension
+- code: HTN_TREATED
+  name: Treated (of those with it)
+  comparability_key: indicator + threshold_code + measure_type + age band + sex
+- code: HTN_CONTROL
+  name: Controlled (of those with it)
+  comparability_key: indicator + threshold_code + measure_type + age band + sex
+  notes: Headline indicator
+- code: DM_PREV
+  name: Diabetes prevalence
+  comparability_key: indicator + case_definition class + age band
+- code: CVD_MORT
+  name: Cardiovascular mortality
+  comparability_key: indicator + unit + age standardisation stated
+- code: STROKE_MORT
+  name: Stroke mortality
+  comparability_key: indicator + unit + age standardisation stated
+- code: NCD_PREMATURE_MORT
+  name: Probability of dying 30-70 from main NCDs
+  comparability_key: indicator
+  notes: WHO SDG indicator
+- code: POP_TOTAL
+  name: Population
+  comparability_key: indicator + geography_level
+  notes: Context only
+- code: OTHER
+  name: Anything else numeric
+  comparability_key: never compared

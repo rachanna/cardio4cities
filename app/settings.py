@@ -418,6 +418,8 @@ def check_reference_slots(slot_ids: Iterable[str]) -> list[str]:
     found = set(slot_ids)
     if found == EXPECTED_SLOT_IDS:
         return []
+    if not found:
+        return ["ref_slot is empty: run `poe reference` against DATABASE_URL"]
     missing = sorted(EXPECTED_SLOT_IDS - found)
     extra = sorted(found - EXPECTED_SLOT_IDS)
     return [f"ref_slot must hold exactly S01-S16 (missing: {missing}, unexpected: {extra})"]

@@ -19,6 +19,7 @@ from typing import Any
 from app.ports.embeddings import EmbeddingsPort
 from app.ports.fetch import FetchPort
 from app.ports.graph import GraphPort
+from app.ports.health import HealthProbe
 from app.ports.llm import LLMPort
 from app.ports.renderer import RendererPort
 from app.ports.repos import RelationalPort
@@ -33,6 +34,9 @@ from app.settings import Settings
 AdapterRegistry = Mapping[str, Mapping[str, str]]
 ADAPTERS: AdapterRegistry = {
     "relational": {"postgres": "app.adapters.postgres.relational:make"},
+    # health probes by store provider (LLD-4 §7); full adapters arrive in D2-2 and D2-4
+    "probe:vector": {"qdrant": "app.adapters.vector.qdrant_probe:make"},
+    "probe:graph": {"graphiti_neo4j": "app.adapters.graph.neo4j_probe:make"},
 }
 
 
@@ -50,7 +54,14 @@ class Container:
     snapshots: SnapshotPort | None = None
     renderer: RendererPort | None = None
     tracing: list[TracingPort] = field(default_factory=list)
+    probes: list[HealthProbe] = field(default_factory=list)
     missing: list[str] = field(default_factory=list)  # "port:provider" with no adapter yet
+
+    async def close(self) -> None:
+        for probe in self.probes:
+            await probe.close()
+        if self.relational is not None:
+            await self.relational.close()
 
 
 def build_container(settings: Settings, registry: AdapterRegistry | None = None) -> Container:
@@ -68,6 +79,12 @@ def build_container(settings: Settings, registry: AdapterRegistry | None = None)
         return factory(settings)
 
     container.relational = build("relational", "postgres")  # fixed choice (CON-04)
+    for port, provider in (
+        ("probe:vector", config.vector.provider),
+        ("probe:graph", config.graph.provider),
+    ):
+        if (probe := build(port, provider)) is not None:
+            container.probes.append(probe)
 
     llm_providers = sorted(
         {ref.provider for _, role in config.llm.roles.items() for ref in role.model_refs()}

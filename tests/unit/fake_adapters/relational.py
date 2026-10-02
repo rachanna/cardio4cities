@@ -26,6 +26,10 @@ class FakeRelational:
     def reference(self) -> FakeReference:
         return self._reference
 
+    async def ping(self) -> None:
+        if FAIL:
+            raise ConnectionError("database unreachable")
+
     async def close(self) -> None:
         closed.append(True)
 

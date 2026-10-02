@@ -60,34 +60,37 @@ Start each session by naming the task ID from `BUILD_PLAN.md` and reading the do
 1. Read the task's documents. If something is ambiguous, check `REQUIREMENTS.md`, then ask the owner rather than guess.
 2. Write the tests the LLD lists for the task alongside the code. Acceptance tests carry their AT ID in the docstring.
 3. Keep functions in `domain/` and `workflow/rules/` pure (no I/O) so they are unit-testable.
-4. Run `make lint test` before finishing. A task is done only when its **Done when** checks pass.
+4. Run `uv run poe lint` and `uv run poe test` before finishing. A task is done only when its **Done when** checks pass.
 5. If you deviate from the design, or a spike changes it, add a `BD-` row to `docs/DECISIONS.md` in the same change. If a change would weaken a MUST requirement, stop and ask.
 6. Commit small, on a task branch, with messages that start with the task ID (`docs/GIT.md` §6).
 
 ## Commands
 
 ```text
-make up          # local stores and SearXNG
-make migrate     # database migrations
-make reference   # load gazetteer and reference YAML
-make dev         # API on :8000 and web on :3000
-make test        # unit, contract, architecture, acceptance (recorded responses)
-make lint        # ruff, mypy, import-linter
-make types       # regenerate web API types from OpenAPI
-make spike NAME= # run a day-1 spike
-make eval        # prompt golden set against real models (costs money: ask first)
-make smoke URL=  # smoke tests against a deployed URL
-make purge CITY= # remove a city from all stores
+uv run poe up          # local stores and SearXNG
+uv run poe migrate     # database migrations
+uv run poe reference   # load gazetteer and reference YAML
+uv run poe dev         # API on :8000 and web on :3000
+uv run poe test        # unit, contract, architecture, acceptance (recorded responses)
+uv run poe lint        # ruff, mypy, import-linter
+uv run poe fmt         # ruff format and auto-fix
+uv run poe types       # regenerate web API types from OpenAPI
+uv run poe spike NAME  # run a day-1 spike
+uv run poe eval        # prompt golden set against real models (costs money: ask first)
+uv run poe smoke URL   # smoke tests against a deployed URL
+uv run poe purge CITY  # remove a city from all stores
 ```
+
+Tasks live in `pyproject.toml` under `[tool.poe.tasks]` (BD-01); each is added by the build task that makes it work. `uv run poe` lists what exists.
 
 ## Do not
 
 - Do not add city names, city URLs or city facts to any file in the repository, including tests.
-- Do not call paid model or search APIs from tests; use recorded responses. Live calls only in spikes, `make eval` and smoke tests.
+- Do not call paid model or search APIs from tests; use recorded responses. Live calls only in spikes, `poe eval` and smoke tests.
 - Do not commit `.env`, keys, access codes or downloaded GeoNames dumps.
 - Do not add features the design does not list (maps, voice, chat persona, decorative graph views). Ask first.
 - Do not turn on auto-deploy or deploy on rehearsal or demo days.
 
 ## Owner
 
-Rachanna. Ask when a requirement and a design document disagree, when a spike result changes the design, before spending money on `make eval`, and before any change that would weaken a MUST requirement.
+Rachanna. Ask when a requirement and a design document disagree, when a spike result changes the design, before spending money on `poe eval`, and before any change that would weaken a MUST requirement.

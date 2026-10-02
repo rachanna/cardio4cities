@@ -1,0 +1,79 @@
+# Local stores and SearXNG (REPO_STRUCTURE §5). `uv run poe up` starts them;
+# the app container is opt-in: `docker compose --profile app up -d --build`.
+# Ports bind to 127.0.0.1 only. Postgres credentials are local-only defaults.
+
+name: cardio4cities
+
+services:
+  postgres:
+    image: postgres:16.15
+    environment:
+      POSTGRES_USER: c4c
+      POSTGRES_PASSWORD: c4c
+      POSTGRES_DB: c4c
+    ports: ["127.0.0.1:5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U c4c -d c4c"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  qdrant:
+    image: qdrant/qdrant:v1.19.1
+    ports: ["127.0.0.1:6333:6333"]
+    volumes: [qdrant:/qdrant/storage]
+    healthcheck:
+      # the image ships without curl or wget
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  neo4j:
+    image: neo4j:5.26.31-community
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:?set NEO4J_PASSWORD in .env (8+ characters)}
+      NEO4J_server_memory_heap_max__size: 1G
+    ports: ["127.0.0.1:7474:7474", "127.0.0.1:7687:7687"]
+    volumes: [neo4j:/data]
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p \"$${NEO4J_AUTH#neo4j/}\" 'RETURN 1' || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 20s
+
+  searxng:
+    image: searxng/searxng:2026.9.30-a9d990033
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET:?set SEARXNG_SECRET in .env}
+      SEARXNG_BASE_URL: http://localhost:8888/
+    ports: ["127.0.0.1:8888:8080"]
+    volumes: ["./config/searxng/settings.yml:/etc/searxng/settings.yml:ro"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/healthz || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  app:
+    profiles: [app]
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://c4c:c4c@postgres:5432/c4c
+      QDRANT_URL: http://qdrant:6333
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: neo4j
+    ports: ["127.0.0.1:8000:8000"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      qdrant: { condition: service_healthy }
+      neo4j: { condition: service_healthy }
+      searxng: { condition: service_healthy }
+
+volumes:
+  pgdata:
+  qdrant:
+  neo4j:

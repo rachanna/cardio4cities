@@ -1,0 +1,16 @@
+.git
+.venv
+.env
+.env.*
+**/__pycache__
+.mypy_cache
+.ruff_cache
+.pytest_cache
+web/node_modules
+web/.next
+reference/geonames/*.txt
+reference/geonames/*.zip
+docs
+deck
+samples
+tests

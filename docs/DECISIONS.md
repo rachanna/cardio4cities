@@ -138,7 +138,7 @@ Added during the build as `BD-01`, `BD-02`… Spike results go here first.
 
 | ID | Decision | Alternative | Reason | Status |
 |---|---|---|---|---|
-| | | | | |
+| BD-01 | Commands are poethepoet tasks in `pyproject.toml` (`uv run poe <task>`), not a Makefile. `.gitattributes` enforces LF. Python pinned to 3.12 via `.python-version`. New paths `.github/workflows/` (CI) and `config/searxng/settings.yml`; new local-only env var `SEARXNG_SECRET`. Ruff excludes `docs/`. Each poe task is added by the build task that makes it work | Makefile (REPO_STRUCTURE v1.0) | Development is on native Windows with PowerShell, where `make` is not available; poe runs the same commands on Windows and CI without a shell. LF keeps hooks, scripts and container files identical across machines | decided |
 
 ---
 

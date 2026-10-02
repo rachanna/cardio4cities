@@ -1,0 +1,17 @@
+# Local SearXNG for development search. Links only: the app reads result URLs
+# and never page content from the search provider (CLAUDE.md).
+# server.secret_key is taken from the SEARXNG_SECRET environment variable.
+use_default_settings: true
+
+general:
+  instance_name: cardio4cities-local
+
+server:
+  limiter: false
+  image_proxy: false
+
+search:
+  safe_search: 0
+  formats:
+    - html
+    - json

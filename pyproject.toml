@@ -1,0 +1,151 @@
+[project]
+name = "cardio4cities"
+version = "0.1.0"
+description = "Live, verified, cited briefs of a city's cardiovascular landscape for CARDIO4Cities City Leads"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "pydantic>=2",
+    "pyyaml",
+]
+
+[dependency-groups]
+dev = [
+    "import-linter",
+    "mypy",
+    "poethepoet",
+    "pytest",
+    "pytest-asyncio",
+    "ruff",
+    "types-pyyaml",
+]
+
+[tool.uv]
+package = false
+
+# ---------------------------------------------------------------------------
+# Tasks (BD-01): run as `uv run poe <task>`. Each task is added by the build
+# task that makes it work; see REPO_STRUCTURE §4.
+# ---------------------------------------------------------------------------
+[tool.poe.tasks]
+up = { cmd = "docker compose up -d --wait", help = "Start local stores and SearXNG" }
+down = { cmd = "docker compose down", help = "Stop local stores and SearXNG" }
+fmt = { sequence = ["ruff format .", "ruff check --fix ."], default_item_type = "cmd", help = "Format and auto-fix" }
+lint = { sequence = [
+    "ruff check .",
+    "ruff format --check .",
+    "mypy",
+    "lint-imports",
+], default_item_type = "cmd", help = "ruff, mypy, import-linter" }
+test = { cmd = "pytest", help = "Unit, contract, architecture and acceptance tests (recorded responses)" }
+
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["web", "docs"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "S", "PT"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]
+
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.12"
+files = ["app", "tests"]
+plugins = ["pydantic.mypy"]
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = ["app.domain.*", "app.workflow.rules.*"]
+strict = true
+
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-ra --strict-markers"
+
+# ---------------------------------------------------------------------------
+# Dependency rules, REPO_STRUCTURE §3 (AT-34).
+# ---------------------------------------------------------------------------
+[tool.importlinter]
+root_package = "app"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Core layers"
+type = "layers"
+layers = [
+    "app.api",
+    "app.workflow | app.query | app.report",
+    "app.prompts | app.ports",
+    "app.domain",
+]
+
+[[tool.importlinter.contracts]]
+name = "Core never imports adapters or the composition root"
+type = "forbidden"
+source_modules = [
+    "app.api",
+    "app.workflow",
+    "app.query",
+    "app.report",
+    "app.prompts",
+    "app.ports",
+    "app.domain",
+]
+forbidden_modules = ["app.adapters", "app.container", "app.main"]
+
+[[tool.importlinter.contracts]]
+name = "Adapters depend only on ports and domain"
+type = "forbidden"
+source_modules = ["app.adapters"]
+forbidden_modules = [
+    "app.api",
+    "app.workflow",
+    "app.query",
+    "app.report",
+    "app.prompts",
+    "app.container",
+    "app.main",
+]
+
+[[tool.importlinter.contracts]]
+name = "Vendor SDKs only in adapters"
+type = "forbidden"
+source_modules = [
+    "app.api",
+    "app.workflow",
+    "app.query",
+    "app.report",
+    "app.prompts",
+    "app.ports",
+    "app.domain",
+]
+forbidden_modules = [
+    "anthropic",
+    "openai",
+    "ollama",
+    "sentence_transformers",
+    "qdrant_client",
+    "graphiti_core",
+    "neo4j",
+    "httpx",
+    "protego",
+    "trafilatura",
+    "pdfplumber",
+    "weasyprint",
+    "langsmith",
+    "opentelemetry",
+    "asyncpg",
+    "sqlalchemy",
+    "alembic",
+]

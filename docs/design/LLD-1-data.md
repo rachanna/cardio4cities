@@ -114,6 +114,7 @@ class SlotDef(BaseModel):
     slot_id: str                     # 'S01'…'S16'
     dimension: str                   # 'D1'…'D6'
     question: str                    # plain-language question shown in UI
+    short_label: str                 # "No confirmed {short_label} for {city}" (LLD-2 §15.2; BD-03)
     answer_kind: Literal['statistic', 'relation', 'statement', 'mixed']
     indicator_codes: list[str]       # for statistic slots; see §3.3
     relation_types: list[str]        # for relation slots; see §6.2
@@ -408,6 +409,7 @@ CREATE INDEX ref_place_alt_gin ON ref_place USING gin (alternate_names);
 
 CREATE TABLE ref_slot (
   slot_id text PRIMARY KEY, dimension text NOT NULL, question text NOT NULL,
+  short_label text NOT NULL,                     -- BD-03
   answer_kind text NOT NULL CHECK (answer_kind IN ('statistic','relation','statement','mixed')),
   indicator_codes text[] NOT NULL DEFAULT '{}', relation_types text[] NOT NULL DEFAULT '{}',
   headline boolean NOT NULL DEFAULT false, accepted_levels text[] NOT NULL

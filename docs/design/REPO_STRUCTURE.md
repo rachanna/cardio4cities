@@ -169,8 +169,9 @@ Run as `uv run poe <task>`; tasks are defined in `pyproject.toml` under `[tool.p
 | Command | Does |
 |---|---|
 | `poe up` | Start local stores and SearXNG with Docker Compose |
-| `poe migrate` | Run Alembic migrations |
-| `poe reference` | Download GeoNames (if missing) and load all reference data |
+| `poe migrate` | Run Alembic migrations; needs `DATABASE_URL` only |
+| `poe reference` | Download GeoNames (if missing) and load all reference data; needs `DATABASE_URL` only |
+| `poe geonames` | Download GeoNames only (the AT-02 scan reads it) |
 | `poe dev` | API with reload on :8000, plus `web` dev server on :3000 proxying `/api` |
 | `poe web` | Build the static export into `web/out` |
 | `poe test` | Unit, contract, architecture and acceptance tests (recorded responses) |

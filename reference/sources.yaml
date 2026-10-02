@@ -1,0 +1,24 @@
+# Source registry for Wave 0 (LLD-1 §3.4), loaded into ref_source.
+# Keyed by provider and indicator, never by city.
+# Codes written as <...> are placeholders until the D1-5 spike confirms them;
+# the loader never writes a provider that still has one (BD-03).
+- provider: who_gho
+  adapter: structured.who_gho
+  geography: national
+  representativeness: modelled
+  indicators:
+    HTN_PREV: { code: "<GHO indicator code, confirmed day 1>", age: [30, 79] }
+    HTN_CONTROL: { code: "<GHO indicator code, confirmed day 1>", age: [30, 79] }
+    DM_PREV: { code: "<GHO indicator code, confirmed day 1>" }
+    NCD_PREMATURE_MORT: { code: "<GHO indicator code, confirmed day 1>" }
+- provider: dhs
+  adapter: structured.dhs
+  geography: [national, state_province]
+  representativeness: representative_sample
+  indicators:
+    HTN_PREV: { code: "<DHS indicator id, confirmed day 1>" }
+- provider: world_bank
+  adapter: structured.world_bank
+  geography: national
+  indicators:
+    POP_TOTAL: { code: "SP.POP.TOTL" }

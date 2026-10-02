@@ -261,8 +261,10 @@ llm:
     openai:    { api_key_env: OPENAI_API_KEY }
     ollama:    { base_url: http://ollama:11434 }
   concurrency: 4
+  allow_same_family_checker: false   # BD-02; see §5.2
 embeddings: { provider: openai, model: "<confirm day 1>", dimension: 0, key: openai_small_v1 }
 search:     { provider: brave, mode: links_only, api_key_env: BRAVE_API_KEY, rate_per_s: 1 }
+            # searxng (local): { provider: searxng, mode: links_only, base_url: http://localhost:8888, rate_per_s: 1 } (BD-02)
 relational: { dsn_env: DATABASE_URL }
 vector:     { provider: qdrant, url_env: QDRANT_URL, api_key_env: QDRANT_API_KEY }
 graph:      { provider: graphiti_neo4j, uri_env: NEO4J_URI, user_env: NEO4J_USER, password_env: NEO4J_PASSWORD }
@@ -407,6 +409,7 @@ class StructuredDataPort(Protocol):
 
 class VectorPort(Protocol):
     async def ensure_collection(self, name: str, dimension: int) -> None: ...
+    async def collection_dimension(self, name: str) -> int | None: ...   # §5.2 check (BD-02)
     async def upsert(self, name: str, points: list[VectorPoint]) -> None: ...
     async def search(self, name: str, vector: list[float], filters: dict, limit: int) -> list[VectorHit]: ...
     async def delete_by_filter(self, name: str, filters: dict) -> None: ...

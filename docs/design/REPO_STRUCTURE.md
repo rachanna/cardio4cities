@@ -28,7 +28,7 @@ cardio4cities/
 ├── .env.example                  # LLD-4 §5.3
 ├── .gitignore                    # .env, reference/geonames/*.txt, node_modules, .next, out
 │
-├── config/
+├── config/                       # keys exactly as LLD-4 §5.1, plus BD-02 additions
 │   ├── searxng/settings.yml      # local SearXNG: JSON output, limiter off (BD-01)
 │   ├── local.yaml                # LLD-4 §5.1, local adapters
 │   └── deployed.yaml             # LLD-4 §5.1, deployed adapters
@@ -75,7 +75,7 @@ cardio4cities/
 │   │   ├── loader.py             # loads text, computes prompt_version (LLD-3 §2.5)
 │   │   ├── safety.py             # <source> wrapping and escaping (LLD-3 §2.2)
 │   │   └── <role>/v1.md, schema.py   # planner, extractor, checker, classifier, answerer, reporter
-│   ├── ports/                    # Protocols (LLD-4 §8)
+│   ├── ports/                    # Protocols (LLD-4 §8), one module per port with its value types; errors.py
 │   └── adapters/                 # the ONLY place vendor SDKs are imported
 │       ├── llm/                  # anthropic.py, openai.py, ollama.py
 │       ├── embeddings/           # openai.py, sentence_transformers.py

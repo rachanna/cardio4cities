@@ -34,7 +34,11 @@ services:
     image: neo4j:5.26.31-community
     environment:
       NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:?set NEO4J_PASSWORD in .env (8+ characters)}
+      # capped for a 16 GB development laptop
+      NEO4J_server_memory_heap_initial__size: 1G
       NEO4J_server_memory_heap_max__size: 1G
+      NEO4J_server_memory_pagecache_size: 512M
+    mem_limit: 2g
     ports: ["127.0.0.1:7474:7474", "127.0.0.1:7687:7687"]
     volumes: [neo4j:/data]
     healthcheck:

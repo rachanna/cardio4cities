@@ -15,3 +15,11 @@ class LLMOutputValidationError(PortError):
     def __init__(self, message: str, raw_text: str) -> None:
         super().__init__(message)
         self.raw_text = raw_text
+
+
+class FetchError(PortError):
+    """A fetch failed at the network level (connection, TLS, timeout)."""
+
+    def __init__(self, message: str, timeout: bool = False) -> None:
+        super().__init__(message)
+        self.timeout = timeout

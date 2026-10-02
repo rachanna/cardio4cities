@@ -189,6 +189,8 @@ class FetchSection(_Section):
     max_bytes: int
     connect_timeout_s: float
     read_timeout_s: float
+    allowed_ports: list[int]  # LLD-2 §9.1 step 2 [tunable] (BD-07)
+    robots_timeout_s: float  # LLD-2 §9.1 step 4: 5 s (BD-07; spike S-5 finding)
 
 
 class VerifySection(_Section):
@@ -212,6 +214,12 @@ class ExtractSection(_Section):
 class QuoteSection(_Section):
     min_words: int  # LLD-2 §4.1 [tunable] (BD-06)
     max_words: int
+
+
+class ChunkSection(_Section):
+    prose_tokens: int  # LLD-1 §5.3 [tunable] (BD-07)
+    overlap_tokens: int
+    table_max_tokens: int
 
 
 class ConsistencySection(_Section):
@@ -258,6 +266,7 @@ class Config(_Section):
     replan: ReplanSection
     extract: ExtractSection
     quote: QuoteSection
+    chunk: ChunkSection
     consistency: ConsistencySection
     entity: EntitySection
     badge: BadgeSection

@@ -39,12 +39,13 @@ tracing:    { providers: [events, langsmith], langsmith_api_key_env: LANGSMITH_A
 # Provisional until spike S-6 (BD-05): estimate ~1.4M tokens, ~$4.10 a run with gpt-6.1-sol low
 budget:     { wall_clock_s: 300, searches: 48, fetches: 60, tokens: 2500000, cost_micro_usd: 6000000, wind_down_at: 0.85 }
 limits:     { runs_per_day: 20, ask_per_min: 20, resolve_per_min: 30 }
-fetch:      { concurrency: 6, min_interval_s: 1, max_bytes: 10485760, connect_timeout_s: 5, read_timeout_s: 20 }
+fetch:      { concurrency: 6, min_interval_s: 1, max_bytes: 10485760, connect_timeout_s: 5, read_timeout_s: 20, allowed_ports: [80, 443], robots_timeout_s: 5 }
 verify:     { max_claims_per_slot: 5 }
 select:     { max_new_urls_per_slot_round: 4 }
 replan:     { max_rounds: 2, max_rounds_wider_geo: 1 }
 extract:    { window_tokens: 12000, overlap_tokens: 500 }
 quote:      { min_words: 6, max_words: 60 }   # LLD-2 §4.1 [tunable] (BD-06)
+chunk:      { prose_tokens: 400, overlap_tokens: 60, table_max_tokens: 1200 }   # LLD-1 §5.3 [tunable] (BD-07)
 consistency: { agree_pp: 0.5, agree_rel: 0.02 }
 entity:     { merge_threshold: 0.92, candidate_threshold: 0.85 }
 badge:      { stale_years: 5, stale_years_people: 2, small_sample: 300 }

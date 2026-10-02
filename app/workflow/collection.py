@@ -1,0 +1,402 @@
+"""Collection: crawl gate, fetch and parse for one URL (LLD-2 §9; AT-04, AT-05, AT-06, AT-23).
+
+The gate decides before any content request. Content enters the system only through
+`Collector.collect`: search snippets are never fetched or stored (AT-06). Every
+redirect hop is gated again, and every request dials the address the gate checked.
+Persisting sources, decisions and snapshots is the caller's job (the workflow node).
+"""
+
+import asyncio
+import re
+import time
+from collections import defaultdict
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field, replace
+from typing import Literal, Protocol
+from urllib.parse import urljoin, urlsplit
+
+from app.domain.vocab import CrawlOutcome, ParseOutcome, SourceKind
+from app.ports.errors import FetchError
+from app.ports.fetch import FetchLimits, FetchPort, FetchResult
+from app.ports.parse import ParsedDocument, ParserPort
+from app.ports.robots import RobotsParser
+from app.workflow.rules import content_usage
+from app.workflow.rules.crawl_gate import (
+    canonicalise,
+    check_addresses,
+    check_scheme_and_port,
+    host_of,
+    literal_address,
+    origin_of,
+)
+from app.workflow.rules.robots import (
+    ROBOTS_MAX_BYTES,
+    ROBOTS_MAX_REDIRECTS,
+    Availability,
+    match_length,
+    parse_groups,
+    path_matches,
+    robots_availability,
+    select_rules,
+)
+
+MAX_REDIRECTS = 5  # LLD-2 §9.3
+RETRY_AFTER_MAX_S = 10.0  # LLD-2 §9.3: honour Retry-After up to 10 s, retry once
+MIN_READABLE_CHARS = 200  # LLD-2 §9.4
+ALLOWED_TYPES = {
+    "text/html": SourceKind.WEB_HTML,
+    "application/xhtml+xml": SourceKind.WEB_HTML,
+    "text/plain": SourceKind.WEB_HTML,
+    "application/pdf": SourceKind.WEB_PDF,
+}
+PAYWALL_STATUSES = frozenset({401, 402, 403})
+# Generic types some servers send for PDFs (spike S-5): sniffed by the PDF signature only
+GENERIC_TYPES = frozenset(
+    {"", "application/octet-stream", "binary/octet-stream", "application/x-download"}
+)
+_PASSWORD_FIELD = re.compile(rb"<input[^>]+type\s*=\s*['\"]?password", re.IGNORECASE)
+
+FetchKind = Literal["fetch", "robots"]
+Outcome = Literal["fetched", "not_fetched", "http_error"]
+
+
+class FetchBudget(Protocol):
+    async def reserve(self, kind: FetchKind) -> None:
+        """Called before every request; raises when the budget is spent (LLD-2 §12)."""
+        ...
+
+
+@dataclass(frozen=True)
+class CollectionParams:
+    user_agent: str  # app.user_agent
+    allowed_ports: tuple[int, ...]  # fetch.allowed_ports
+    min_interval_s: float  # fetch.min_interval_s
+    concurrency: int  # fetch.concurrency
+    max_bytes: int  # fetch.max_bytes
+    connect_timeout_s: float
+    read_timeout_s: float
+    robots_timeout_s: float  # fetch.robots_timeout_s
+
+
+@dataclass(frozen=True)
+class GateDecision:
+    url: str
+    domain: str
+    outcome: CrawlOutcome
+    reason: str
+    rule: str | None = None
+    robots_http_status: int | None = None
+    pinned_ip: str | None = None
+    crawl_delay: float | None = None
+    usage_preferences: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class Collected:
+    requested_url: str
+    decisions: tuple[GateDecision, ...]  # one per hop, in order
+    outcome: Outcome
+    final_url: str | None = None
+    http_status: int | None = None
+    content_type: str | None = None
+    kind: SourceKind | None = None
+    raw: bytes = b""  # kept for the snapshot only when parsed or unreadable
+    document: ParsedDocument | None = None
+    parse_outcome: ParseOutcome | None = None
+
+    @property
+    def final_decision(self) -> GateDecision:
+        return self.decisions[-1]
+
+
+@dataclass
+class _Robots:
+    availability: Availability
+    status: int | None
+    text: str = ""
+
+
+class Collector:
+    def __init__(
+        self,
+        fetcher: FetchPort,
+        robots_parser: RobotsParser,
+        parser: ParserPort,
+        budget: FetchBudget,
+        params: CollectionParams,
+        clock: Callable[[], float] = time.monotonic,
+        sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+    ) -> None:
+        self._fetcher, self._robots_parser, self._parser = fetcher, robots_parser, parser
+        self._budget, self._params = budget, params
+        self._clock, self._sleep = clock, sleep
+        self._robots: dict[str, _Robots] = {}  # per origin, for the run
+        self._domain_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
+        self._last_request: dict[str, float] = {}
+        self._global = asyncio.Semaphore(params.concurrency)
+
+    # --- gate (§9.1) --------------------------------------------------------------
+
+    async def gate(self, url: str) -> GateDecision:
+        canonical = canonicalise(url)
+        if canonical is None:
+            return GateDecision(url, "", CrawlOutcome.BLOCKED_PRIVATE_ADDRESS, "not a usable URL")
+        domain = host_of(canonical)
+        problem = check_scheme_and_port(canonical, self._params.allowed_ports)
+        if problem:
+            return GateDecision(canonical, domain, CrawlOutcome.BLOCKED_PRIVATE_ADDRESS, problem)
+        literal = literal_address(domain)
+        addresses = [literal] if literal else await self._fetcher.resolve(domain)
+        if not addresses:
+            return GateDecision(
+                canonical, domain, CrawlOutcome.UNREACHABLE_NETWORK, "host does not resolve"
+            )
+        problem = check_addresses(addresses)
+        if problem:
+            return GateDecision(canonical, domain, CrawlOutcome.BLOCKED_PRIVATE_ADDRESS, problem)
+        pinned = addresses[0]
+        robots = await self._robots_for(canonical, pinned)
+        base = GateDecision(
+            canonical, domain, CrawlOutcome.ALLOWED, "", None, robots.status, pinned
+        )
+        if robots.availability == "unreachable_server_error":
+            return replace(
+                base,
+                outcome=CrawlOutcome.UNREACHABLE_SERVER_ERROR,
+                reason=(
+                    "robots.txt returned a server error: the whole site is treated as disallowed"
+                ),
+            )
+        if robots.availability == "unreachable_network":
+            return replace(
+                base,
+                outcome=CrawlOutcome.UNREACHABLE_NETWORK,
+                reason="robots.txt could not be reached: the whole site is treated as disallowed",
+            )
+        if robots.availability == "unavailable":
+            return replace(base, reason="no robots.txt (4xx): no restrictions apply")
+        rules = self._robots_parser.parse(robots.text)
+        ua = self._params.user_agent
+        if not rules.can_fetch(canonical, ua):
+            return replace(
+                base,
+                outcome=CrawlOutcome.BLOCKED_ROBOTS,
+                rule=_disallow_line(robots.text, ua, canonical),
+                reason="robots.txt disallows this path for our user agent",
+            )
+        usage = content_usage.from_robots(parse_groups(robots.text), ua, canonical)
+        if usage.blocked:
+            return replace(
+                base,
+                outcome=CrawlOutcome.BLOCKED_CONTENT_USAGE,
+                rule=usage.rule,
+                reason="robots.txt opts this content out of use by AI systems",
+                usage_preferences=usage.preferences,
+            )
+        return replace(
+            base,
+            reason="allowed by robots.txt",
+            crawl_delay=rules.crawl_delay(ua),
+            rule=usage.rule,
+            usage_preferences=usage.preferences,
+        )
+
+    async def _robots_for(self, url: str, pinned: str) -> _Robots:
+        origin = origin_of(url)
+        if origin not in self._robots:
+            self._robots[origin] = await self._fetch_robots(origin, pinned)
+        return self._robots[origin]
+
+    async def _fetch_robots(self, origin: str, pinned: str) -> _Robots:
+        limits = FetchLimits(
+            max_bytes=ROBOTS_MAX_BYTES,
+            connect_timeout_s=self._params.robots_timeout_s,
+            read_timeout_s=self._params.robots_timeout_s,
+            user_agent=self._params.user_agent,
+        )
+        url, ip = f"{origin}/robots.txt", pinned
+        for _ in range(ROBOTS_MAX_REDIRECTS + 1):
+            try:
+                result = await self._request(url, ip, limits, "robots", crawl_delay=None)
+            except FetchError:
+                return _Robots("unreachable_network", None)
+            location = result.headers.get("location")
+            if 300 <= result.status < 400 and location:
+                target = canonicalise(urljoin(url, location))
+                if target is None or check_scheme_and_port(target, self._params.allowed_ports):
+                    return _Robots("unavailable", result.status)
+                literal = literal_address(host_of(target))
+                addresses = [literal] if literal else await self._fetcher.resolve(host_of(target))
+                if check_addresses(addresses):  # never follow robots.txt to a private address
+                    return _Robots("unreachable_network", result.status)
+                url, ip = target, addresses[0]
+                continue
+            availability = robots_availability(result.status)
+            # Only the first 500 KiB is parsed (RFC 9309 §2.5): a cut-off file is still used.
+            text = result.content.decode("utf-8", errors="replace") if result.content else ""
+            return _Robots(availability, result.status, text)
+        return _Robots("unavailable", None)  # too many redirects: treated as unavailable
+
+    # --- requests (§9.3) ------------------------------------------------------------
+
+    async def _request(
+        self, url: str, ip: str, limits: FetchLimits, kind: FetchKind, crawl_delay: float | None
+    ) -> FetchResult:
+        """One request, spaced per domain at max(crawl-delay, min interval), one at a
+        time per domain, within the global concurrency limit."""
+        domain = host_of(url)
+        spacing = max(crawl_delay or 0.0, self._params.min_interval_s)
+        async with self._global, self._domain_locks[domain]:
+            if domain in self._last_request:
+                wait = self._last_request[domain] + spacing - self._clock()
+                if wait > 0:
+                    await self._sleep(wait)
+            await self._budget.reserve(kind)
+            try:
+                return await self._fetcher.fetch(url, ip, limits)
+            finally:
+                self._last_request[domain] = self._clock()
+
+    def _limits(self) -> FetchLimits:
+        p = self._params
+        return FetchLimits(
+            max_bytes=p.max_bytes,
+            connect_timeout_s=p.connect_timeout_s,
+            read_timeout_s=p.read_timeout_s,
+            user_agent=p.user_agent,
+        )
+
+    # --- collect ----------------------------------------------------------------------
+
+    async def collect(self, url: str, table_keywords: list[str]) -> Collected:
+        """Gate, fetch and parse `url`, following up to five redirects, each gated again."""
+        decisions: list[GateDecision] = []
+        current = url
+        for _ in range(MAX_REDIRECTS + 1):
+            decision = await self.gate(current)
+            decisions.append(decision)
+            if decision.outcome is not CrawlOutcome.ALLOWED or decision.pinned_ip is None:
+                return Collected(url, tuple(decisions), "not_fetched")
+            try:
+                result = await self._fetch_with_retry(decision)
+            except FetchError as exc:
+                decisions[-1] = replace(
+                    decision, outcome=CrawlOutcome.UNREACHABLE_NETWORK, reason=str(exc)
+                )
+                return Collected(url, tuple(decisions), "not_fetched")
+            if result is None:
+                decisions[-1] = replace(
+                    decision,
+                    outcome=CrawlOutcome.RATE_LIMITED,
+                    reason="the site asked us to slow down (429) for longer than we wait",
+                )
+                return Collected(url, tuple(decisions), "not_fetched")
+            location = result.headers.get("location")
+            if 300 <= result.status < 400 and location:
+                current = urljoin(decision.url, location)
+                continue
+            return self._finish(url, decisions, result, table_keywords)
+        return Collected(url, tuple(decisions), "http_error", http_status=None)
+
+    async def _fetch_with_retry(self, decision: GateDecision) -> FetchResult | None:
+        pinned = decision.pinned_ip
+        if pinned is None:  # an allowed decision always carries the checked address
+            raise FetchError("no checked address to dial")
+        for attempt in range(2):
+            result = await self._request(
+                decision.url, pinned, self._limits(), "fetch", decision.crawl_delay
+            )
+            if result.status != 429:
+                return result
+            retry_after = _retry_after(result.headers.get("retry-after"))
+            if attempt == 1 or retry_after is None or retry_after > RETRY_AFTER_MAX_S:
+                return None
+            await self._sleep(retry_after)
+        return None
+
+    def _finish(
+        self,
+        url: str,
+        decisions: list[GateDecision],
+        result: FetchResult,
+        keywords: list[str],
+    ) -> Collected:
+        decision = decisions[-1]
+
+        def blocked(outcome: CrawlOutcome, reason: str, rule: str | None = None) -> Collected:
+            decisions[-1] = replace(decision, outcome=outcome, reason=reason, rule=rule)
+            return Collected(url, tuple(decisions), "not_fetched", http_status=result.status)
+
+        if result.status in PAYWALL_STATUSES:
+            return blocked(
+                CrawlOutcome.BLOCKED_LOGIN_OR_PAYWALL,
+                f"the page requires a login or payment ({result.status}); body discarded unread",
+            )
+        usage = content_usage.from_header(result.headers)
+        if usage.blocked:
+            return blocked(
+                CrawlOutcome.BLOCKED_CONTENT_USAGE,
+                "the response opts its content out of use by AI systems; body discarded unread",
+                usage.rule,
+            )
+        common = {
+            "final_url": decision.url,
+            "http_status": result.status,
+            "content_type": result.content_type,
+        }
+        if not 200 <= result.status < 300:
+            return Collected(url, tuple(decisions), "http_error", **common)  # type: ignore[arg-type]
+        mime = (result.content_type or "").split(";")[0].strip().lower()
+        if mime in GENERIC_TYPES and result.content.startswith(b"%PDF-"):
+            mime = "application/pdf"
+        kind = ALLOWED_TYPES.get(mime)
+        if result.truncated:
+            return Collected(url, tuple(decisions), "fetched", kind=kind,
+                             parse_outcome=ParseOutcome.TOO_LARGE, **common)  # type: ignore[arg-type]  # fmt: skip
+        if kind is None:
+            return Collected(url, tuple(decisions), "fetched",
+                             parse_outcome=ParseOutcome.UNSUPPORTED_TYPE, **common)  # type: ignore[arg-type]  # fmt: skip
+        if mime == "application/pdf":
+            document = self._parser.parse_pdf(result.content, keywords)
+        elif mime == "text/plain":
+            document = ParsedDocument(text=result.content.decode("utf-8", errors="replace"))
+        else:
+            document = self._parser.parse_html(result.content, decision.url)
+        readable = len(document.text.strip()) >= MIN_READABLE_CHARS
+        if kind is SourceKind.WEB_HTML and not readable and _PASSWORD_FIELD.search(result.content):
+            return blocked(
+                CrawlOutcome.BLOCKED_LOGIN_OR_PAYWALL,
+                "the page is a login form with almost no text; body discarded",
+            )
+        return Collected(
+            url,
+            tuple(decisions),
+            "fetched",
+            kind=kind,
+            raw=result.content,
+            document=document,
+            parse_outcome=ParseOutcome.PARSED if readable else ParseOutcome.UNREADABLE,
+            **common,  # type: ignore[arg-type]
+        )
+
+
+def _retry_after(value: str | None) -> float | None:
+    if value is None:
+        return None
+    try:
+        return max(0.0, float(value.strip()))
+    except ValueError:
+        return None  # HTTP-date forms are treated as too long to wait
+
+
+def _disallow_line(text: str, user_agent: str, url: str) -> str | None:
+    """The longest Disallow line in our group that matches the path, for the record."""
+    path = urlsplit(url).path or "/"
+    if urlsplit(url).query:
+        path += "?" + urlsplit(url).query
+    best: tuple[int, str] | None = None
+    for name, value in select_rules(parse_groups(text), user_agent):
+        longer = best is None or match_length(value) > best[0]
+        if name == "disallow" and value and path_matches(value, path) and longer:
+            best = (match_length(value), f"Disallow: {value}")
+    return best[1] if best else None

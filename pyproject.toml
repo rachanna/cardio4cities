@@ -15,10 +15,16 @@ dependencies = [
     "alembic>=1.20.0",
     "qdrant-client>=1.19.1",
     "neo4j>=5.26,<6",
+    "protego>=0.7.0",
+    "trafilatura>=2.3.0",
+    "pdfplumber>=0.11.10",
+    "openai>=3.24.0",
+    "python-ulid>=4.0.1",
 ]
 
 [dependency-groups]
 dev = [
+    "fpdf2>=2.8.9",
     "httpx2>=2.13.1",
     "import-linter",
     "mypy",
@@ -26,7 +32,11 @@ dev = [
     "pytest",
     "pytest-asyncio",
     "ruff",
+    "trustme>=1.2.1",
     "types-pyyaml",
+]
+local-embeddings = [
+    "sentence-transformers>=6.1.0",
 ]
 
 [tool.uv]
@@ -50,6 +60,9 @@ test = { cmd = "pytest", help = "Unit, contract, architecture and acceptance tes
 smoke = { cmd = "pytest tests/smoke -p no:cacheprovider --smoke-url ${url}", args = [
     { name = "url", positional = true, required = true, help = "Deployed base URL" },
 ], help = "Smoke tests against a deployed URL (AT-29 partial)" }
+spike = { cmd = "python -m scripts.spikes.${name}", args = [
+    { name = "name", positional = true, required = true, help = "Spike script in scripts/spikes/" },
+], help = "Run one day-1 spike (may make live calls: ask the owner first)" }
 migrate = { cmd = "alembic upgrade head", help = "Run database migrations (needs DATABASE_URL only)" }
 geonames = { cmd = "python -m scripts.reference.load_geonames --download-only", help = "Download GeoNames dumps if missing" }
 reference = { sequence = [
@@ -84,6 +97,7 @@ select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "S", "PT"]
 # These modules exist to map typographic quotes, dashes and spaces (LLD-2 §4.1, §4.2)
 "app/workflow/rules/{quotes,numbers}.py" = ["RUF001"]
 "tests/unit/test_{quote_match,numbers}.py" = ["RUF001"]
+"tests/contract/test_sources_snapshots.py" = ["RUF001"]
 
 # ---------------------------------------------------------------------------
 [tool.mypy]
@@ -179,6 +193,9 @@ forbidden_modules = [
     "graphiti_core",
     "neo4j",
     "httpx",
+    "httpx2",
+    "httpcore",
+    "httpcore2",
     "protego",
     "trafilatura",
     "pdfplumber",

@@ -1,0 +1,648 @@
+# LLD Part 2: Workflow and Algorithms
+
+| | |
+|---|---|
+| **Version** | 1.0 |
+| **Date** | 2026-10-02 |
+| **Status** | Baseline for build |
+| **Inputs** | `REQUIREMENTS.md` v1.1 · `HLD.md` v1.0 (§5, §7, §8, §9) · `LLD-1-data.md` |
+| **Read with** | `LLD-3-prompts.md` (model roles) · `LLD-4-interfaces.md` (ports, events, config) |
+
+**Scope.** The LangGraph structure, shared state, every node's contract, and every deterministic algorithm: crawl gate, fetching, quote matching, number parsing, comparability, consistency, claim lifecycle, entity resolution, confidence, badges, slot status, budget, events, Wave 0, source selection, question answering and report assembly.
+
+**For Claude Code.**
+- Algorithms in §4–§14 are pure functions in `app/domain/` or `app/workflow/rules/`, with no I/O, so they are unit-tested directly.
+- Every `[tunable]` value is read from configuration (`LLD-4` §5); the default shown is the starting value.
+- Each section ends with the tests it needs. Write those tests with the code.
+
+---
+
+## 1. Module map
+
+| Module | Holds |
+|---|---|
+| `app/workflow/graph.py` | Builds and compiles the main graph and the slot subgraph |
+| `app/workflow/state.py` | `RunState`, `SlotState`, reducers |
+| `app/workflow/nodes/` | One file per node; each node is a thin function calling rules and ports |
+| `app/workflow/rules/` | Crawl gate, selection, quote matching, number parsing, comparability, consistency, slot status, gap notes |
+| `app/domain/` | Types (LLD-1), confidence, badges, vocabulary mapping |
+| `app/workflow/budget.py` | `BudgetLedger` |
+| `app/workflow/events.py` | `EventEmitter` |
+| `app/query/` | Question answering (§15) |
+| `app/report/` | Report assembly (§16) |
+
+---
+
+## 2. State
+
+### 2.1 Run state (main graph)
+
+```python
+class RunState(TypedDict):
+    run_id: str
+    city: CityIdentity
+    round: int                                   # 0 = first pass, 1–2 = re-plans
+    slots_to_work: list[str]                     # slot ids for the next fan-out
+    plans: Annotated[dict[str, SlotPlan], merge_dicts]          # slot_id -> queries for this round
+    slot_reports: Annotated[dict[str, SlotReport], merge_dicts] # written by each slot subgraph
+    finished: bool
+```
+
+```python
+class SlotPlan(BaseModel):
+    slot_id: str
+    queries: list[PlannedQuery]                  # text, lang, purpose
+
+class SlotReport(BaseModel):                     # what one slot subgraph returns to the run
+    slot_id: str
+    round: int
+    query_ids: list[str]
+    source_ids: list[str]
+    crawl_decision_ids: list[str]
+    claim_ids: list[str]                         # every claim created this round
+    supported_claim_ids: list[str]
+    error: str | None
+```
+
+The state holds IDs only. Everything else is in Postgres, so a checkpoint stays small and a resumed run reads current data.
+
+### 2.2 Slot state (subgraph)
+
+```python
+class SlotState(TypedDict):
+    run_id: str
+    city: CityIdentity
+    slot: SlotDef
+    round: int
+    plan: SlotPlan
+    query_ids: list[str]
+    candidates: list[Candidate]                  # url, title, rank, query_id, publisher_class
+    allowed: list[Candidate]
+    crawl_decision_ids: list[str]
+    source_ids: list[str]
+    claim_ids: list[str]
+    matched_claim_ids: list[str]                 # quote found
+    supported_claim_ids: list[str]
+    error: str | None
+```
+
+### 2.3 Budget is not in state (decision WD-01)
+
+Parallel slot branches would race on counters held in graph state. Budget lives in a process-level `BudgetLedger` keyed by `run_id` (§12), guarded by an `asyncio.Lock`, with its counters written to `run.budget` on every `budget_warning` and at the end of the run. On resume, the ledger is rebuilt from `search_query`, `source` and model-usage rows.
+
+---
+
+## 3. Graph structure and node contracts
+
+### 3.1 Main graph
+
+```text
+START → resolve_city → wave0 → plan_slots → [fan_out: Send(slot_subgraph) per slot in slots_to_work]
+      → coverage ─┬─(needs_replan)→ plan_slots
+                  └─(done)→ analytics → brief_ready → END
+```
+
+| Edge | Condition (code) |
+|---|---|
+| `fan_out` | `[Send("slot_subgraph", SlotState(...)) for slot_id in state["slots_to_work"]]` |
+| `coverage → plan_slots` | `route_after_coverage(state) == "replan"`: at least one slot qualifies for re-plan (§11.3) and the ledger allows a new round |
+| `coverage → analytics` | otherwise |
+
+`analytics` is a no-op when `analytics.enabled = false` `[tunable]` (COULD item).
+
+### 3.2 Slot subgraph
+
+```text
+search → select_sources → crawl_gate ─┬─(none allowed)→ record_gate_gap → slot_done
+                                      └─(some allowed)→ fetch_parse → extract → match_quotes
+match_quotes ─┬─(none matched)→ slot_done
+              └─(some matched)→ verify ─┬─(none supported)→ record_unsupported → slot_done
+                                        └─(some supported)→ consistency → write → slot_done
+```
+
+These conditional edges make the three required routing points visible in the rendered graph: the crawl decision, the verdict, and (in the main graph) sufficiency (AT-03).
+
+### 3.3 Node contracts
+
+| Node | Kind | Reads | Writes | Events | Model | On failure |
+|---|---|---|---|---|---|---|
+| `resolve_city` | code | `city` row (created by the API before the run) | `run.status = running` | `run_started`, `identity_confirmed` | — | Run `failed` |
+| `wave0` | code | `ref_source` | `source`, `snapshot`, `claim`, `statistic`, `verdict` | `wave0_finding` per claim | — | Log, continue: Wave 0 failure never stops a run |
+| `plan_slots` | model | `ref_slot`; on re-plan, `slot_result` gap notes | `search_query` rows are written later by `search` | `slot_planned` per slot | Planner (LLD-3 §3) | Fallback: template queries from `ref_slot.question` + city name (§3.4) |
+| `search` | code | plan | `search_query` | `search_done` | — | Slot report `error`; slot continues with zero candidates |
+| `select_sources` | code | `search_query` results, run fetch cache | — | — | — | — |
+| `crawl_gate` | code agent | candidates | `crawl_decision` | `crawl_decision` per URL | — | A URL whose gate errors is `unreachable_network` |
+| `record_gate_gap` | code | decisions | — | — | — | — |
+| `fetch_parse` | code | allowed | `source`, `snapshot`, Qdrant points | `source_fetched` or `source_unreadable` | Embeddings | Per-URL; failure recorded on `source.parse_outcome` |
+| `extract` | model | `source.parsed_text` | `claim` (`extracted`), `statistic`, `relation` draft | `claim_extracted` | Extractor (LLD-3 §4) | Repair once, escalate once, else skip source (§17) |
+| `match_quotes` | code | claims | `claim.span_*`, status `dropped` for misses | `claim_dropped` | — | — |
+| `verify` | model | top claims (§5.3) + located passages | `verdict`, `claim.status` | `claim_verdict` | Checker (LLD-3 §5) | Retry, then labelled fallback model (§17) |
+| `record_unsupported` | code | verdicts | — | — | — | — |
+| `consistency` | code | supported claims, prior claims | `consistency`, `contested_pair`, `claim.status` | `conflict_found` | — | — |
+| `write` | code | supported claims | `entity`, `entity_alias`, `relation`, Graphiti edges, `graph_link` | `fact_written` | Embeddings (entity merge) | Graph write failure: claim stays supported in Postgres, `graph_link` absent, event payload notes it; retried once at `brief_ready` |
+| `slot_done` | code | subgraph state | returns `SlotReport` | — | — | — |
+| `coverage` | code agent | all slot reports, claims | `slot_result` | `slot_status` per slot | — | — |
+| `analytics` | code | Graphiti subgraph | `entity.attributes.centrality` | — | — | Skip silently |
+| `brief_ready` | code | everything | `run_summary`, `run.status`, `city.latest_run_id` | `run_finished` | — | — |
+
+### 3.4 Planner fallback
+
+If the planner fails validation twice, the slot gets two template queries: `"{slot.question_short} {city.name} {country_name}"` in English and the same template in the primary local language with the slot's local-language label taken from `reference/slots.yaml` (`labels_local` per language, generic) when present. This keeps a run moving without inventing anything.
+
+---
+
+## 4. Text algorithms
+
+### 4.1 Quote normalisation and matching (R-56, AT-09)
+
+**Normalise** (applied identically to source text and quote, building an offset map back to the original):
+
+1. Unicode NFKC.
+2. Map typographic quotes, dashes and non-breaking spaces to ASCII equivalents: `‘’‚‛ → '`, `“”„‟ → "`, `–— → -`, `U+00A0 → space`.
+3. Remove soft hyphens (`U+00AD`) and zero-width characters.
+4. Join line-break hyphenation: a letter, `-`, optional spaces, newline, optional spaces, a lowercase letter becomes the two letters joined.
+5. Collapse every run of whitespace to one space; trim.
+
+**Match:**
+
+1. `nq = normalise(quote)`; reject if fewer than 6 or more than 60 words `[tunable]`.
+2. Find all occurrences of `nq` in `normalise(parsed_text)`, **case-sensitive, exact**.
+3. Zero occurrences: status `dropped`, event `claim_dropped` with reason `quote_not_found`.
+4. One or more: take the first; map back to original offsets for `span_start` and `span_end`.
+5. **Statistic claims only:** `normalise(value_as_written)` must occur inside the matched quote. Otherwise `dropped` with reason `value_not_in_quote`.
+
+No fuzzy matching under any circumstance. The run summary records the drop rate; a high rate means a parsing problem to fix, not a rule to loosen.
+
+**Tests:** curly quotes vs straight; PDF hyphenation across lines; double spaces; a quote with one changed word (must drop); value present in source but not in quote (must drop); non-English quote matched in the original language.
+
+### 4.2 Number parsing (LD-04)
+
+`parse_value(value_as_written) -> (value_num | None, unit | None, lower | None, upper | None, unparsed: bool)`
+
+| Pattern | Result |
+|---|---|
+| `21.7%`, `21.7 %`, `21.7 per cent`, `21.7 percent` | `21.7`, `percent` |
+| `21,7%` (comma followed by 1–2 digits, no dot in the string) | `21.7`, `percent` (decimal comma) |
+| `1,234,567` / `1.234.567` / `1 234 567` | `1234567`, `count` |
+| `45 per 100,000` / `45 per 100 000` | `45`, `per_100k` |
+| `20–25%`, `20-25 %`, `20 to 25 %` | `value_num = None`, `lower = 20`, `upper = 25`, `percent`. A range is never collapsed to a midpoint |
+| `21.7% (95% CI 19.8–23.6)` | `21.7`, `lower 19.8`, `upper 23.6`, `percent` |
+| `1 in 3`, `one third`, `about a fifth` | `None`, `unparsed = True` (flag `value_unparsed`) |
+| Anything else | `None`, `unparsed = True` |
+
+Ambiguous separators (`1,234` could be 1.234 or 1234) are resolved as thousands when exactly three digits follow and no other separator appears; otherwise `unparsed`.
+
+**Tests:** each row above; negative cases such as `2019` alone (a year, not a value: `unparsed`).
+
+### 4.3 Threshold coding
+
+`threshold_code(case_definition) -> str | None` using `reference/thresholds.yaml`:
+
+| Pattern (on normalised, lower-cased text) | Code |
+|---|---|
+| systolic `>= ?140` or `≥ ?140` or `140/90` | `bp_140_90` |
+| systolic `>= ?130` or `≥ ?130` or `130/80` | `bp_130_80` |
+| fasting glucose `>= ?7.0 mmol` or `>= ?126 mg` | `fpg_7_0` |
+| none matched | `None` |
+
+### 4.4 Comparability key (R-35)
+
+```python
+def comparability_key(stat: Statistic, labels: Labels, indicator: IndicatorDef) -> str | None:
+    if stat.indicator_code == "OTHER" or stat.value_num is None:
+        return None
+    needs_threshold = stat.indicator_code.startswith("HTN_") or stat.indicator_code == "DM_PREV"
+    if needs_threshold and labels.threshold_code is None:
+        return None
+    parts = [
+        stat.indicator_code,
+        labels.threshold_code or "-",
+        labels.measure_type,
+        f"{labels.population_age_min or '?'}-{labels.population_age_max or '?'}",
+        labels.population_sex,
+        labels.geography_level,
+        slug(labels.geography_name),
+        stat.unit or "-",
+    ]
+    if any(p.startswith("?") for p in parts[3].split("-")):
+        return None                      # age band unknown: not comparable
+    return "|".join(parts)
+```
+
+Two figures are comparable only if their keys are equal and not `None`.
+
+**Tests:** 140/90 and 130/80 for the same city never share a key (F7); adults 18+ and 30–79 never share a key; unknown age band gives `None`.
+
+---
+
+## 5. Claim lifecycle and consistency
+
+### 5.1 Lifecycle (R-47)
+
+```text
+extracted ──quote miss──────────────→ dropped
+    │
+    └─quote found─→ (ranked; top N verified)
+                      ├─ supported ──consistency──→ supported | contested
+                      │                                  └─(relation superseded later)→ superseded
+                      ├─ refuted
+                      └─ insufficient
+Wave 0 claims: extracted → code record match → supported (verifier_model "code:record_match", family "code")
+```
+
+Claims beyond the per-slot cap stay `extracted`: kept, never shown, still searchable as text in Qdrant.
+
+### 5.2 Ranking key (used everywhere a "best" claim is chosen)
+
+Sort ascending by this tuple; the first element wins:
+
+1. Source tier: `government, multilateral` = 0, `academic` = 1, `ngo` = 2, `news` = 3, `other` = 4
+2. Representativeness: `census` 0, `representative_sample` 1, `modelled` 2, `non_representative` 3, `not_applicable` 1
+3. Geography fit: 0 if `geography_level` is in the slot's `accepted_levels`, else the distance in the `GeographyLevel` order
+4. Recency: `-reference_end` (newer first; `NULL` last)
+5. `claim_id` (determinism)
+
+### 5.3 Verification cap
+
+Per slot per round, matched claims are ranked by §5.2 and the top `verify.max_claims_per_slot = 5` `[tunable]` are sent to the checker. Wave 0 claims are never sent (HD-03).
+
+### 5.4 Consistency for statistics
+
+For each newly supported statistic `c` with key `k`:
+
+1. `k is None` → outcome `not_comparable` against same-indicator claims, reason lists which key parts differ or are unknown.
+2. Find other `supported` or `contested` claims in the same run and city with key `k`.
+3. None → `novel`.
+4. For each match `o`:
+   - Reference periods do not overlap → `novel` (a time series, not a conflict; the newer one ranks first by §5.2).
+   - `|c.value_num − o.value_num| ≤ 0.5` percentage points for `percent`, or `≤ 2%` relative otherwise `[tunable]` → `agrees`.
+   - Otherwise → `conflicts`: create `contested_pair(a, b)` with `headline_claim` = first by §5.2; set both claims to `contested`; event `conflict_found`.
+
+### 5.5 Consistency for relations
+
+For `GOVERNS` and `LEADS` (one current edge allowed): a new supported claim whose object (for `GOVERNS`) or subject (for `LEADS`) differs from the current edge's:
+
+- Validity does not overlap and the new one is later → supersession (LLD-1 §6.3).
+- Validity overlaps, or either validity is a proxy date within 12 months of the other → `conflicts`, contested pair, both written with `status = contested`.
+
+All other relation types: identical subject, type and object → `agrees`; otherwise `novel`.
+
+**Tests (§5):** two compatible prevalence figures 0.3 points apart (agrees); 4 points apart (contested, headline by tier); different survey years (both novel); 140/90 vs 130/80 (not comparable); a newer GOVERNS with a later valid_from (supersedes); two GOVERNS from the same year (contested).
+
+---
+
+## 6. Entity resolution (R-43, AT-26)
+
+`resolve(city_id, surface_form, entity_type, source_text) -> entity_id`
+
+1. **Alias hit.** `entity_alias(city_id, surface_form)` exists → return it (`method` unchanged).
+2. **Normalised key.** `normalized_key = slug(casefold(strip_diacritics(surface_form)))` after removing a leading "the" and punctuation. Match on `(city_id, entity_type, normalized_key)` → register alias with `method = normalized`.
+3. **Acronym map.** Before extraction results are resolved, code scans each source for `Long Name (ACR)` and `ACR (Long Name)` where `ACR` is 2–8 capital letters. Both forms are registered as aliases of one entity, `method = acronym`. A mention that is all capitals checks these aliases first.
+4. **Embedding merge** (not for `Person`). Embed the surface form; compare with existing entities of the same type in the city. Cosine `≥ 0.92` `[tunable]` → alias, `method = embedding`, `score` stored. Between `0.85` and `0.92` → new entity, candidate pair logged for review (model adjudication is COULD).
+5. Otherwise create a new entity with `graph_uuid = uuid5(NAMESPACE, entity_id)`.
+
+The city itself is created as a `Place` entity at run start from the gazetteer identity, so every `OPERATES_IN`, `GOVERNS` and `APPLIES_TO` edge points at one node.
+
+**Tests:** "Ghana Health Service", "GHS" and "the Ghana Health Service" resolve to one entity; two different people with similar names stay separate.
+
+---
+
+## 7. Confidence label (R-48)
+
+Computed at read time for supported or contested claims only.
+
+| Component | Points |
+|---|---|
+| Source tier | government or multilateral 2 · academic 2 · ngo 1 · news 0 · other 0 |
+| Representativeness | census or representative sample 2 · modelled 1 · not applicable 1 · non-representative 0 |
+| Geography fit | level in the slot's accepted levels 2 · otherwise 0 |
+| Recency | reference end within `confidence.recent_years = 5` `[tunable]` 1 · otherwise 0 |
+| Denominator | stated, or not applicable to the measure 1 · not stated for a cascade or prevalence measure 0 |
+| Verdict scope and period | both verified 1 · otherwise 0 |
+
+Total out of 9: **High ≥ 7, Medium 4–6, Low ≤ 3**. Caps: a verdict from the same-family fallback is at most Medium; a `period_not_stated` claim is at most Medium. The label is returned with the list of components and points, which the evidence panel shows as reasons. Low facts never appear in the executive summary (HD-08).
+
+**Tests:** a WHO national modelled figure for a city slot scores 2+1+0+1+1+1 = 6, so Medium; a city survey from government, recent, denominator stated, verified, scores 9.
+
+---
+
+## 8. Badges (R-78, AT-31)
+
+Computed for a fact shown in the context of a city:
+
+| Order | Badge | Condition |
+|---|---|---|
+| 1 | `not_city_level` | `geography_level` not in the slot's accepted levels; **or** `population_group` set and not one of `adults`, `all ages`, `general population`; **or** `setting` is `hospital`, `clinic`, `workplace` or `school` |
+| 2 | `sources_disagree` | `status = contested` |
+| 3 | `outdated` | statistics and statements: `reference_end` older than `badge.stale_years = 5` `[tunable]`; `LEADS` relations: older than `badge.stale_years_people = 2` `[tunable]` |
+| 4 | `limited_sample` | `representativeness = non_representative`, or `sample_size < badge.small_sample = 300` `[tunable]` |
+
+`main_badge` is the first condition that holds; `other_badges` are the rest. A sentence citing several claims takes the most severe main badge among them.
+
+**Tests:** a national figure that is also old gets `not_city_level` as main and `outdated` as other.
+
+---
+
+## 9. Crawl gate and fetching (R-03, R-58, R-67, R-86)
+
+### 9.1 Gate (runs before any content request)
+
+For each candidate URL, in order; the first rule that applies decides:
+
+| Step | Check | Outcome if it fails |
+|---|---|---|
+| 1 | Canonicalise: lower-case scheme and host, drop fragment, drop `utm_*` and similar tracking parameters | — |
+| 2 | Scheme `http` or `https`; port 80 or 443 `[tunable]` | `blocked_private_address` (reason "unsupported scheme or port") |
+| 3 | Resolve the host; every resolved address must be public (not private, loopback, link-local, multicast, reserved, or a cloud metadata address) | `blocked_private_address` |
+| 4 | Fetch `robots.txt` for the origin (cached per run): timeout 5 s, max 500 KiB, up to 5 redirects | see 9.2 |
+| 5 | Apply the robots rules for user agent `CARDIO4CitiesResearchBot`, else `*` | `blocked_robots` with the matching line in `rule` |
+| 6 | Apply `Content-Usage` rules in the matched group: `ai=n` or `tdm=n` for the path | `blocked_content_usage` |
+| 7 | Allowed | `allowed`, with crawl-delay recorded for the fetcher |
+
+### 9.2 robots.txt status handling (RFC 9309)
+
+| Status | Treatment |
+|---|---|
+| 2xx | Parse and apply |
+| 3xx | Follow up to 5 redirects; then as above |
+| 4xx (including 401, 403, 404) | "Unavailable": no restrictions apply |
+| 5xx, timeout or network error | "Unreachable": treat the whole site as disallowed; outcome `unreachable_server_error` or `unreachable_network`, so the slot reports it as unreachable, not blocked |
+
+`[check exact RFC 9309 wording when implementing]`. Parsing uses an RFC 9309-compliant parser (Protego is the default choice `[verify]`); `Content-Usage` lines are parsed by our own small parser because general parsers ignore them.
+
+### 9.3 Fetch rules
+
+| Rule | Value |
+|---|---|
+| User agent | `CARDIO4CitiesResearchBot/0.1 (+<repo URL>)` |
+| Per-domain concurrency | 1 |
+| Per-domain spacing | `max(crawl_delay, fetch.min_interval_s = 1)` `[tunable]` |
+| Global fetch concurrency | `fetch.concurrency = 6` `[tunable]` |
+| Timeouts | connect 5 s, read 20 s |
+| Size | stop at 10 MB → `parse_outcome = too_large`, no snapshot |
+| Types | `text/html`, `application/xhtml+xml`, `application/pdf`, `text/plain`; JSON only for structured adapters |
+| Redirects | Up to 5; **each new host goes through the gate again**; the connection uses the IP checked in step 3 (prevents DNS rebinding) |
+| 401, 402, 403 on the page | `blocked_login_or_paywall`; body discarded unread |
+| 429 | Honour `Retry-After` up to 10 s and retry once; otherwise `rate_limited` |
+| Response header `Content-Usage` with `ai=n` or `tdm=n` | Discard the body unread → `blocked_content_usage` |
+| HTML with a password field and almost no text | `blocked_login_or_paywall`; body discarded, not snapshotted |
+
+### 9.4 Parsing
+
+| Type | Parser | Notes |
+|---|---|---|
+| HTML | Main-content extraction (trafilatura default `[verify]`) | Tables kept as text tables with headers |
+| PDF | Text with page markers; table extraction (pdfplumber default `[verify]`) only on pages whose text contains target keywords for the slot | Page number kept in offsets |
+| Failure or under 200 characters of text | `parse_outcome = unreadable`, event `source_unreadable` | |
+
+`parsed_text` is what offsets refer to. The snapshot holds the raw bytes.
+
+**Tests (§9):** robots disallow (no content request made, AT-04); crawl-delay spacing (AT-05); `Content-Usage: ai=n` header; robots 404 (allowed); robots 503 (unreachable); redirect to a private address (refused, AT-23); 403 page (paywall outcome).
+
+---
+
+## 10. Events (R-80)
+
+### 10.1 Emitting
+
+`EventEmitter.emit(run_id, type, payload)`:
+
+1. In one transaction: `SELECT next_seq FROM run_seq WHERE run_id = $1 FOR UPDATE`, insert `run_event(seq = next_seq)`, increment `next_seq`.
+2. After commit, push the event to the in-process stream (LangGraph custom stream writer) for live subscribers.
+
+The counter table `run_seq` is defined in LLD-1 §4.2.
+
+The stream endpoint always reads from Postgres after `Last-Event-ID`, then follows live events, so a reconnecting client sees every event once (AT-30).
+
+### 10.2 Payloads
+
+| Type | Payload |
+|---|---|
+| `run_started` | `run_id`, `city_id`, `budget` |
+| `identity_confirmed` | `CityIdentity` |
+| `wave0_finding` | `claim_id`, `indicator_code`, `value_as_written`, `geography_level`, `provider` |
+| `slot_planned` | `slot_id`, `round`, `queries` (text and language) |
+| `search_done` | `slot_id`, `query_id`, `result_count` |
+| `crawl_decision` | `url`, `domain`, `outcome`, `reason` |
+| `source_fetched` | `source_id`, `url`, `publisher_class`, `kind` |
+| `source_unreadable` | `source_id`, `url`, `parse_outcome` |
+| `claim_extracted` | `claim_id`, `slot_id`, `kind`, `statement` |
+| `claim_dropped` | `claim_id`, `reason` |
+| `claim_verdict` | `claim_id`, `label`, `verifier_model`, `fallback_used` |
+| `conflict_found` | `pair_id`, `claim_a`, `claim_b`, `headline_claim` |
+| `fact_written` | `claim_id`, `kind`, `graph_edge` (bool) |
+| `slot_status` | `slot_id`, `status`, `flags`, `gap_note` |
+| `budget_warning` | `counter`, `used`, `limit` |
+| `run_finished` | `status`, `summary` |
+
+---
+
+## 11. Slot status, re-planning and gap notes (R-79, AT-32)
+
+### 11.1 Status
+
+For slot `s` after a round, using all claims for `s` in this run:
+
+```python
+supported = [c for c in claims if c.status in ("supported", "contested")]
+if any(c.geography_level in s.accepted_levels for c in supported):
+    status = "answered"
+elif supported:
+    status = "answered_wider_geo"
+elif no source was fetched for s and s had crawl decisions:
+    status = "blocked" if any(d.outcome.startswith("blocked") for d in decisions) else "unreachable"
+else:
+    status = "answered_negative"
+```
+
+### 11.2 Flags
+
+`conflicting` when any contested pair involves the slot's best claim; `stale` when the best claim has the `outdated` badge.
+
+### 11.3 Re-plan rule
+
+A slot is re-planned when all hold:
+
+- status is `answered_negative`, `blocked`, `unreachable`, or `answered_wider_geo` for a statistic slot;
+- `replans_used < 2`, or `< 1` when the status is `answered_wider_geo` `[tunable]`;
+- the ledger reports no `budget_warning` for searches, fetches or wall clock.
+
+`route_after_coverage` returns `replan` when at least one slot qualifies; `slots_to_work` is set to those slots and `round` increments.
+
+### 11.4 Gap notes (templates, HD-05)
+
+| Status | Template |
+|---|---|
+| `answered_wider_geo` | "No city-level figure found. Best available is {level_word} ({geography_name}, {year})." |
+| `answered_negative` | "Searched {n_queries} queries in {languages} and checked {n_sources} sources; nothing acceptable found for this question." |
+| `blocked` | "{n} candidate sources refuse automated access ({top_reasons})." |
+| `unreachable` | "{n} candidate sources could not be reached ({top_reasons})." |
+| Claims found but none confirmed | append: " {n} claims were found but could not be confirmed against their sources." |
+
+`level_word` comes from a fixed map: `national` → "national", `state_province` → "state or regional", and so on.
+
+**Tests:** a slot with only a national figure is `answered_wider_geo` and re-planned once; a slot whose only candidates were blocked is `blocked`; after a budget stop every slot still has a status.
+
+---
+
+## 12. Budget guard (R-50, R-61, AT-19)
+
+```python
+class BudgetLedger:
+    async def reserve(self, kind: Literal["search", "fetch", "model"], est_tokens: int = 0) -> None: ...
+    async def record_model(self, model: str, tokens_in: int, tokens_out: int, cost_micro: int) -> None: ...
+    def phase(self) -> Literal["normal", "winding_down", "exhausted"]: ...
+```
+
+| Limit | Default `[tunable]` | At 85 % | At 100 % |
+|---|---|---|---|
+| Wall clock | 300 s | No new searches, fetches or re-plans | No new model calls |
+| Searches | 48 | No re-plans | `reserve("search")` raises `BudgetExhausted` |
+| Fetches | 60 | No re-plans | `reserve("fetch")` raises |
+| Tokens | set after day-1 measurement | No re-plans | `reserve("model")` raises |
+| Model cost | set after day-1 measurement | No re-plans | `reserve("model")` raises |
+
+Every external call goes through `reserve` first. Nodes catch `BudgetExhausted`, stop new work for their slot, and return what they have. `coverage`, `analytics` and `brief_ready` call no external service, so they always run, and the run ends as `stopped_by_budget` with every slot carrying a status.
+
+Global concurrency limits: model calls `llm.concurrency = 4`, embeddings `embed.concurrency = 4` `[tunable]`; the search queue releases about one request per second (Δ9).
+
+---
+
+## 13. Wave 0 (R-85, HD-03)
+
+1. Look up `ref_source` providers. For each provider and indicator: call the structured-data adapter with the country code (and the city's first-level region for providers that support sub-national data).
+2. For each indicator, take the most recent record for both sexes and the registry's age band.
+3. Store the raw response as a `structured_api` source and snapshot. `parsed_text` is a canonical one-line rendering of the record used, for example `HTN_CONTROL | GHA | 2019 | both sexes | 30-79 | 12.3`.
+4. Create a statistic claim whose `quote` is that rendering, `value_as_written` is the record's value as text, and labels come from the registry (`geography_level`, `representativeness`, age band, `method`).
+5. **Code verification:** the record is re-read from the snapshot, and the claim's indicator, area, period and value must equal it exactly. Pass → `verdict(label = supported, verifier_model = "code:record_match", verifier_family = "code")`. Fail → `insufficient`.
+6. Emit `wave0_finding`.
+
+**Sub-national matching (DHS).** The region name from the provider must equal the city's `admin1_name` after normalisation (§6 step 2), or appear in a generic alias file. Otherwise the sub-national record is skipped, never guessed.
+
+**Tests:** a mocked WHO response produces a supported national claim with the right labels; an altered value fails the code check; an unmatched DHS region name is skipped.
+
+---
+
+## 14. Source selection (R-41, R-59)
+
+1. Canonicalise and deduplicate all candidate URLs across the run (fetch cache: a URL already fetched in this run is reused, not refetched).
+2. Drop domains in `reference/publishers.yaml` `deny` (social media, question-and-answer sites, generic aggregators). This list is generic, never city-specific.
+3. Classify publisher class by domain patterns in `reference/publishers.yaml`:
+   - `government`: `.gov`, `.gov.*`, `.gob.*`, `.gouv.*`, `.go.*`, `.govt.*`, `.gv.*` and similar national patterns;
+   - `multilateral`: `who.int`, `worldbank.org`, `un.org`, `unicef.org`, `dhsprogram.com`, `paho.org` and similar;
+   - `academic`: `.edu`, `.ac.*`, `ncbi.nlm.nih.gov`, `europepmc.org` and a list of journal publishers;
+   - `news`: a list of news publisher domains;
+   - other `.org` domains: `ngo`; anything else: `other`.
+4. API preference: if the domain has an entry in `publishers.yaml` `api` (for example an article site that offers an official API), route to that adapter instead of fetching the page (COULD for the PoC).
+5. Rank by publisher tier, then search rank. Keep the top `select.max_new_urls_per_slot_round = 4` `[tunable]` not already fetched.
+
+---
+
+## 15. Question answering (R-15, R-63, R-64, AT-28)
+
+### 15.1 Steps
+
+1. **Classify** (model, LLD-3 §6): returns `question_type ∈ {figure, relationship, change_over_time, open, out_of_scope}`, plus `slot_ids`, `indicator_codes`, `entity_mentions` and an optional `as_of` date.
+2. **Retrieve** by type (code):
+
+| Type | Retrieval |
+|---|---|
+| `figure` | `v_city_facts` rows for the indicators and slots, ranked by §5.2, top 6 |
+| `relationship` | Resolve mentions with §6 (lookup only, no creation); Graphiti search in the city partition restricted to the relevant relation types; current edges only. For the fixed graph-only questions, the query templates in LLD-1 §6.4 |
+| `change_over_time` | As `relationship`, including end-dated edges, filtered by `as_of` when given |
+| `open` | Qdrant top 8 chunks (city and latest run); Graphiti hybrid search top 8 facts; `v_city_facts` for any slots named |
+| `out_of_scope` | No retrieval; fixed polite refusal |
+
+3. **Bundle.** Verified facts = supported or contested claims reached through Postgres or through `graph_link` from graph edges. Unverified mentions = Qdrant chunks whose text did not become a supported claim. Each bundle item carries its claim ID (or `source_id` and offsets for mentions), badge and confidence.
+4. **Answer** (model, LLD-3 §7): returns sentences, each `{text, claim_ids, kind ∈ fact | mention | abstain, slot_id?}`.
+5. **Post-check** (code), per sentence:
+   - `fact` sentences: `claim_ids` non-empty and all in the bundle's verified facts;
+   - every number token in the text (regex for digits with separators, percentages, years excluded when followed by no unit) appears in the cited claims' `value_as_written` or quote after §4.1 normalisation;
+   - if the sentence names the city with a figure whose claim is not `city_wide`, it must contain the level word from §11.4 (for example "national");
+   - `mention` sentences cite a mention item and contain "not confirmed" wording from a fixed list.
+   - **Failure:** the sentence is removed and replaced by an abstention for its slot (§15.2).
+6. **Badge** each surviving sentence with the most severe main badge among its claims.
+7. Store `answer`; return.
+
+### 15.2 Abstention text
+
+"No confirmed {what} for {city}. {gap_note}" where `what` comes from the slot's short label and `gap_note` from `slot_result`. When no slot applies: "This isn't covered by the research for {city}."
+
+### 15.3 Graph switch (R-88)
+
+With the admin parameter `graph=off`, retrieval for `relationship` and `change_over_time` skips Graphiti and uses only Qdrant mentions. These cannot become facts, so the answer degrades to mentions or an abstention: this is the AT-10 demonstration.
+
+**Tests:** an answer with an invented number is reduced to an abstention (AT-28); a national figure stated for the city without "national" fails the check; with the graph off, the graph-only question abstains.
+
+---
+
+## 16. Report assembly (R-17, HD-07, AT-18)
+
+1. Load the latest run's slot results and `v_city_facts`.
+2. **Summary:** for each dimension, the best fact per slot (§5.2) with confidence High or Medium, with its main badge.
+3. **Dimension sections D1–D6:** every supported or contested fact per slot, ranked, each with badge, confidence and a numbered citation.
+4. **Analysis:** model-written, at most 120 words per dimension `[tunable]`, given only that dimension's facts (LLD-3 §8); post-checked as in §15; on failure the paragraph is omitted.
+5. **What we could not find:** every slot not `answered`, with its gap note.
+6. **Handle with care:** facts with main badge `not_city_level` or `outdated` in the summary; `LEADS` edges supported by a single source; every contested pair.
+7. **Sources:** numbered by first appearance; title, publisher, URL, published date, retrieved date.
+8. **Run details:** run ID, date, status, models per role, counts from the run summary.
+9. Render Markdown and HTML from templates; PDF through the renderer port. Store in `report`.
+
+---
+
+## 17. Errors, retries and idempotency
+
+| Situation | Handling |
+|---|---|
+| Search or fetch network error | One retry after 1 s; then record the outcome |
+| Model 429 or 5xx | Up to 2 retries with backoff (1 s, 3 s) |
+| Model output fails schema validation | One repair attempt (the validation error is sent back); extractor then escalates to its stronger model once; then the item is skipped with an event |
+| Checker fails twice on the primary model | Same-family fallback model, verdict marked `fallback_used = true` (R-82) |
+| Exception inside a slot subgraph | Caught in `slot_done`; `SlotReport.error` set; the slot still gets a status from data so far |
+| Postgres unavailable | Run `failed`; the only fatal condition |
+| Graphiti write fails | Claim stays supported in Postgres; retried once at `brief_ready`; if still failing, the graph-only demo question will show it, and the run summary records the count |
+| Resume after crash | LangGraph checkpoint resumes the run; all writes are idempotent: IDs are deterministic or checked, Qdrant point IDs and graph edge UUIDs are derived from our IDs, and inserts use `ON CONFLICT DO NOTHING` |
+
+---
+
+## 18. Test map
+
+| Area | Unit tests | Acceptance tests |
+|---|---|---|
+| Quote matching | §4.1 | AT-09 |
+| Number parsing, thresholds, keys | §4.2–4.4 | AT-20, AT-21 |
+| Lifecycle and consistency | §5 | AT-08, AT-20 |
+| Entity resolution | §6 | AT-26 |
+| Confidence and badges | §7, §8 | AT-13, AT-14, AT-31 |
+| Crawl gate and fetch | §9 | AT-04, AT-05, AT-06, AT-23, AT-33 |
+| Events | §10 | AT-30 |
+| Slot status and re-plan | §11 | AT-16, AT-32 |
+| Budget | §12 | AT-19 |
+| Wave 0 | §13 | AT-01 (partial) |
+| Question answering | §15 | AT-10, AT-15, AT-28 |
+| Report | §16 | AT-18 |
+
+---
+
+## 19. Decisions made in this part
+
+| ID | Decision | Alternative | Reason |
+|---|---|---|---|
+| WD-01 | Budget in a process-level ledger, not graph state | Counters in state | Parallel branches would race |
+| WD-02 | Routing edges at slot level (none allowed, none matched, none supported) | A graph edge per URL or claim | Visible, testable routing without an explosion of graph steps |
+| WD-03 | A statistic's value must appear inside its quote | Value anywhere in the source | Ties the number to the exact passage the checker sees |
+| WD-04 | Ranges are never collapsed to a midpoint | Midpoint | A computed number would not appear in any source |
+| WD-05 | Different reference periods are a time series, not a conflict | Flag every difference | Avoids false "sources disagree" badges |
+| WD-06 | `answered_wider_geo` statistic slots get one re-plan | None, or two | One more attempt at a city figure without burning the budget |
+| WD-07 | robots.txt 5xx reported as unreachable, not blocked | Blocked | Different causes; the panel sees an honest reason |
+| WD-08 | No person entities merged by embedding | Merge by similarity | Merging two people is worse than a duplicate |
+| WD-09 | Confidence and badges computed at read time from stored labels | Stored | Thresholds can be tuned without migrations (LD-05) |
+
+## 20. Open items
+
+| Item | Resolve by |
+|---|---|
+| Exact RFC 9309 wording for 4xx and 5xx handling | When implementing the gate |
+| Parser libraries (Protego, trafilatura, pdfplumber) behave as assumed | Day 1 |
+| Token and cost caps | Day-1 measurement |
+| Thresholds: agreement tolerance, small sample, staleness, embedding merge | Tune during rehearsal |

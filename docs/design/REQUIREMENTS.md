@@ -346,7 +346,7 @@ Derived from the brief, the panel review, and evidence gathered during analysis.
 | R-48 | **Legible confidence** computed from stated inputs (source tier, recency, geography match, verdict); it changes what is shown | SHOULD | C5, R-30 | T |
 | R-56 | **Verbatim quote grounding**: a claim is kept only if code locates its quote exactly in the fetched text, after the same normalisation of both (Unicode form, whitespace, line-break hyphenation); no fuzzy matching; the drop rate is recorded per run | MUST | R-07, T-11 | T AT-09 |
 | R-63 | **Answers use only verified, stored evidence**; question answering never researches inline and never uses unverified text as fact | MUST | R-04, R-08 | T AT-28 |
-| R-64 | **Deterministic answer post-check**: every sentence cited; every number appears in its cited evidence; scope words (city, national, district) match the evidence's geography | SHOULD | R-07, R-08 | T AT-28 |
+| R-64 | **Deterministic answer post-check**: every sentence cited; every number appears in its cited evidence; scope words (city, national, district) match the evidence's geography; proper names in a sentence must appear in the question or the cited evidence; outdated figures carry their year; every requested slot is covered by a fact or an abstention (LLD-5 §9) | SHOULD | R-07, R-08 | T AT-28 |
 | R-65 | **Conflicts are surfaced**, with both values and sources, never silently resolved | MUST | DQ-06, T-02 | T AT-20 |
 | R-66 | A reviewer can see and resolve contested and low-confidence items after storage (no pre-storage gate) | COULD | DQ-04, U-03 | D |
 
@@ -385,6 +385,22 @@ Reasoning for each item is in `docs/design/BRAINSTORM.md`.
 | R-89 | **Required and optional labels**: required labels must be present for a figure to be shown; labels the source does not state stay empty and flagged, never inferred | MUST | R-08, R-33 | T AT-14 |
 | R-90 | **Plain user-facing vocabulary**: Confirmed · Reported, not confirmed · Not city-level · Not found · Sources disagree. Internal terms (claim, verdict, entailment) never appear on screen | SHOULD | R-27, R-30 | D |
 | R-91 | **Demo-day change freeze**: no deploys on rehearsal or demo days; health check an hour before | SHOULD | R-09, R-80 | I |
+
+### 7.8 Added by CHG-01 (retrieval for reliable answers)
+
+Design: `docs/design/LLD-5-retrieval.md`.
+
+| ID | Requirement | Priority | Traces to | Verify |
+|---|---|---|---|---|
+| R-92 | **Confirmed claims are searchable by meaning**: every supported or contested claim is indexed in a claim collection in Qdrant and searched for every question | MUST | R-06, R-15 | T AT-43 |
+| R-93 | **Keyword route**: claims are searchable by exact terms (acronyms, survey names, numbers) through Postgres full-text search, and entity names through their aliases | MUST | R-15, R-43 | T AT-42 |
+| R-94 | **Slot anchors**: for every slot a question asks about, the slot's best confirmed claim (or its gap record) is in the evidence bundle, whether or not any search route found it | MUST | R-15, R-16 | T AT-40 |
+| R-95 | **Re-validation**: every candidate from Qdrant or Graphiti is re-checked against Postgres (city, latest run, status, time) before entering the bundle; scope violations in the bundle are zero | MUST | R-07, R-08, R-63 | T AT-39 |
+| R-96 | **Contested pairs together**: an answer that cites one side of a disagreement shows both, repaired by code from stored values when needed | MUST | R-65, R-08 | T AT-41 |
+| R-97 | **Retrieval trace** stored with every answer: routes, removals, anchors, bundle, post-check actions | SHOULD | R-07, DS-5 | T AT-46 |
+| R-98 | **Follow-up questions** use the previous turn's classification (not its answer text) | SHOULD | R-15, R-27 | T AT-44 |
+| R-99 | **Retrieval evaluation gates** met before the demo: zero scope violations; 100% abstention correctness and contested completeness on fixtures; bundle recall ≥ 0.95 on fixtures and ≥ 0.90 with real models | MUST | R-26 | T AT-47 |
+| R-100 | **Multilingual embeddings** in every configuration profile | SHOULD | R-42 | I |
 
 ---
 
@@ -529,6 +545,15 @@ Written as Given / When / Then so they translate directly into tests. *Demo-only
 | AT-36 | **Given** a configuration where checker and extractor share a model family without the fallback flag, **then** the application refuses to start with a clear message | R-82 |
 | AT-37 | **Given** a city already in storage, **when** the user chooses "Research", **then** a new live run starts and outbound fetches are logged; "Open existing" shows the stored run with its date | R-01, R-83 |
 | AT-38 | **Given** a completed run, **then** its summary shows claim counts by outcome, blocked and unreachable sources, time and model cost | R-84 |
+| AT-39 | A refuted claim present in Qdrant with a stale `supported` payload never reaches the bundle | R-95 |
+| AT-40 | A question on a slot whose best claim no route returns still gets that claim (anchored) | R-94 |
+| AT-41 | Citing one side of a contested pair yields both sides in the final answer | R-96 |
+| AT-42 | An acronym question ("What does the GHS run?") finds claims about the full organisation name | R-93, R-43 |
+| AT-43 | A question phrased differently from any claim's wording ("how many adults have high blood pressure") finds the prevalence claim through the semantic route | R-92 |
+| AT-44 | A follow-up "and nationally?" after a city question on S03 retrieves S03 claims | R-98 |
+| AT-45 | A sentence naming a person absent from the evidence is removed | R-08, AT-15 |
+| AT-46 | Every answer stores a trace with routes, removals, anchors, bundle and post-check actions | R-97 |
+| AT-47 | The fixture evaluation meets every gate in LLD-5 §12.3 | R-99 |
 
 ---
 
@@ -636,8 +661,8 @@ Each item is a deliberate choice for the cut list (R-54), not an omission.
 | R-12 Structured findings | R-25 | DS-4 | AT-25 |
 | R-13 Evidence references | R-26 | DS-6 | AT-12 |
 | R-14 Exploration | R-27 | DS-4 | demo-only |
-| R-15 Question answering | R-27 | DS-5 | AT-10, AT-28 |
-| R-16 Uncertainty and gaps | R-26 | DS-1, DS-6 | AT-13, AT-16, AT-31, AT-32 |
+| R-15 Question answering | R-27 | DS-5 | AT-10, AT-28, AT-39, AT-40, AT-41, AT-47 |
+| R-16 Uncertainty and gaps | R-26 | DS-1, DS-6 | AT-13, AT-16, AT-31, AT-32, AT-41 |
 | R-17 Downloadable report | R-27 | (after DS-4) | AT-18 |
 
 ### 18.2 Capabilities to content areas
@@ -694,3 +719,4 @@ The submission is complete when:
 |---|---|---|
 | 1.0 | 2026-10-02 | Baseline. Brief requirements R-01–R-28 restated with strict readings and acceptance criteria; derived requirements R-29–R-54 carried over; R-55–R-76 added from prior design work and probes; hazards T-12–T-16 added; acceptance test catalogue AT-01–AT-28 created. |
 | 1.1 | 2026-10-02 | Moved to `docs/design/`. Added slot catalogue and statuses (§3.1); R-77–R-91 (health check and keep-alive, one main badge, slots as unit of work, replayable progress, vendor neutrality, config validation, research always fresh, run summary, Wave 0, crawl standards, statistics owned by Postgres, graph switch, required labels, plain vocabulary, demo-day freeze); tightened R-01, R-03, R-30, R-49, R-56, R-58; AT-29–AT-38; CON-04–CON-12 updated to decided defaults; A-13, A-14; all Q-xx resolved (Q-12 added); WON'T list extended. |
+| 1.2 | 2026-10-03 | CHG-01: R-92–R-100, AT-39–AT-47, R-64 extended; retrieval design in LLD-5. |

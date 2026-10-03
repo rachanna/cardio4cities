@@ -65,7 +65,7 @@ Also confirm on day 1: the OpenAI checker and embedding model IDs and the embedd
 | D2-1 | Domain rules | LLD-1 §1–2, LLD-2 §4–8 | `domain/` and `workflow/rules/`: quotes, numbers, thresholds, comparability, ranking, consistency, confidence, badges, slot status, gap notes | All unit tests from LLD-2 §4–§11 pass; AT-09, AT-21, AT-31 | 2 h |
 | D2-2 | Collection | LLD-2 §9, §14 | Crawl gate, robots and Content-Usage parsing, pinned-IP fetcher, HTML and PDF parsing, chunking and embedding, snapshots, selection | AT-04, AT-05, AT-06, AT-23, AT-33 against a local test server | 2 h |
 | D2-3 | **Thin slice** | LLD-2 §3, LLD-3 §3–5 | Graph with resolve, plan (one slot), search, select, gate, fetch, extract, match, verify, write to Postgres and Qdrant; events stored and streamed | One real city, slot S04: at least one verified, cited claim in Postgres; events replayable (AT-30); AT-07, AT-08 | 2 h |
-| D2-4 | Graph and entities | LLD-1 §6, LLD-2 §5.5, §6 | Entity resolution; Graphiti writes per S-1 outcome; supersession and contested relations | AT-26; a GOVERNS edge written and readable with its claim ID | 1.5 h |
+| D2-4 | Graph and entities | LLD-1 §6, LLD-2 §5.5, §6 | Entity resolution; Graphiti writes per S-1 outcome; supersession and contested relations; claim index in Qdrant; `search_tsv`; index updates on status change | AT-26; a GOVERNS edge written and readable with its claim ID; AT-39 plumbing: a refuted claim's index point is deleted | 1.5 h |
 | D2-5 | Breadth | LLD-2 §3, §11–13 | All 16 slots in parallel, Wave 0, coverage loop and re-plans, budget ledger, run summary | A full run on one real city ends under 5 min with every slot carrying a status; AT-16, AT-19, AT-32, AT-38 | 1.5 h |
 
 **Day 2 exit check:** one real city researched end to end on the deployed URL from the command line or API; every slot has a status; verified facts in all three stores.
@@ -79,7 +79,8 @@ Also confirm on day 1: the OpenAI checker and embedding model IDs and the embedd
 | ID | Task | Load | Outputs | Done when | Est. |
 |---|---|---|---|---|---|
 | D3-1 | Read API | LLD-4 §2–3, LLD-1 §4.6, §7 | Brief, findings, entities, evidence, snapshots, cities, runs endpoints | AT-12, AT-25, AT-27, AT-37 | 1.5 h |
-| D3-2 | Question answering | LLD-2 §15, LLD-3 §6–7 | Classifier, retrieval by type, bundle, answerer, post-check, abstentions, graph switch | AT-10, AT-11, AT-15, AT-28 | 2 h |
+| D3-2 | Question answering | LLD-5, LLD-3 §6–7 | LLD-5 pipeline: understanding with follow-ups, four routes, re-validation, fusion, anchors, bundle, answerer v2, extended post-check, trace | AT-10, AT-11, AT-15, AT-28, AT-39 to AT-46 | 3 h |
+| D3-2b | Retrieval evaluation | LLD-5 §12 | Halden Bay retrieval fixture (about 30 claims, 25 questions with gold answers); `poe eval-rag` | AT-47 gates pass on fixtures in CI | 1.5 h |
 | D3-3 | Report | LLD-2 §16, LLD-3 §8 | Assembly, templates, PDF | AT-18 | 1 h |
 | D3-4 | Web app | HLD §12, LLD-4 §12 | Access, Start with live progress and coverage grid, City brief, Explore, Ask, Evidence panel; admin overlay | A non-technical walk-through works on a phone and a laptop; City brief screen built first | 3 h |
 | D3-5 | Deploy and smoke | REPO_STRUCTURE §5 | Full deploy; keep-alive job | AT-17, AT-29 from outside; full run on the deployed URL | 0.5 h |
@@ -94,7 +95,7 @@ Also confirm on day 1: the OpenAI checker and embedding model IDs and the embedd
 
 | ID | Task | Load | Outputs | Done when | Est. |
 |---|---|---|---|---|---|
-| D4-1 | Trust tests and planted cases | HLD §9.5, LLD-3 §9 | Planted cases as tests and as admin endpoint; golden-set run; results in README | AT-20, AT-22; golden pass bar met | 1.5 h |
+| D4-1 | Trust tests and planted cases | HLD §9.5, LLD-3 §9 | Planted cases as tests and as admin endpoint; golden-set run; results in README; `poe eval-rag` with real models meets the §12.3 gates (owner approves the spend) | AT-20, AT-22; golden pass bar met | 1.5 h |
 | D4-2 | Hardening | LLD-2 §17 | Retries, fallback checker, graph-write retry, error messages | A run with one provider failing still ends with statuses | 1 h |
 | D4-3 | Example output | DEC-16 | Report from the deployed system in `samples/` with run ID and date | Unedited, complete | 0.5 h |
 | D4-4 | ARCHITECTURE.md and README | R-19, R-20 | Concise architecture for the panel; README with URL, access, quick start, trust-test results | Covers components, agents, data, retrieval, trade-offs, DQ answers | 1 h |

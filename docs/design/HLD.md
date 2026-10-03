@@ -255,7 +255,7 @@ A run **always** ends with every slot carrying a status (AT-32). The budget guar
 | Store | Role | Owns | Never holds |
 |---|---|---|---|
 | **PostgreSQL** | **Proves** | Cities, runs, slot results, sources, crawl decisions, claims, verdicts, statistics with full metadata, contested pairs, entity aliases, graph links, run events, run summaries, reference data (gazetteer, source registry, slot catalogue, indicator definitions), workflow checkpoints | Embeddings; graph structure |
-| **Qdrant** | **Finds** | Embedded chunks of all fetched text, including text that never became a verified fact; filtered by city | Verdicts; anything presented as fact |
+| **Qdrant** | **Finds** | Embedded chunks of all fetched text, including text that never became a verified fact; filtered by city; an index of confirmed claims for meaning-based retrieval (owned by Postgres, indexed by Qdrant) | Verdicts; anything presented as fact |
 | **Graphiti on Neo4j** | **Connects** | Verified entities and time-bounded relationships, one partition (`group_id`) per city; every edge carries claim IDs | Statistic values (R-87); unverified claims |
 | **Snapshots** (table in Postgres) | **Preserves** | Raw fetched bytes, compressed, with content hash, retrieval time and size cap | Parsed text (that lives with the source and in Qdrant) |
 
@@ -323,6 +323,8 @@ Every claim and edge keeps **reference period** (when the fact was true), **publ
 ---
 
 ## 7. Query path: question answering
+
+The detailed, correctness-first retrieval design is `LLD-5-retrieval.md`: four routes (structured, keyword, semantic over confirmed claims, graph), re-validation against Postgres, slot anchors, contested pairs kept together, an extended post-check, and a stored retrieval trace.
 
 ```mermaid
 flowchart LR

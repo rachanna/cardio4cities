@@ -151,6 +151,26 @@ Added during the build as `BD-01`, `BD-02`… Spike results go here first.
 
 ---
 
+## 9a. Retrieval (LLD-5 §16)
+
+Added by change request CHG-01, approved by the owner on 2026-10-03 and circulated as "CR-01". It was renamed because `CR-xx` IDs are the content requirements in REQUIREMENTS §3 (CR-01 is the cardiovascular health landscape); `CHG-xx` now identifies change requests. Design: `docs/design/LLD-5-retrieval.md`.
+
+| ID | Decision | Alternative | Reason | Status |
+|---|---|---|---|---|
+| RD-01 | Confirmed claims are the retrieval unit; page text only as labelled mentions | Chunk RAG | Only verified statements can support a fact | decided |
+| RD-02 | Four routes fused by reciprocal rank fusion | One semantic route | Independent routes fail differently; fusion is simple and needs no training | decided |
+| RD-03 | Slot anchors inject each requested slot's best claim or gap | Trust the search | Completeness for what was asked, independent of search quality | decided |
+| RD-04 | Every candidate re-validated against Postgres | Trust index payloads | A stale index can never leak a rejected fact | decided |
+| RD-05 | Contested pairs always travel together; repaired by template | Let the model choose | Showing one side of a conflict is a correctness failure | decided |
+| RD-06 | No fallback from Graphiti to the Postgres relation table | Fallback | Keeps the graph load-bearing (R-05); failure stays honest | decided |
+| RD-07 | Postgres full-text with the `simple` configuration for the keyword route | Qdrant sparse vectors; English stemming | Claims live in Postgres; exact matching for acronyms and numbers | decided |
+| RD-08 | No reranker in the PoC | Cross-encoder or model reranker | Small bundles ordered by trust; listed in the cut list with "bring back if measured misses" | decided |
+| RD-09 | Follow-ups use the previous turn's classification, not its answer text | Full chat history | An earlier answer's error cannot propagate | decided |
+| RD-10 | Deterministic repairs for contested pairs, missing years and missing coverage | Remove and abstain | The correct text is known from stored values | decided |
+| RD-11 | Multilingual embeddings in every profile | Model per environment without checks | Development results must reflect production | decided |
+
+---
+
 ## 10. Cut list (what we chose not to build)
 
 | Cut | Why | What would bring it back |
@@ -169,5 +189,6 @@ Added during the build as `BD-01`, `BD-02`… Spike results go here first.
 | Separate worker service | One run at a time is enough | Concurrent production use |
 | Age standardisation | Method metadata shown instead | An epidemiologist on the team |
 | Maps, voice, chat persona, decorative graph views | Do not serve the City Lead's decision | Never for this purpose |
+| Reranker (cross-encoder or model) | Small bundles ordered by trust; recall guaranteed by anchors | Measured retrieval misses in `eval-rag` |
 
 Cut order if time runs short, and what is never cut: `BRAINSTORM.md` §9.3–9.4.

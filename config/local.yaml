@@ -55,5 +55,10 @@ badge:      { stale_years: 5, stale_years_people: 2, small_sample: 300 }
 confidence: { recent_years: 5 }
 analytics:  { enabled: false }
 stream:     { poll_interval_s: 0.5, heartbeat_s: 15 }   # LLD-4 §4 [tunable]
+# Official APIs for Wave 0 (LLD-2 §13, BD-13): reached through the collector's API path
+structured:
+  providers:
+    who_gho:    { base_url: https://ghoapi.azureedge.net/api }
+    world_bank: { base_url: https://api.worldbank.org/v2 }
 eval:       { checker_agreement_min: 0.9 }   # LLD-3 §9 golden-set pass bar
 geography:  { nearby_km: 75 }   # figures from places this close may answer for the city (BD-10)

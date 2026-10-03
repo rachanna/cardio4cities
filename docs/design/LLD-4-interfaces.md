@@ -431,11 +431,11 @@ class ParserPort(Protocol):                    # BD-07: trafilatura (HTML), pdfp
     def parse_html(self, content: bytes, url: str) -> ParsedDocument: ...
     def parse_pdf(self, content: bytes, table_keywords: list[str]) -> ParsedDocument: ...
 
-class StructuredDataPort(Protocol):
+class StructuredDataPort(Protocol):     # reshaped by BD-13: pure; I/O through Collector.fetch_api
     provider: str
-    async def indicator(self, code: str, country_iso3: str,
-                        admin1_name: str | None = None) -> list[StructuredRecord]: ...
-    # StructuredRecord: value_as_written, year, sex, age_band, area_name, area_level, raw (bytes)
+    def request_urls(self, code: str, country_iso3: str, params: Mapping[str, Any]) -> list[str]: ...
+    def parse(self, code: str, raw: bytes) -> list[StructuredRecord]: ...
+    # StructuredRecord: indicator_code, area_code, year, sex, age_group, value_as_written, display
 
 class VectorPort(Protocol):
     async def ensure_collection(self, name: str, dimension: int) -> None: ...
@@ -477,7 +477,7 @@ Relational access uses repository classes per aggregate (`RunRepo`, `ClaimRepo`,
 | Embeddings | `openai` | `sentence_transformers` |
 | Search | `brave` | `searxng`; `tavily` (content retrieval forced off) |
 | Fetch | `httpx` with pinned-IP transport | same |
-| Structured data | `who_gho`, `dhs`, `world_bank` | same |
+| Structured data | `who_gho`, `world_bank` (DHS dropped, BD-13) | same |
 | Vector | `qdrant` | same |
 | Graph | `graphiti_neo4j` | same |
 | Snapshots | `postgres` | `s3` (COULD) |

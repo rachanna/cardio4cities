@@ -116,6 +116,15 @@ class _Robots:
     text: str = ""
 
 
+@dataclass(frozen=True)
+class ApiFetched:
+    """One official API call: every gate decision (one per hop) and the 2xx response."""
+
+    decisions: tuple[GateDecision, ...]
+    result: FetchResult | None
+    http_status: int | None = None
+
+
 class Collector:
     def __init__(
         self,
@@ -137,7 +146,9 @@ class Collector:
 
     # --- gate (§9.1) --------------------------------------------------------------
 
-    async def gate(self, url: str) -> GateDecision:
+    async def _address(self, url: str) -> GateDecision:
+        """Steps 1-3 of the gate (§9.1): a usable URL, an allowed scheme and port, and
+        public addresses only. Allowed decisions carry the address to pin."""
         canonical = canonicalise(url)
         if canonical is None:
             return GateDecision(url, "", CrawlOutcome.BLOCKED_PRIVATE_ADDRESS, "not a usable URL")
@@ -154,7 +165,13 @@ class Collector:
         problem = check_addresses(addresses)
         if problem:
             return GateDecision(canonical, domain, CrawlOutcome.BLOCKED_PRIVATE_ADDRESS, problem)
-        pinned = addresses[0]
+        return GateDecision(canonical, domain, CrawlOutcome.ALLOWED, "", None, None, addresses[0])
+
+    async def gate(self, url: str) -> GateDecision:
+        checked = await self._address(url)
+        if checked.outcome is not CrawlOutcome.ALLOWED or checked.pinned_ip is None:
+            return checked
+        canonical, domain, pinned = checked.url, checked.domain, checked.pinned_ip
         robots = await self._robots_for(canonical, pinned)
         base = GateDecision(
             canonical, domain, CrawlOutcome.ALLOWED, "", None, robots.status, pinned
@@ -265,6 +282,67 @@ class Collector:
             read_timeout_s=p.read_timeout_s,
             user_agent=p.user_agent,
         )
+
+    # --- official APIs (Wave 0, BD-13) -------------------------------------------------
+
+    async def gate_api(self, url: str, provider: str) -> GateDecision:
+        """An official API used under its published terms: the same address checks and
+        pinning as any page; robots.txt does not govern it, its terms do."""
+        checked = await self._address(url)
+        if checked.outcome is not CrawlOutcome.ALLOWED:
+            return replace(checked, rule=f"api_terms:{provider}")
+        return replace(
+            checked,
+            rule=f"api_terms:{provider}",
+            reason=f"official {provider} API, used under its published terms",
+        )
+
+    async def fetch_api(self, url: str, provider: str) -> ApiFetched:
+        """One API call, following up to five redirects, each gated again. A block is
+        recorded, never worked around: 401-403 as login or paywall, 429 as rate limited."""
+        decisions: list[GateDecision] = []
+        current = url
+        for _ in range(MAX_REDIRECTS + 1):
+            decision = await self.gate_api(current, provider)
+            decisions.append(decision)
+            if decision.outcome is not CrawlOutcome.ALLOWED or decision.pinned_ip is None:
+                return ApiFetched(tuple(decisions), None)
+            try:
+                result = await self._fetch_with_retry(decision)
+            except FetchError as exc:
+                decisions[-1] = replace(
+                    decision, outcome=CrawlOutcome.UNREACHABLE_NETWORK, reason=str(exc)
+                )
+                return ApiFetched(tuple(decisions), None)
+            if result is None:
+                decisions[-1] = replace(
+                    decision,
+                    outcome=CrawlOutcome.RATE_LIMITED,
+                    reason="the API asked us to slow down (429) for longer than we wait",
+                )
+                return ApiFetched(tuple(decisions), None)
+            location = result.headers.get("location")
+            if 300 <= result.status < 400 and location:
+                current = urljoin(decision.url, location)
+                continue
+            if result.status in PAYWALL_STATUSES:
+                decisions[-1] = replace(
+                    decision,
+                    outcome=CrawlOutcome.BLOCKED_LOGIN_OR_PAYWALL,
+                    reason=f"the API refused the request ({result.status})",
+                )
+                return ApiFetched(tuple(decisions), None)
+            if result.status >= 500:
+                decisions[-1] = replace(
+                    decision,
+                    outcome=CrawlOutcome.UNREACHABLE_SERVER_ERROR,
+                    reason=f"the API returned a server error ({result.status})",
+                )
+                return ApiFetched(tuple(decisions), None)
+            if not 200 <= result.status < 300 or result.truncated:
+                return ApiFetched(tuple(decisions), None, result.status)
+            return ApiFetched(tuple(decisions), result, result.status)
+        return ApiFetched(tuple(decisions), None)
 
     # --- collect ----------------------------------------------------------------------
 

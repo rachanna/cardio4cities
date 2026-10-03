@@ -256,6 +256,14 @@ class EvalSection(_Section):
     checker_agreement_min: float  # LLD-3 §9 pass bar for the golden set [tunable]
 
 
+class StructuredProvider(_Section):
+    base_url: str  # official API root (Wave 0, BD-13)
+
+
+class StructuredSection(_Section):
+    providers: dict[str, StructuredProvider]
+
+
 class StreamSection(_Section):
     poll_interval_s: float  # LLD-4 §4: live following polls run_event [tunable]
     heartbeat_s: float  # LLD-4 §4: comment line that keeps proxies from closing
@@ -288,6 +296,7 @@ class Config(_Section):
     confidence: ConfidenceSection
     analytics: AnalyticsSection
     stream: StreamSection
+    structured: StructuredSection
     geography: GeographySection
     eval: EvalSection
 

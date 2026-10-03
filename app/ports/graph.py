@@ -48,6 +48,10 @@ class GraphPort(Protocol):
 
     async def invalidate_edge(self, edge_uuid: str, invalid_at: date) -> None: ...
 
+    async def update_edge_attributes(self, edge_uuid: str, attributes: dict[str, Any]) -> None:
+        """Merge attributes into an edge, e.g. `status: contested` (LLD-1 §6.3, BD-11)."""
+        ...
+
     async def search_edges(
         self,
         group_id: str,

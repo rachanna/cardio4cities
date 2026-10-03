@@ -53,6 +53,8 @@ ADAPTERS: AdapterRegistry = {
     },
     "vector": {"qdrant": "app.adapters.vector.qdrant:make"},
     "snapshots": {"postgres": "app.adapters.snapshots.postgres:make"},
+    # graph (D2-4, BD-11): the factory also takes the embeddings adapter
+    "graph": {"graphiti_neo4j": "app.adapters.graph.graphiti:make"},
     # model providers (D2-3)
     "llm": {
         "anthropic": "app.adapters.llm.anthropic:make",
@@ -82,7 +84,7 @@ class Container:
 
     async def close(self) -> None:
         """Close every adapter that holds connections."""
-        for adapter in (*self.probes, self.relational, self.vector, self.snapshots):
+        for adapter in (*self.probes, self.relational, self.vector, self.snapshots, self.graph):
             close = getattr(adapter, "close", None)
             if close is not None:
                 await close()
@@ -93,14 +95,14 @@ def build_container(settings: Settings, registry: AdapterRegistry | None = None)
     config = settings.config
     container = Container(settings=settings)
 
-    def build(port: str, provider: str) -> Any:
+    def build(port: str, provider: str, *deps: Any) -> Any:
         target = registry.get(port, {}).get(provider)
         if target is None:
             container.missing.append(f"{port}:{provider}")
             return None
         module_name, _, attr = target.partition(":")
-        factory: Callable[[Settings], Any] = getattr(importlib.import_module(module_name), attr)
-        return factory(settings)
+        factory: Callable[..., Any] = getattr(importlib.import_module(module_name), attr)
+        return factory(settings, *deps)
 
     container.relational = build("relational", "postgres")  # fixed choice (CON-04)
     for port, provider in (
@@ -123,7 +125,7 @@ def build_container(settings: Settings, registry: AdapterRegistry | None = None)
     container.robots = build("robots", "protego")
     container.parser = build("parser", "trafilatura_pdfplumber")
     container.vector = build("vector", config.vector.provider)
-    container.graph = build("graph", config.graph.provider)
+    container.graph = build("graph", config.graph.provider, container.embeddings)
     container.snapshots = build("snapshots", config.snapshots.provider)
     container.renderer = build("renderer", config.renderer.provider)
     for provider in config.tracing.providers:

@@ -2,6 +2,7 @@
 API calls), a links-only search, deterministic embeddings and an in-memory vector store.
 Everything else in a test run is real: Postgres, the gate, pinned fetching, parsing."""
 
+import hashlib
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -72,11 +73,21 @@ class ListSearch:
 
 
 class HashEmbeddings:
-    dimension = 8
-    key = "test_hash_v1"
+    """Deterministic stand-in for a real embedding model: 64 values in [-1, 1] from the
+    text's SHA-512, so different texts score near 0 and identical texts 1, in every
+    process. (An earlier all-positive 8-value version scored unrelated names above the
+    entity merge threshold, by chance.)"""
+
+    dimension = 64
+    key = "test_hash_v2"
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
-        return [[float((hash(t) >> (4 * i)) % 7) + 1.0 for i in range(8)] for t in texts]
+        return [_unit_vector(t) for t in texts]
+
+
+def _unit_vector(text: str) -> list[float]:
+    digest = hashlib.sha512(text.encode("utf-8")).digest()
+    return [(byte - 127.5) / 127.5 for byte in digest]
 
 
 @dataclass

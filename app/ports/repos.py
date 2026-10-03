@@ -45,8 +45,9 @@ class ReferenceRepo(Protocol):
         ...
 
     async def places_named(self, names: list[str], country_iso2: str) -> list[dict[str, Any]]:
-        """Places in the country whose name, ASCII name or an alternate name equals one of
-        `names` (lower case): gazetteer_id, name, lat, lon (BD-10)."""
+        """Places in the country whose name keys (`ref_place.name_keys`, made by
+        `place_key` from the name, ASCII name and alternate names) include one of `names`:
+        gazetteer_id, name, lat, lon, admin1_code, name_keys (BD-10, BD-17)."""
         ...
 
 

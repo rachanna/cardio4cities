@@ -10,6 +10,7 @@ from sqlalchemy import text
 
 from app.adapters.postgres.relational import PostgresRelational
 from app.settings import check_indicator_codes, check_reference_slots
+from app.workflow.rules.geography_fit import lookup_names
 from scripts.reference.load_yaml_reference import load
 from scripts.reference.yaml_reference import (
     REFERENCE_DIR,
@@ -17,7 +18,7 @@ from scripts.reference.yaml_reference import (
     read_slots,
     read_sources,
 )
-from tests.support.gazetteer import PLACE, TOWN
+from tests.support.gazetteer import PLACE, TOWN, _line
 from tests.support.gazetteer import sync_gazetteer as _sync_gazetteer
 
 pytestmark = pytest.mark.db
@@ -134,3 +135,30 @@ async def test_strict_load_accepts_the_shipped_reference_data(
     providers = {p.provider: p for p in await relational.reference.sources()}
     assert sorted(providers) == ["who_gho", "world_bank"]
     assert providers["who_gho"].indicators["HTN_CONTROL"].code == "NCD_HYP_CONTROL_A"
+
+
+async def test_gazetteer_sync_stores_normalised_name_keys(relational: PostgresRelational) -> None:
+    """BD-17: name, ASCII name and alternate names, each through `place_key`."""
+    await _sync_gazetteer(relational, PLACE)
+    async with relational._engine.connect() as conn:
+        place = (await conn.execute(text("SELECT name_keys FROM ref_place"))).one()
+    assert place.name_keys == ["halden bay", "haldenbukt", "hb"]
+
+
+async def test_places_are_found_by_the_same_key_claims_use(relational: PostgresRelational) -> None:
+    """RV-002 (reviewer C): "St. Ostra" is found as written, and a distinct place named
+    "Halden Bay City" is that place, never the city."""
+    extra = _line(
+        "9000020", "St. Ostra", "St. Ostra", "", "60.2", "5.3", "P", "PPL", "XN", "",
+        "01", "", "", "", "20000", "", "5", "Europe/Oslo", "2026-01-01",
+    ) + _line(
+        "9000021", "Halden Bay City", "Halden Bay City", "", "61.9", "5.2", "P", "PPL", "XN",
+        "", "02", "", "", "", "30000", "", "5", "Europe/Oslo", "2026-01-01",
+    )  # fmt: skip
+    await _sync_gazetteer(relational, PLACE + extra)
+
+    saint = await relational.reference.places_named(lookup_names("St. Ostra"), "XN")
+    assert [r["gazetteer_id"] for r in saint] == ["9000020"]
+    city_named = await relational.reference.places_named(lookup_names("Halden Bay City"), "XN")
+    assert {r["gazetteer_id"] for r in city_named} == {"9000021", "9000001"}
+    assert {r["admin1_code"] for r in city_named} == {"01", "02"}

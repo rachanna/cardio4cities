@@ -42,6 +42,7 @@ from app.workflow.rules.geography_fit import (
     city_named,
     geography_fit,
     lookup_names,
+    region_named,
 )
 from app.workflow.rules.label_evidence import clear_labels, locate_label_quotes
 from app.workflow.rules.labels import apply_reference_period_rule, derive_flags
@@ -52,14 +53,22 @@ from app.workflow.state import SlotState
 
 
 async def fit_for(
-    d: RunDeps, city: CityIdentity, labels: Labels, evidence: list[str]
+    d: RunDeps, city: CityIdentity, labels: Labels, evidence: list[str], region_in_source: bool
 ) -> GeographyFit:
-    """`evidence`: the located quote and label passages."""
+    """`evidence`: the located quote and label passages; `region_in_source`: the source
+    names the city's own region (`region_named`, BD-17)."""
     rows = await d.relational.reference.places_named(
         lookup_names(labels.geography_name), city.country_iso2
     )
     candidates = [
-        PlaceCandidate(str(r["gazetteer_id"]), str(r["name"]), float(r["lat"]), float(r["lon"]))
+        PlaceCandidate(
+            str(r["gazetteer_id"]),
+            str(r["name"]),
+            float(r["lat"]),
+            float(r["lon"]),
+            r["admin1_code"],
+            frozenset(r["name_keys"] or ()),
+        )
         for r in rows
     ]
     return geography_fit(
@@ -69,6 +78,7 @@ async def fit_for(
         candidates,
         d.geography.nearby_km,
         city_named(city, evidence),
+        region_in_source,
     )
 
 
@@ -107,6 +117,7 @@ async def match_quotes(state: SlotState, config: RunnableConfig) -> dict[str, An
     d = deps(config)
     slot = d.slots[state["slot_id"]]
     texts: dict[str, dict[str, Any]] = {}
+    regions: dict[str, bool] = {}  # source -> it names the city's own region (BD-17)
     acronyms: dict[str, dict[str, str]] = {}  # per source (LLD-2 §6 step 3)
     matched: list[Candidate] = []
     for draft in state.get("drafts", []):
@@ -142,7 +153,9 @@ async def match_quotes(state: SlotState, config: RunnableConfig) -> dict[str, An
         evidence = locate_label_quotes(label_quotes, window, draft.window_start, labels, d.quote)
         labels = clear_labels(labels, evidence.cleared)
         located = [text[start:end], *(text[a:b] for a, b in evidence.spans.values())]
-        fit = await fit_for(d, state["city"], labels, located)
+        if draft.source_id not in regions:
+            regions[draft.source_id] = region_named(state["city"], text)
+        fit = await fit_for(d, state["city"], labels, located, regions[draft.source_id])
         if fit.relation not in USABLE_RELATIONS:
             await d.events.emit(
                 state["run_id"],

@@ -115,6 +115,50 @@ class PostgresReferenceRepo:
                 for indicator, spec in row.config.get("indicators", {}).items()
             }
 
+    async def slots(self) -> list[SlotDef]:
+        async with self._engine.connect() as conn:
+            rows = (await conn.execute(text("SELECT * FROM ref_slot ORDER BY slot_id"))).mappings()
+            return [SlotDef.model_validate(dict(r)) for r in rows]
+
+    async def indicators(self) -> list[IndicatorDef]:
+        async with self._engine.connect() as conn:
+            rows = (
+                await conn.execute(text("SELECT * FROM ref_indicator ORDER BY code"))
+            ).mappings()
+            return [IndicatorDef.model_validate(dict(r)) for r in rows]
+
+    async def search_places(self, query: str, limit: int = 5) -> list[dict[str, Any]]:
+        """Trigram similarity on name and alternate names, then population (LLD-4 §3.2)."""
+        sql = text(
+            "SELECT p.gazetteer_id, p.name, p.country_iso2, c.name AS country_name,"
+            " a.name AS admin1_name, p.population,"
+            " greatest(similarity(p.ascii_name, :q), similarity(p.name, :q),"
+            "   CASE WHEN :q = ANY(p.alternate_names) THEN 1.0 ELSE 0 END) AS score"
+            " FROM ref_place p JOIN ref_country c ON c.iso2 = p.country_iso2"
+            " LEFT JOIN ref_admin1 a ON a.country_iso2 = p.country_iso2"
+            "   AND a.admin1_code = p.admin1_code"
+            " WHERE similarity(p.ascii_name, :q) > 0.3 OR similarity(p.name, :q) > 0.3"
+            "   OR :q = ANY(p.alternate_names)"
+            " ORDER BY score DESC, p.population DESC NULLS LAST LIMIT :limit"
+        )
+        async with self._engine.connect() as conn:
+            rows = (await conn.execute(sql, {"q": query.strip(), "limit": limit})).mappings()
+            return [dict(r) for r in rows]
+
+    async def place_identity(self, gazetteer_id: str) -> dict[str, Any] | None:
+        """Gazetteer fields for CityIdentity (LLD-1 §2.1); the caller adds city_id."""
+        sql = text(
+            "SELECT p.gazetteer_id, p.name, p.ascii_name, p.country_iso2, c.iso3 AS country_iso3,"
+            " c.name AS country_name, p.admin1_code, a.name AS admin1_name, p.population,"
+            " p.lat, p.lon, c.languages FROM ref_place p"
+            " JOIN ref_country c ON c.iso2 = p.country_iso2"
+            " LEFT JOIN ref_admin1 a ON a.country_iso2 = p.country_iso2"
+            "   AND a.admin1_code = p.admin1_code WHERE p.gazetteer_id = :g"
+        )
+        async with self._engine.connect() as conn:
+            row = (await conn.execute(sql, {"g": gazetteer_id})).mappings().one_or_none()
+        return dict(row) if row else None
+
     # --- syncs (loaders only) ---------------------------------------------
 
     async def sync_slots(self, slots: Sequence[SlotDef]) -> SyncResult:

@@ -135,7 +135,7 @@ These conditional edges make the three required routing points visible in the re
 | `record_gate_gap` | code | decisions | — | — | — | — |
 | `fetch_parse` | code | allowed | `source`, `snapshot`, Qdrant points | `source_fetched` or `source_unreadable` | Embeddings | Per-URL; failure recorded on `source.parse_outcome` |
 | `extract` | model | `source.parsed_text` | `claim` (`extracted`), `statistic`, `relation` draft | `claim_extracted` | Extractor (LLD-3 §4) | Repair once, escalate once, else skip source (§17) |
-| `match_quotes` | code | claims | `claim.span_*`, status `dropped` for misses | `claim_dropped` | — | — |
+| `match_quotes` | code | claim drafts in slot state (BD-09) | `claim` rows for located quotes only; a miss is recorded as a `claim_dropped` event with its reason and quote, never as a row (BD-09) | `claim_dropped` | — | — |
 | `verify` | model | top claims (§5.3) + located passages | `verdict`, `claim.status` | `claim_verdict` | Checker (LLD-3 §5) | Retry, then labelled fallback model (§17) |
 | `record_unsupported` | code | verdicts | — | — | — | — |
 | `consistency` | code | supported claims, prior claims | `consistency`, `contested_pair`, `claim.status` | `conflict_found` | — | — |

@@ -21,6 +21,7 @@ dependencies = [
     "openai>=3.24.0",
     "python-ulid>=4.0.1",
     "anthropic>=1.11.0",
+    "langgraph>=1.2.12",
 ]
 
 [dependency-groups]

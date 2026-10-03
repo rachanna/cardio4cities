@@ -263,3 +263,16 @@ def test_long_table_split_by_rows_with_header_repeated() -> None:
     assert len(chunks) > 3
     assert all(c.text.startswith("| District | Share |\n|---|---|") for c in chunks)
     assert sum(c.text.count("| District ") - 1 for c in chunks) == 200
+
+
+def test_extraction_windows_cover_the_text_with_overlap() -> None:
+    from app.workflow.rules.chunking import windows
+
+    text = " ".join(f"w{n}" for n in range(1000))
+
+    spans = windows(text, window_tokens=400, overlap_tokens=40)
+
+    assert spans[0][0] == 0
+    assert spans[-1][1] == len(text)
+    assert all(b[0] < a[1] for a, b in pairwise(spans))  # overlap
+    assert windows("", 400, 40) == []

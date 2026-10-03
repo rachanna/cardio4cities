@@ -6,42 +6,16 @@ from sqlalchemy import text
 
 from app.adapters.postgres.relational import PostgresRelational
 from app.settings import check_indicator_codes, check_reference_slots
-from scripts.reference.geonames import build_gazetteer
 from scripts.reference.yaml_reference import (
     REFERENCE_DIR,
     read_indicators,
     read_slots,
     read_sources,
 )
+from tests.support.gazetteer import PLACE, TOWN
+from tests.support.gazetteer import sync_gazetteer as _sync_gazetteer
 
 pytestmark = pytest.mark.db
-
-
-def _line(*fields: str) -> str:
-    return "\t".join(fields) + "\n"
-
-
-COUNTRIES = "#ISO\tISO3\t...\n" + _line(
-    "XN", "XNV", "999", "XN", "Norvania", "Halden Bay", "1", "1", "EU", ".xn", "NVK", "Krona",
-    "99", "", "", "nv-XN,en,nor", "1", "", "",
-)  # fmt: skip
-ADMIN1 = _line("XN.01", "West Coast", "West Coast", "11") + _line("XN.02", "Inland", "Inland", "12")
-PLACE = _line(
-    "9000001", "Halden Bay", "Halden Bay", "Haldenbukt,HB", "60.1", "5.2", "P", "PPLC", "XN", "",
-    "01", "", "", "", "420000", "", "5", "Europe/Oslo", "2026-01-01",
-)  # fmt: skip
-TOWN = _line(
-    "9000002", "Port Ostra", "Port Ostra", "", "61.0", "6.0", "P", "PPL", "XN", "",
-    "02", "", "", "", "18000", "", "5", "Europe/Oslo", "2026-01-01",
-)  # fmt: skip
-
-
-async def _sync_gazetteer(
-    store: PostgresRelational, places: str
-) -> list[tuple[str, int, int, int, int]]:
-    g = build_gazetteer(COUNTRIES, ADMIN1, places)
-    results = await store.reference.sync_gazetteer(g.countries, g.admin1, g.places)
-    return [(r.table, r.inserted, r.updated, r.deleted, r.total) for r in results]
 
 
 async def test_shipped_reference_yaml_loads_and_passes_startup_checks(

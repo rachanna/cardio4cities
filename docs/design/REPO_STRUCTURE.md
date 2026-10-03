@@ -66,7 +66,9 @@ cardio4cities/
 │   ├── workflow/
 │   │   ├── graph.py              # main graph and slot subgraph (LLD-2 §3)
 │   │   ├── state.py              # RunState, SlotState
-│   │   ├── runner.py             # run manager: start, background task, resume
+│   │   ├── runner.py             # run manager: start, background task, resume; ports via RunPorts (BD-09)
+│   │   ├── deps.py               # RunDeps: ports and parameters passed to nodes in the run config (BD-09)
+│   │   ├── llm.py                # call a model role: reserve, repair once, checker fallback (LLD-2 §17)
 │   │   ├── budget.py             # BudgetLedger (LLD-2 §12)
 │   │   ├── events.py             # EventEmitter (LLD-2 §10)
 │   │   ├── collection.py         # Collector: gate, pinned fetch, parse for one URL (LLD-2 §9, BD-07)
@@ -107,7 +109,8 @@ cardio4cities/
 ├── scripts/
 │   ├── reference/                # load_geonames.py, load_yaml_reference.py
 │   ├── spikes/                   # graphiti_triplets.py, who_endpoint.py, reachability.py,
-│   │                             # search_links_only.py, pdf_quotes.py, run_timing.py;
+│   │                             # search_links_only.py, pdf_quotes.py, run_timing.py,
+│   │                             # thin_slice.py (D2-3 live check; city typed at run time);
 │   │                             # results/ holds each spike's written outcome
 │   ├── purge_city.py             # LLD-1 §8
 │   ├── eval_prompts.py           # LLD-3 §9

@@ -8,8 +8,22 @@ from qdrant_client import AsyncQdrantClient, models
 from app.ports.vector import VectorHit, VectorPoint
 from app.settings import Settings
 
-KEYWORD_INDEXES = ("city_id", "run_id", "source_id", "slot_ids", "lang", "publisher_class")
-DATETIME_INDEXES = ("published_date",)
+# Source chunks and the claim index (LLD-5 §4.2) share one index set; unused fields cost nothing
+KEYWORD_INDEXES = (
+    "city_id",
+    "run_id",
+    "source_id",
+    "slot_ids",
+    "lang",
+    "publisher_class",
+    "claim_id",
+    "slot_id",
+    "kind",
+    "status",
+    "geography_level",
+    "indicator_code",
+)
+DATETIME_INDEXES = ("published_date", "reference_end")
 
 
 def _filter(filters: dict[str, Any]) -> models.Filter:

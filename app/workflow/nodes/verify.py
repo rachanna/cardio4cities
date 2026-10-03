@@ -13,6 +13,7 @@ from app.prompts.checker import context
 from app.prompts.checker.schema import CheckerOutput, final_label, rationale
 from app.prompts.loader import load_prompt
 from app.workflow.budget import BudgetExhaustedError
+from app.workflow.claim_index import set_status
 from app.workflow.llm import call_checker
 from app.workflow.nodes._deps import deps
 from app.workflow.state import SlotState
@@ -65,7 +66,7 @@ async def verify(state: SlotState, config: RunnableConfig) -> dict[str, Any]:
                 prompt_version=prompt.prompt_version,
             )
         )
-        await d.relational.research.set_claim_status(claim_id, STATUS_FOR[label].value)
+        await set_status(d, claim_id, STATUS_FOR[label])  # Postgres, then both indexes
         await d.events.emit(
             state["run_id"],
             EventType.CLAIM_VERDICT,

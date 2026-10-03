@@ -8,9 +8,12 @@ import pytest
 
 from tests.support.thin_slice import (
     ELSEWHERE_STATEMENT,
+    EN_GOV_QUERY,
     EN_QUERY,
     METHODS,
     NEARBY_STATEMENT,
+    NEW_GOV_STATEMENT,
+    NV_GOV_QUERY,
     NV_QUERY,
     TRUE_SENTENCE,
     TRUE_STATEMENT,
@@ -33,7 +36,7 @@ async def test_thin_slice_writes_verified_cited_facts(thin_slice: Slice) -> None
     assert run is not None
     assert run["status"] == "completed"
     facts = await _facts(s)
-    assert sorted(facts) == sorted([TRUE_STATEMENT, NEARBY_STATEMENT])
+    assert sorted(facts) == sorted([TRUE_STATEMENT, NEARBY_STATEMENT, NEW_GOV_STATEMENT])
     fact = facts[TRUE_STATEMENT]
     assert fact["url"] == URL
     assert fact["quote"] in TRUE_SENTENCE
@@ -45,7 +48,8 @@ async def test_thin_slice_writes_verified_cited_facts(thin_slice: Slice) -> None
         "place_name": "Halden Bay",
         "distance_km": 0,
     }
-    assert s.search.queries == [EN_QUERY, NV_QUERY]  # the planner's, not the template
+    planned = [EN_QUERY, NV_QUERY, EN_GOV_QUERY, NV_GOV_QUERY]
+    assert sorted(s.search.queries) == sorted(planned)  # the planner's, not the template
 
 
 async def test_period_stated_far_from_the_quote_is_kept_with_its_located_passage(

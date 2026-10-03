@@ -6,7 +6,7 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from app.domain.models import Claim, Statistic, Verdict
+from app.domain.models import Claim, Relation, Statistic, Verdict
 
 
 class PostgresResearchRepo:
@@ -42,7 +42,9 @@ class PostgresResearchRepo:
                 },
             )
 
-    async def add_claim(self, claim: Claim, statistic: Statistic | None) -> None:
+    async def add_claim(
+        self, claim: Claim, statistic: Statistic | None, relation: Relation | None = None
+    ) -> None:
         labels = claim.labels
         optional = {
             k: v
@@ -128,6 +130,23 @@ class PostgresResearchRepo:
                         "lo": statistic.lower,
                         "hi": statistic.upper,
                         "k": None,
+                    },
+                )
+            if relation is not None:
+                await conn.execute(
+                    text(
+                        "INSERT INTO relation (claim_id, subject_entity_id, relation_type,"
+                        " object_entity_id, valid_from, valid_to, valid_from_is_proxy)"
+                        " VALUES (:c, :s, :t, :o, :f, :u, :p)"
+                    ),
+                    {
+                        "c": relation.claim_id,
+                        "s": relation.subject_entity_id,
+                        "t": relation.relation_type.value,
+                        "o": relation.object_entity_id,
+                        "f": relation.valid_from,
+                        "u": relation.valid_to,
+                        "p": relation.valid_from_is_proxy,
                     },
                 )
 
@@ -259,3 +278,116 @@ class PostgresResearchRepo:
                 ),
                 {"p": pair_id, "a": claim_a, "b": claim_b, "h": headline, "r": reason},
             )
+
+    # --- relations and graph links (D2-4, LLD-1 §6.3) ---------------------------------
+
+    async def relation(self, claim_id: str) -> Relation | None:
+        async with self._engine.connect() as conn:
+            row = (
+                (
+                    await conn.execute(
+                        text("SELECT * FROM relation WHERE claim_id = :c"), {"c": claim_id}
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+        return Relation.model_validate(dict(row)) if row else None
+
+    async def relation_claims(self, run_id: str, statuses: list[str]) -> list[str]:
+        async with self._engine.connect() as conn:
+            rows = await conn.execute(
+                text(
+                    "SELECT c.claim_id FROM claim c JOIN relation r USING (claim_id)"
+                    " WHERE c.run_id = :r AND c.status = ANY(:s) ORDER BY c.created_at"
+                ),
+                {"r": run_id, "s": statuses},
+            )
+            return [str(x) for x in rows.scalars()]
+
+    async def add_graph_link(self, claim_id: str, edge_uuid: str) -> None:
+        async with self._engine.begin() as conn:
+            await conn.execute(
+                text(
+                    "INSERT INTO graph_link (claim_id, edge_uuid) VALUES (:c, :e)"
+                    " ON CONFLICT DO NOTHING"
+                ),
+                {"c": claim_id, "e": edge_uuid},
+            )
+
+    async def graph_link(self, claim_id: str) -> str | None:
+        async with self._engine.connect() as conn:
+            row = await conn.execute(
+                text("SELECT edge_uuid FROM graph_link WHERE claim_id = :c LIMIT 1"),
+                {"c": claim_id},
+            )
+            value = row.scalar_one_or_none()
+        return str(value) if value else None
+
+    async def invalidate_graph_link(self, claim_id: str) -> None:
+        async with self._engine.begin() as conn:
+            await conn.execute(
+                text(
+                    "UPDATE graph_link SET invalidated_at = now()"
+                    " WHERE claim_id = :c AND invalidated_at IS NULL"
+                ),
+                {"c": claim_id},
+            )
+
+    async def claims_without_graph_link(self, run_id: str) -> list[str]:
+        async with self._engine.connect() as conn:
+            rows = await conn.execute(
+                text(
+                    "SELECT c.claim_id FROM claim c LEFT JOIN statistic s USING (claim_id)"
+                    " LEFT JOIN relation r USING (claim_id)"
+                    " WHERE c.run_id = :r AND c.status IN ('supported','contested','superseded')"
+                    " AND (r.claim_id IS NOT NULL OR (s.indicator_code IS NOT NULL"
+                    "      AND s.indicator_code <> 'OTHER'))"
+                    " AND NOT EXISTS (SELECT 1 FROM graph_link g WHERE g.claim_id = c.claim_id)"
+                    " ORDER BY c.created_at"
+                ),
+                {"r": run_id},
+            )
+            return [str(x) for x in rows.scalars()]
+
+    # --- retrieval indexes (CHG-01, LLD-5 §4.1-4.2) -------------------------------------
+
+    async def refresh_search_tsv(self, claim_id: str) -> None:
+        """The `simple` configuration: no stemming, no stop words, so acronyms and numbers
+        match exactly (RD-07)."""
+        async with self._engine.begin() as conn:
+            await conn.execute(
+                text(
+                    "UPDATE claim c SET search_tsv = to_tsvector('simple', concat_ws(' ',"
+                    " c.statement, c.quote_translation,"
+                    " (SELECT i.name FROM statistic s"
+                    "   JOIN ref_indicator i ON i.code = s.indicator_code"
+                    "   WHERE s.claim_id = c.claim_id),"
+                    " (SELECT es.canonical_name || ' ' || eo.canonical_name FROM relation r"
+                    "   JOIN entity es ON es.entity_id = r.subject_entity_id"
+                    "   JOIN entity eo ON eo.entity_id = r.object_entity_id"
+                    "   WHERE r.claim_id = c.claim_id)))"
+                    " WHERE c.claim_id = :c"
+                ),
+                {"c": claim_id},
+            )
+
+    async def claim_index_row(self, claim_id: str) -> dict[str, Any] | None:
+        async with self._engine.connect() as conn:
+            row = (
+                (
+                    await conn.execute(
+                        text(
+                            "SELECT c.claim_id, c.city_id, c.run_id, c.slot_id, c.kind, c.status,"
+                            " c.geography_level, c.statement, c.quote, c.quote_translation,"
+                            " c.reference_end, s.indicator_code"
+                            " FROM claim c LEFT JOIN statistic s USING (claim_id)"
+                            " WHERE c.claim_id = :c"
+                        ),
+                        {"c": claim_id},
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+        return dict(row) if row else None

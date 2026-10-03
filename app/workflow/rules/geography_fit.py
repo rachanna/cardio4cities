@@ -87,6 +87,15 @@ def _core(text: str) -> str:
     return " ".join(w for w in _key(text).split() if w not in AREA_WORDS)
 
 
+SUB_CITY_LEVELS = frozenset({GeographyLevel.SUB_CITY_AREA, GeographyLevel.SUB_CITY_POPULATION})
+
+
+def city_named(city: CityIdentity, texts: Sequence[str]) -> bool:
+    """The city's name or ASCII name, as whole words, in any of the texts. Gazetteer
+    alternate names are not used: they include codes and short forms (owner, D2-4)."""
+    return any(_mentions(t, n) for t in texts for n in (city.name, city.ascii_name))
+
+
 def lookup_names(geography_name: str) -> list[str]:
     """Lower-case names to look up: the leading segment without area words, then the
     whole name without area words ("Port Ostra district" -> "port ostra")."""
@@ -117,18 +126,30 @@ def geography_fit(
     city: CityIdentity,
     candidates: Sequence[PlaceCandidate],
     nearby_km: float,
+    city_named_in_evidence: bool = False,
 ) -> GeographyFit:
+    """`city_named_in_evidence`: the city's own name is in the located quote or a located
+    label passage (`city_named`). A sub-city figure needs it, because a part of a city
+    is only the researched city's part when the evidence says so (owner, D2-4)."""
     rel = GeographyRelation
+    if level in SUB_CITY_LEVELS:
+        if city_named_in_evidence:
+            return GeographyFit(relation=rel.CITY, place_name=city.name, distance_km=0)
+        return GeographyFit(relation=rel.UNRESOLVED)
     if level is GeographyLevel.GLOBAL:
         return GeographyFit(relation=rel.CONTAINS_CITY)
     if level is GeographyLevel.NATIONAL:
         same = _mentions(geography_name, city.country_name)
-        return GeographyFit(relation=rel.CONTAINS_CITY if same else rel.ELSEWHERE,
-                            place_name=city.country_name if same else None)  # fmt: skip
+        return GeographyFit(
+            relation=rel.CONTAINS_CITY if same else rel.ELSEWHERE,
+            place_name=city.country_name if same else None,
+        )
     if level is GeographyLevel.STATE_PROVINCE:
         same = _mentions(geography_name, city.admin1_name)
-        return GeographyFit(relation=rel.CONTAINS_CITY if same else rel.ELSEWHERE,
-                            place_name=city.admin1_name if same else None)  # fmt: skip
+        return GeographyFit(
+            relation=rel.CONTAINS_CITY if same else rel.ELSEWHERE,
+            place_name=city.admin1_name if same else None,
+        )
     # The gazetteer decides first: a distinct place whose name contains the city's (a
     # satellite town) is that place, not the city. The city's name inside the label
     # counts only when nothing in the gazetteer matched ("X Metropolitan Region").
@@ -141,11 +162,15 @@ def geography_fit(
             GeographyLevel.SUB_CITY_AREA,
             GeographyLevel.SUB_CITY_POPULATION,
         )
-        return GeographyFit(relation=rel.CITY if inside else rel.CONTAINS_CITY,
-                            place_name=city.name, distance_km=0)  # fmt: skip
+        return GeographyFit(
+            relation=rel.CITY if inside else rel.CONTAINS_CITY, place_name=city.name, distance_km=0
+        )
     if not candidates:
         return GeographyFit(relation=rel.UNRESOLVED)
     nearest = min(candidates, key=lambda c: distance_km(city.lat, city.lon, c.lat, c.lon))
     km = distance_km(city.lat, city.lon, nearest.lat, nearest.lon)
-    return GeographyFit(relation=rel.NEARBY if km <= nearby_km else rel.ELSEWHERE,
-                        place_name=nearest.name, distance_km=round(km))  # fmt: skip
+    return GeographyFit(
+        relation=rel.NEARBY if km <= nearby_km else rel.ELSEWHERE,
+        place_name=nearest.name,
+        distance_km=round(km),
+    )

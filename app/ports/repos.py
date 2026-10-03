@@ -10,7 +10,9 @@ from app.domain.models import (
     CityIdentity,
     Claim,
     CrawlDecision,
+    Entity,
     IndicatorDef,
+    Relation,
     SlotDef,
     Source,
     Statistic,
@@ -102,7 +104,9 @@ class ResearchRepo(Protocol):
         round_no: int,
     ) -> None: ...
 
-    async def add_claim(self, claim: Claim, statistic: Statistic | None) -> None: ...
+    async def add_claim(
+        self, claim: Claim, statistic: Statistic | None, relation: Relation | None = None
+    ) -> None: ...
 
     async def set_claim_status(self, claim_id: str, status: str) -> None: ...
 
@@ -120,6 +124,52 @@ class ResearchRepo(Protocol):
         self, pair_id: str, claim_a: str, claim_b: str, headline: str, reason: str
     ) -> None: ...
 
+    # --- relations and graph links (D2-4, LLD-1 §6.3) ---------------------------------
+
+    async def relation(self, claim_id: str) -> Relation | None: ...
+
+    async def relation_claims(self, run_id: str, statuses: list[str]) -> list[str]:
+        """Relation claims of the run with one of `statuses`."""
+        ...
+
+    async def add_graph_link(self, claim_id: str, edge_uuid: str) -> None: ...
+
+    async def graph_link(self, claim_id: str) -> str | None: ...
+
+    async def invalidate_graph_link(self, claim_id: str) -> None: ...
+
+    async def claims_without_graph_link(self, run_id: str) -> list[str]:
+        """Supported, contested or superseded claims that should have an edge but have none."""
+        ...
+
+    # --- retrieval indexes (CHG-01, LLD-5 §4.1-4.2) -------------------------------------
+
+    async def refresh_search_tsv(self, claim_id: str) -> None: ...
+
+    async def claim_index_row(self, claim_id: str) -> dict[str, Any] | None:
+        """Fields for the claim-index point: text parts and the LLD-5 §4.2 payload."""
+        ...
+
+
+class EntityRepo(Protocol):
+    """Entities and aliases per city (LLD-1 §4.4, LLD-2 §6)."""
+
+    async def alias(self, city_id: str, surface_form: str) -> str | None: ...
+
+    async def by_key(self, city_id: str, entity_type: str, normalized_key: str) -> str | None: ...
+
+    async def add_entity(self, entity: Entity) -> str:
+        """Insert unless `(city, type, key)` exists; returns the stored entity's ID."""
+        ...
+
+    async def add_alias(
+        self, city_id: str, surface_form: str, entity_id: str, method: str, score: float | None
+    ) -> None: ...
+
+    async def entities(self, city_id: str, entity_type: str) -> list[Entity]: ...
+
+    async def get(self, entity_ids: list[str]) -> dict[str, Entity]: ...
+
 
 class RelationalPort(Protocol):
     @property
@@ -133,6 +183,9 @@ class RelationalPort(Protocol):
 
     @property
     def research(self) -> ResearchRepo: ...
+
+    @property
+    def entities(self) -> EntityRepo: ...
 
     async def ping(self) -> None:
         """`SELECT 1`; raises when the database is unreachable (LLD-4 §7)."""

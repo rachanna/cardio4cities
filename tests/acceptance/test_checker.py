@@ -21,7 +21,7 @@ async def test_checker_receives_only_the_restricted_slice(thin_slice: Slice) -> 
     """AT-07: one claim, its labels and value, and the passages located by code (around
     the quote, and around a label quote, BD-10); nothing else."""
     calls = [c for c in thin_slice.openai.calls if c.role == "checker"]
-    assert len(calls) == 3  # dropped claims are never checked
+    assert len(calls) == 5  # 3 for S04 and 2 for S01; dropped claims are never checked
     for call in calls:
         assert FAR_AWAY not in call.user  # beyond the 600-character margin
         assert MISSING_STATEMENT not in call.user
@@ -61,4 +61,4 @@ async def test_planted_unsupported_claim_is_refuted_and_never_a_fact(thin_slice:
         (ELSEWHERE_STATEMENT, "geography_elsewhere"),
     ])  # fmt: skip
     written = [e["payload"]["claim_id"] for e in events if e["type"] == "fact_written"]
-    assert len(written) == 2
+    assert len(written) == 3  # two S04 statistics and the current GOVERNS claim

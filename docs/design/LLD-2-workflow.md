@@ -320,6 +320,8 @@ The city itself is created as a `Place` entity at run start from the gazetteer i
 
 **Tests:** "Ghana Health Service", "GHS" and "the Ghana Health Service" resolve to one entity; two different people with similar names stay separate.
 
+**As built (BD-12).** An alias hit counts only for the same entity type. An acronym pair is trusted only when the acronym is the initials of the long name and the source defines it one way. Candidate pairs are logged with entity IDs and score only. Relation claims are resolved in `match_quotes`, so their `relation` row is stored with the claim. A missing start date takes the publication date as a proxy only when that date is not after the stated end. The tests use fictional names (Norvania Health Directorate, NHD).
+
 ---
 
 ## 7. Confidence label (R-48)

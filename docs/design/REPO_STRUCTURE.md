@@ -69,6 +69,9 @@ cardio4cities/
 │   │   ├── runner.py             # run manager: start, background task, resume; ports via RunPorts (BD-09)
 │   │   ├── deps.py               # RunDeps: ports and parameters passed to nodes in the run config (BD-09)
 │   │   ├── llm.py                # call a model role: reserve, repair once, checker fallback (LLD-2 §17)
+│   │   ├── entities.py           # entity resolver: alias, acronym, key, embedding, new (LLD-2 §6, BD-12)
+│   │   ├── graph_writes.py       # one edge per supported claim; supersession as invalid_at (BD-12)
+│   │   ├── claim_index.py        # set_status: Postgres, then search_tsv and the claim index (CHG-01)
 │   │   ├── budget.py             # BudgetLedger (LLD-2 §12)
 │   │   ├── events.py             # EventEmitter (LLD-2 §10)
 │   │   ├── collection.py         # Collector: gate, pinned fetch, parse for one URL (LLD-2 §9, BD-07)
@@ -77,7 +80,8 @@ cardio4cities/
 │   │   └── rules/                # pure: crawl_gate, robots, content_usage, selection, chunking, quotes,
 │   │                             #       numbers, thresholds, comparability, consistency,
 │   │                             #       entity_resolution, slot_status, gap_notes, wave0_record,
-│   │                             #       labels (reference-period rule, derived flags)
+│   │                             #       labels (reference-period rule, derived flags), label_evidence,
+│   │                             #       geography_fit
 │   ├── query/                    # LLD-5 (CHG-01): understand.py, routes/ (structured.py, keyword.py,
 │   │                             #   semantic.py, graph.py), revalidate.py, fuse.py, anchors.py,
 │   │                             #   bundle.py, answer.py, postcheck.py, trace.py
@@ -95,7 +99,7 @@ cardio4cities/
 │       ├── parse/                # documents.py: trafilatura (HTML, table spans expanded with lxml), pdfplumber (PDF) (BD-07, BD-10)
 │       ├── structured/           # who_gho.py, dhs.py, world_bank.py
 │       ├── vector/               # qdrant.py, qdrant_probe.py
-│       ├── graph/                # graphiti_neo4j.py
+│       ├── graph/                # graphiti.py (direct-save path, BD-11), neo4j_probe.py
 │       ├── snapshots/            # postgres.py
 │       ├── renderer/             # weasyprint.py, browser_print.py
 │       ├── tracing/              # events.py, langsmith.py, otel.py

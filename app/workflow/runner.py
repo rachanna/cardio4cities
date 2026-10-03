@@ -20,6 +20,7 @@ from app.domain.models import CityIdentity
 from app.domain.params import (
     BadgeParams,
     ConsistencyParams,
+    EntityParams,
     GeographyParams,
     QuoteParams,
     VerifyParams,
@@ -27,6 +28,7 @@ from app.domain.params import (
 from app.domain.vocab import EventType
 from app.ports.embeddings import EmbeddingsPort
 from app.ports.fetch import FetchPort
+from app.ports.graph import GraphPort
 from app.ports.llm import LLMPort
 from app.ports.parse import ParserPort
 from app.ports.repos import RelationalPort
@@ -39,6 +41,7 @@ from app.settings import ModelRef, RoleConfig, Settings
 from app.workflow.budget import BudgetLedger, BudgetLimits
 from app.workflow.collection import CollectionParams, Collector
 from app.workflow.deps import Binding, RoleBinding, RunDeps, WindowParams
+from app.workflow.entities import EntityResolver
 from app.workflow.events import EventEmitter
 from app.workflow.graph import build_graph
 from app.workflow.ids import new_id
@@ -64,6 +67,7 @@ class RunPorts(Protocol):
     embeddings: EmbeddingsPort | None
     vector: VectorPort | None
     snapshots: SnapshotPort | None
+    graph: GraphPort | None
 
 
 class RunInProgressError(Exception):
@@ -205,6 +209,7 @@ class RunManager:
         )
         parser, embeddings = _need(p.parser, "parser"), _need(p.embeddings, "embeddings")
         vector, snapshots = _need(p.vector, "vector"), _need(p.snapshots, "snapshots")
+        graph = _need(p.graph, "graph")
         if self._publishers is None:
             self._publishers = publisher_table(self._reference("publishers.yaml"))
             self._thresholds = threshold_table(self._reference("thresholds.yaml"))
@@ -247,6 +252,13 @@ class RunManager:
             collector=collector,
             embeddings=embeddings,
             vector=vector,
+            graph=graph,
+            entities=EntityResolver(
+                self.relational.entities,
+                embeddings,
+                ledger,
+                EntityParams(**cfg.entity.model_dump()),
+            ),
             snapshots=snapshots,
             ledger=ledger,
             events=EventEmitter(self.relational.runs),
@@ -268,4 +280,5 @@ class RunManager:
             today=date.today,
         )
         await vector.ensure_collection(deps.collection, embeddings.dimension)
+        await vector.ensure_collection(deps.claim_collection, embeddings.dimension)
         return deps

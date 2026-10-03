@@ -617,12 +617,12 @@ With the admin parameter `graph=off`, retrieval for `relationship` and `change_o
 | Search or fetch network error | One retry after 1 s; then record the outcome |
 | Model 429 or 5xx | Up to 2 retries with backoff (1 s, 3 s) |
 | Model output fails schema validation | One repair attempt (the validation error is sent back); extractor then escalates to its stronger model once; then the item is skipped with an event |
-| Checker fails twice on the primary model | Same-family fallback model, verdict marked `fallback_used = true` (R-82) |
+| Checker fails twice on the primary model | Exactly two calls on the primary (a failed attempt is not repaired; it counts), then the same-family fallback model, verdict marked `fallback_used = true` (R-82, BD-18). With no checker available the claim stays `extracted` and never becomes a fact |
 | Exception inside a slot subgraph | Caught in `slot_done`; `SlotReport.error` set; the slot still gets a status from data so far |
 | Postgres unavailable | Run `failed`; the only fatal condition |
 | Graphiti write fails | Claim stays supported in Postgres; retried once at `brief_ready`; if still failing, the graph-only demo question will show it, and the run summary records the count |
 | TLS certificate fails verification (BD-15) | Verification is never relaxed. The cause is named in the crawl decision (expired, self-signed, host name mismatch, issuer missing). When the server left out its intermediate, the certificate's own issuer (AIA) URLs are gated like any request (public address, pinned IP, budget kind `certificate`, spacing) and the issuer certificate is fetched once per run; the chain is then verified in code against the trusted roots with fetched certificates as untrusted intermediates, and only that verified chain's intermediates are used for the request (BD-16). Self-issued and non-CA certificates are never added; partial chains stay refused |
-| Resume after crash | LangGraph checkpoint (Postgres, schema `lg`, thread ID = run ID) resumes the run once at start-up; all writes are idempotent: IDs are content-derived (`workflow/ids.stable_id`) or checked, Qdrant point IDs and graph edge UUIDs are derived from our IDs, inserts use `ON CONFLICT (<primary key>) DO NOTHING`, an event already stored is not appended again, and `verify` skips a claim that has a verdict. A run with no checkpoint, or already resumed once, is marked `failed` (BD-14) |
+| Resume after crash | LangGraph checkpoint (Postgres, schema `lg`, thread ID = run ID) resumes the run once at start-up; all writes are idempotent: IDs are content-derived (`workflow/ids.stable_id`) or checked, Qdrant point IDs and graph edge UUIDs are derived from our IDs, inserts use `ON CONFLICT (<primary key>) DO NOTHING`, an event already stored is not appended again, and `verify` applies a verdict already stored instead of asking the checker again (BD-18). A run with no checkpoint, or already resumed once, is marked `failed` (BD-14) |
 
 ---
 

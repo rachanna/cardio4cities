@@ -190,7 +190,7 @@ class FetchSection(_Section):
     connect_timeout_s: float
     read_timeout_s: float
     allowed_ports: list[int]  # LLD-2 §9.1 step 2 [tunable] (BD-07)
-    robots_timeout_s: float  # LLD-2 §9.1 step 4: 5 s (BD-07; spike S-5 finding)
+    robots_timeout_s: float  # LLD-2 §9.1 step 4: 15 s, raised from 5 after spike S-5 (BD-07)
 
 
 class VerifySection(_Section):

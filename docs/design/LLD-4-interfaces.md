@@ -274,7 +274,7 @@ tracing:    { providers: [events, langsmith], langsmith_api_key_env: LANGSMITH_A
 budget:     { wall_clock_s: 300, searches: 48, fetches: 60, tokens: 0, cost_micro_usd: 0, wind_down_at: 0.85 }
 limits:     { runs_per_day: 20, ask_per_min: 20, resolve_per_min: 30 }
 fetch:      { concurrency: 6, min_interval_s: 1, max_bytes: 10485760, connect_timeout_s: 5, read_timeout_s: 20,
-              allowed_ports: [80, 443], robots_timeout_s: 5 }   # BD-07
+              allowed_ports: [80, 443], robots_timeout_s: 15 }   # BD-07
 chunk:      { prose_tokens: 400, overlap_tokens: 60, table_max_tokens: 1200 }   # BD-07
 verify:     { max_claims_per_slot: 5 }
 select:     { max_new_urls_per_slot_round: 4 }

@@ -14,10 +14,12 @@ production extractor once spend is approved. Writes a summary only (no quoted fi
 import argparse
 import asyncio
 import json
+import re
 import sys
 import urllib.request
 from collections import Counter
 from dataclasses import dataclass, field
+from itertools import pairwise
 from pathlib import Path
 
 from app.adapters.fetch.httpx_pinned import PinnedFetcher
@@ -33,22 +35,39 @@ DOCUMENTS = {
         "https://iris.who.int/server/api/core/bitstreams/db06a907-0d4b-43d7-a49a-a7eb3623e489/content"
     ),
     "who_global_hypertension_report_2023": (
-        "https://iris.who.int/server/api/core/bitstreams/8afcdf64-f092-4e81-8402-05ba6c697ffc/content"
+        "https://iris.who.int/server/api/core/bitstreams/d7a81217-efd0-47ce-a78d-164f0f0f8dd2/content"
     ),
 }
 KEYWORDS = ["hypertension", "blood pressure", "prevalence", "mortality", "diabetes", "%"]
 UA = "CARDIO4CitiesResearchBot/0.1 (+https://github.com/rachanna/cardio4cities)"
 RESULTS = Path(__file__).with_name("results") / "S-5-pdf-quotes.md"
 
-PROMPT = """You copy text exactly. Below is a table from a report, between <source> tags.
-Choose up to {n} rows that contain a number. For each, copy the row EXACTLY as it appears,
-character for character, including the | separators, and copy one number from that row
+PROMPT = """You copy text exactly. Below is part of a report, between <source> tags.
+Choose up to {n} lines that contain a number. For each, copy the line EXACTLY as it appears,
+character for character (including any | separators), and copy one number from that line
 exactly as written in "value". Do not fix spelling, spacing or punctuation.
 Answer with JSON only: {{"items": [{{"quote": "...", "value": "..."}}]}}
 
 <source>
 {table}
 </source>"""
+
+
+NUMERIC_LINE = re.compile(r"\d[\d.,]*\s*%?.*\d")
+BLOCK_LINES = 20
+
+
+def numeric_blocks(text: str, pages: list[tuple[int, int]], limit: int) -> list[str]:
+    """Runs of page-text lines holding numbers: how report tables without ruled grids
+    reach the extractor. Taken from evenly spread pages to sample the whole report."""
+    bounds = [start for _, start in pages] + [len(text)]
+    candidates: list[str] = []
+    for start, end in pairwise(bounds):
+        lines = [ln for ln in text[start:end].splitlines() if NUMERIC_LINE.search(ln)]
+        if len(lines) >= 3 and any(k in text[start:end].lower() for k in KEYWORDS[:5]):
+            candidates.append("\n".join(lines[:BLOCK_LINES]))
+    step = max(1, len(candidates) // limit) if candidates else 1
+    return candidates[::step][:limit]
 
 
 class Unlimited:
@@ -85,8 +104,33 @@ def ask_ollama(base: str, model: str, prompt: str) -> list[dict[str, str]]:
     return [i for i in items if isinstance(i, dict) and i.get("quote") and i.get("value")]
 
 
+async def document(
+    collector: Collector, name: str, url: str, cache: Path | None
+) -> tuple[str, list[tuple[int, int]], list[tuple[int, int]]] | None:
+    """Parsed text, tables and pages; a cached copy is reused only after a gated fetch."""
+    cached = cache / f"{name}.pdf" if cache else None
+    if cached is not None and cached.exists():
+        doc = DocumentParser().parse_pdf(cached.read_bytes(), KEYWORDS)
+        print(f"{name}: cached copy of an earlier gated fetch")
+        return doc.text, doc.tables, doc.pages
+    result = await collector.collect(url, KEYWORDS)
+    decision = result.final_decision
+    print(f"{name}: {decision.outcome.value} ({decision.reason}); parse={result.parse_outcome}")
+    if result.document is None:
+        return None
+    if cached is not None:
+        cached.parent.mkdir(parents=True, exist_ok=True)
+        cached.write_bytes(result.raw)
+    return result.document.text, result.document.tables, result.document.pages
+
+
 async def run(
-    base: str, model: str, max_tables: int, per_table: int, robots_timeout: float
+    base: str,
+    model: str,
+    max_tables: int,
+    per_table: int,
+    robots_timeout: float,
+    cache: Path | None,
 ) -> dict[str, Tally]:
     collector = Collector(
         PinnedFetcher(),
@@ -99,15 +143,15 @@ async def run(
     tallies: dict[str, Tally] = {}
     for name, url in DOCUMENTS.items():
         tally = tallies[name] = Tally()
-        result = await collector.collect(url, KEYWORDS)
-        decision = result.final_decision
-        print(f"{name}: {decision.outcome.value} ({decision.reason}); parse={result.parse_outcome}")
-        if result.document is None:
+        parsed = await document(collector, name, url, cache)
+        if parsed is None:
             continue
-        text = result.document.text
-        for start, end in result.document.tables[:max_tables]:
+        text, tables, pages = parsed
+        segments = [text[s:e] for s, e in tables[:max_tables]]
+        segments += numeric_blocks(text, pages, max_tables)
+        for segment in segments:
             tally.tables += 1
-            for item in ask_ollama(base, model, PROMPT.format(n=per_table, table=text[start:end])):
+            for item in ask_ollama(base, model, PROMPT.format(n=per_table, table=segment)):
                 tally.quotes += 1
                 outcome = match_quote(item["quote"], text, params, item["value"])
                 tally.reasons[outcome.reason if isinstance(outcome, QuoteDrop) else "matched"] += 1
@@ -124,7 +168,7 @@ def write_summary(tallies: dict[str, Tally], model: str) -> float:
         "",
         f"Extractor stand-in: local Ollama `{model}` (pessimistic). Matching: LLD-2 §4.1, exact.",
         "",
-        "| Document | Tables | Quotes | Matched | Dropped by reason |",
+        "| Document | Segments (tables + numeric text) | Quotes | Matched | Dropped by reason |",
         "|---|---|---|---|---|",
     ]
     for name, t in tallies.items():
@@ -149,10 +193,18 @@ def main() -> int:
     parser.add_argument("--model", default="qwen2.5:3b")
     parser.add_argument("--max-tables", type=int, default=15)
     parser.add_argument("--per-table", type=int, default=3)
-    parser.add_argument("--robots-timeout", type=float, default=5.0)
+    parser.add_argument("--robots-timeout", type=float, default=15.0)  # fetch.robots_timeout_s
+    parser.add_argument("--cache-dir", type=Path, default=None, help="reuse downloads (scratch)")
     args = parser.parse_args()
     tallies = asyncio.run(
-        run(args.ollama, args.model, args.max_tables, args.per_table, args.robots_timeout)
+        run(
+            args.ollama,
+            args.model,
+            args.max_tables,
+            args.per_table,
+            args.robots_timeout,
+            args.cache_dir,
+        )
     )
     drop = write_summary(tallies, args.model)
     return 0 if drop < 0.20 else 1

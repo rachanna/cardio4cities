@@ -1,20 +1,36 @@
-# Spike S-5: PDF quote matching — status: open (2026-10-03)
+# Spike S-5: PDF quote matching
 
-Script: `scripts/spikes/pdf_quotes.py` (`uv run poe spike pdf_quotes`). Documents: two global
-WHO reports from WHO's IRIS repository, fetched through the real crawl gate and pinned fetcher.
-Extractor stand-in: local Ollama `qwen2.5:3b` (no cost; pessimistic). Matching: LLD-2 §4.1, exact.
+Extractor stand-in: local Ollama `qwen2.5:3b` (pessimistic). Matching: LLD-2 §4.1, exact.
 
-## What the runs showed
+| Document | Segments (tables + numeric text) | Quotes | Matched | Dropped by reason |
+|---|---|---|---|---|
+| who_ncd_progress_monitor_2022 | 15 | 21 | 6 | quote_length 12, value_not_in_quote 3 |
+| who_global_hypertension_report_2023 | 30 | 77 | 16 | quote_length 42, quote_not_found 9, value_not_in_quote 10 |
 
-| Finding | Effect | Action |
+**Overall drop rate: 77.6%** of 98 quotes (pass bar: under about 20%).
+
+## Run of 2026-10-03 (robots timeout 15 s; prose layout boxes no longer treated as tables)
+
+Segments: genuine tables (the hypertension report has 802; the progress monitor none,
+its tables are positioned text) plus runs of number-bearing page-text lines, which is
+what the extractor reads when a report draws tables without ruled grids.
+
+| Reason | Count | Share of 98 |
 |---|---|---|
-| IRIS serves `robots.txt` in 7-10 s (`www.who.int`: 0.16 s), over LLD-2's 5 s robots timeout | With 5 s, IRIS is always recorded `unreachable_network` and nothing is fetched | Made `fetch.robots_timeout_s` a config key, still 5 s; raising it is an owner decision (BD-07) |
-| A read timeout escaped the fetcher as a raw `httpcore` exception | Would have crashed a run instead of recording "unreachable" | Fixed: every httpcore error becomes `FetchError`; regression test added |
-| One report's PDF is served as `application/octet-stream` | Recorded `unsupported_type` | Fixed: generic types are sniffed by the `%PDF-` signature only; tests added |
-| On the progress monitor (2022), pdfplumber's table extraction turned layout boxes of prose into "tables" whose first row had 181 words | All 15 model quotes of such rows exceeded the 60-word quote limit (`quote_length`); none reached matching | Open: filter non-tabular "tables" (long prose cells) or split cells into lines, then re-run. Never loosen matching |
-| IRIS then refused connections from this machine (likely rate limiting after repeated downloads) | The measurement could not be repeated | Re-run later, once, with the parsing fix |
+| matched | 22 | 22% |
+| `quote_length` | 54 | 55% |
+| `value_not_in_quote` | 13 | 13% |
+| `quote_not_found` | 9 | 9% |
 
-## Not yet measured
+**Analysis.** `quote_length` is structural, not a model failure: number-bearing lines under
+6 words are 65% of the hypertension report's (17,518 of 26,754) and 47% of the progress
+monitor's (454 of 961). With `quote.min_words = 6`, most table data in PDFs cannot be
+quoted by any extractor. Of the 44 quotes within the length bounds, 22 matched; the 3B
+stand-in's copy errors (`quote_not_found`, `value_not_in_quote`) should fall with the
+production extractor, which needs measuring once spend is approved.
 
-The drop rate on genuine table rows. Pass bar: under about 20% of claims dropped.
-Re-run with the production extractor once spend is approved.
+**Decision needed (owner):** how short quotes from table rows may be, without risking a
+short quote anchoring to the wrong row. Matching takes the first occurrence, so a short,
+repeated string could attach a value to the wrong place: precision first.
+
+**Status:** fails the bar as measured (77.6% dropped); the cause is identified.

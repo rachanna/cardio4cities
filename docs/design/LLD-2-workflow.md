@@ -358,7 +358,7 @@ For each candidate URL, in order; the first rule that applies decides:
 | 1 | Canonicalise: lower-case scheme and host, drop fragment, drop `utm_*` and similar tracking parameters | — |
 | 2 | Scheme `http` or `https`; port 80 or 443 `[tunable]` | `blocked_private_address` (reason "unsupported scheme or port") |
 | 3 | Resolve the host; every resolved address must be public (not private, loopback, link-local, multicast, reserved, or a cloud metadata address) | `blocked_private_address` |
-| 4 | Fetch `robots.txt` for the origin (cached per run): timeout `fetch.robots_timeout_s` (5 s, BD-07), max 500 KiB, up to 5 redirects, each redirect target's address checked | see 9.2 |
+| 4 | Fetch `robots.txt` for the origin (cached per run): timeout `fetch.robots_timeout_s` (15 s; was 5 s, raised after spike S-5, BD-07), max 500 KiB, up to 5 redirects, each redirect target's address checked | see 9.2 |
 | 5 | Apply the robots rules for user agent `CARDIO4CitiesResearchBot`, else `*` | `blocked_robots` with the matching line in `rule` |
 | 6 | Apply `Content-Usage` rules in the matched group, longest path wins: block on `ai-use=n` (draft-ietf-aipref-vocab-08), the earlier `ai=n` / `tdm=n`, or Cloudflare's `Content-Signal: ai-input=no`; `train-ai` and `search` opt-outs are recorded, not blocking (BD-07) | `blocked_content_usage` |
 | 7 | Allowed | `allowed`, with crawl-delay recorded for the fetcher |

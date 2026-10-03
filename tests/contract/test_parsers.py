@@ -134,3 +134,15 @@ def test_pdf_tables_only_on_pages_with_a_keyword() -> None:
 
 def test_pdf_without_keywords_extracts_no_tables() -> None:
     assert DocumentParser().parse_pdf(_pdf(), []).tables == []
+
+
+def test_layout_box_of_prose_is_not_a_table() -> None:
+    """Spike S-5: a 'table' whose cells are paragraphs stays page text only (BD-07)."""
+    from app.adapters.parse.documents import is_tabular
+
+    prose = " ".join(["The Norvania Health Directorate describes its programme in Halden Bay."] * 8)
+
+    assert not is_tabular([[prose, None], [None, None]])
+    assert not is_tabular([[prose], [prose]])
+    assert not is_tabular([["Indicator", "Value"], ["Raised blood pressure", "not measured"]])
+    assert is_tabular([["Indicator", "Women", "Men"], ["Raised blood pressure", "29.0%", "33.5%"]])

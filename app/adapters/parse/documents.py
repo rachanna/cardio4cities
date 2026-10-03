@@ -36,6 +36,24 @@ def _table_spans(text: str) -> list[tuple[int, int]]:
     return spans
 
 
+# Spike S-5: pdfplumber also reports layout boxes of prose as "tables". A real table has
+# at least two rows and two columns, short cells and at least one number; anything else
+# is left to the page text, which already holds its words (BD-07).
+MAX_MEDIAN_CELL_WORDS = 8
+_NUMBER = re.compile(r"\d")
+
+
+def is_tabular(rows: list[list[str | None]]) -> bool:
+    filled = [r for r in rows if any((c or "").strip() for c in r)]
+    if len(filled) < 2 or max((len(r) for r in filled), default=0) < 2:
+        return False
+    cells = [(c or "").split() for r in filled for c in r if (c or "").strip()]
+    lengths = sorted(len(words) for words in cells)
+    median = lengths[len(lengths) // 2]
+    has_number = any(_NUMBER.search(" ".join(words)) for words in cells)
+    return median <= MAX_MEDIAN_CELL_WORDS and has_number
+
+
 def _pipe_table(rows: list[list[str | None]]) -> str:
     cleaned = [[(cell or "").replace("\n", " ").strip() for cell in row] for row in rows if row]
     if not cleaned:
@@ -90,6 +108,8 @@ class DocumentParser:
                 pages.append((number, length))
                 if keywords and any(k in page_text.lower() for k in keywords):
                     for rows in page.extract_tables():
+                        if not is_tabular(rows):
+                            continue
                         rendered = _pipe_table(rows)
                         if rendered:
                             start = length + len(block)

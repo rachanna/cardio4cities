@@ -68,7 +68,7 @@ def place_matcher(city: CityIdentity, places: Iterable[Mapping[str, Any]]) -> Pl
         return {n for n in names if len(n) >= URL_MIN_CHARS}
 
     return PlaceMatcher(
-        own_text=_pattern(own),
+        own_text=_pattern(own, re.IGNORECASE),  # the city's own names in any case (BD-17)
         own_url=_pattern(long(own), re.IGNORECASE),
         other_text=_pattern(others),
         other_url=_pattern(long(others), re.IGNORECASE),

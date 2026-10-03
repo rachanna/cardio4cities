@@ -4,8 +4,9 @@ The note says exactly what was searched and why nothing acceptable was found."""
 from collections import Counter
 from collections.abc import Sequence
 
+from app.domain.geography import effective_level
 from app.domain.models import Claim
-from app.domain.vocab import CrawlOutcome, SlotStatus
+from app.domain.vocab import CrawlOutcome, GeographyRelation, SlotStatus
 from app.domain.wording import LEVEL_WORDS
 
 OUTCOME_WORDS: dict[CrawlOutcome, str] = {
@@ -53,8 +54,15 @@ def gap_note(
             raise ValueError("answered_wider_geo needs its best claim")
         labels = best.labels
         year = str(labels.reference_end.year) if labels.reference_end else "year not stated"
+        fit = best.geography_fit
+        # The level the figure counts as for the city, never its own label (BD-17)
+        where = (
+            "a nearby place"
+            if fit is not None and fit.relation is GeographyRelation.NEARBY
+            else LEVEL_WORDS[effective_level(best)]
+        )
         note = (
-            f"No city-level figure found. Best available is {LEVEL_WORDS[labels.geography_level]} "
+            f"No city-level figure found. Best available is {where} "
             f"({labels.geography_name}, {year})."
         )
     elif status is SlotStatus.ANSWERED_NEGATIVE:

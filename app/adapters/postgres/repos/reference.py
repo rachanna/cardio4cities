@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.adapters.postgres.db import SCHEMA
 from app.domain.models import IndicatorDef, SlotDef, SourceProvider
+from app.domain.place_names import place_keys
 
 
 @dataclass(frozen=True)
@@ -73,6 +74,7 @@ _PLACE = _Table(
         "lat",
         "lon",
         "timezone",
+        "name_keys",  # computed here from the names (BD-17)
     ),
     f"AND NOT EXISTS (SELECT 1 FROM {SCHEMA}.city c WHERE c.gazetteer_id = t.gazetteer_id)",
 )
@@ -170,12 +172,12 @@ class PostgresReferenceRepo:
         return dict(row) if row else None
 
     async def places_named(self, names: list[str], country_iso2: str) -> list[dict[str, Any]]:
+        """Places of the country with any of the name keys `names` (BD-17)."""
         if not names:
             return []
         sql = text(
-            "SELECT gazetteer_id, name, lat, lon FROM ref_place WHERE country_iso2 = :c"
-            " AND (lower(name) = ANY(:n) OR lower(ascii_name) = ANY(:n)"
-            "   OR EXISTS (SELECT 1 FROM unnest(alternate_names) a WHERE lower(a) = ANY(:n)))"
+            "SELECT gazetteer_id, name, lat, lon, admin1_code, name_keys FROM ref_place"
+            " WHERE country_iso2 = :c AND name_keys && CAST(:n AS text[])"
             " ORDER BY population DESC NULLS LAST LIMIT 20"
         )
         async with self._engine.connect() as conn:
@@ -226,8 +228,10 @@ class PostgresReferenceRepo:
         admin1: Sequence[tuple[Any, ...]],
         places: Sequence[tuple[Any, ...]],
     ) -> list[SyncResult]:
-        """Rows in the column order of ref_country, ref_admin1 and ref_place."""
-        return await self._sync([(_COUNTRY, countries), (_ADMIN1, admin1), (_PLACE, places)])
+        """Rows in the column order of ref_country, ref_admin1 and ref_place (without
+        `name_keys`, which is computed here from the name, ASCII name and alternates)."""
+        keyed = [(*p, place_keys(p[1], p[2], *(p[3] or []))) for p in places]
+        return await self._sync([(_COUNTRY, countries), (_ADMIN1, admin1), (_PLACE, keyed)])
 
     async def _sync(
         self, batches: list[tuple[_Table, Sequence[tuple[Any, ...]]]]

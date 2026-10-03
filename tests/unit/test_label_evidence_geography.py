@@ -101,17 +101,25 @@ def fit(level: GeographyLevel, name: str, *candidates: PlaceCandidate) -> Geogra
 @pytest.mark.parametrize(
     ("name", "expected"),
     [
-        ("Port Ostra district", ["port ostra"]),
+        ("Port Ostra district", ["port ostra district", "port ostra"]),
         ("Kestrel Point - West Coast", ["kestrel point", "kestrel point west coast"]),
-        ("Greater Halden Bay Municipal Corporation", ["halden bay"]),
-        ("Halden Bay's urban wards", ["halden bay"]),
+        (
+            "Greater Halden Bay Municipal Corporation",
+            ["greater halden bay municipal corporation", "halden bay"],
+        ),
+        ("Halden Bay's urban wards", ["halden bay urban wards", "halden bay"]),
         (
             "nine districts (Port Ostra and Kestrel Point)",
-            ["nine", "nine port ostra and kestrel point"],
+            [
+                "nine districts",
+                "nine",
+                "nine districts port ostra and kestrel point",
+                "nine port ostra and kestrel point",
+            ],
         ),
     ],
 )
-def test_lookup_names_strip_area_words_and_take_the_leading_segment(
+def test_lookup_names_try_the_full_name_before_the_name_without_area_words(
     name: str, expected: list[str]
 ) -> None:
     assert lookup_names(name) == expected
@@ -144,13 +152,20 @@ def test_geography_fit(
     assert fit(level, name, *candidates).relation is relation
 
 
-def test_nearest_candidate_decides_and_its_distance_is_recorded() -> None:
-    result = fit(L.CITY_WIDE, "Port Ostra", OSTRA, KESTREL)
+def test_the_nearest_of_several_places_of_one_name_decides_and_its_distance_is_kept() -> None:
+    near_twin = PlaceCandidate("9000011", "Kestrel Point", 60.6, 5.9)  # about 65 km
+    result = fit(L.CITY_WIDE, "Kestrel Point", near_twin, KESTREL)
     assert (result.relation, result.place_name, result.distance_km) == (
         R.NEARBY,
         "Kestrel Point",
         28,
     )
+
+
+def test_places_of_one_name_on_both_sides_of_the_nearby_limit_are_unresolved() -> None:
+    """RV-089: a distant namesake's figure must not pass as the near one's."""
+    far_twin = PlaceCandidate("9000012", "Kestrel Point", 62.0, 7.5)  # about 240 km
+    assert fit(L.CITY_WIDE, "Kestrel Point", far_twin, KESTREL).relation is R.UNRESOLVED
 
 
 # --- effective level: a nearby figure is never city-level --------------------------

@@ -44,14 +44,15 @@ All in `app/domain/vocab.py` as `StrEnum`s. The database `CHECK` constraints use
 |---|---|---|
 | `ClaimKind` | `statistic`, `relation`, `statement` | Statistic has a numeric value; relation becomes a graph edge; statement is any other fact (a policy exists, a programme is running) |
 | `GeographyLevel` | `city_wide`, `sub_city_area`, `sub_city_population`, `metro_region`, `district`, `state_province`, `national`, `global` | What the figure actually describes. Ordered from finest to broadest |
-| `Representativeness` | `representative_sample`, `census`, `non_representative`, `modelled`, `not_applicable` | `not_applicable` for relations and statements |
+| `Representativeness` | `representative_sample`, `census`, `non_representative`, `modelled`, `not_applicable`, `not_stated` | `not_applicable` for relations and statements; `not_stated` when the source does not say how it sampled: confidence 1 point (as `modelled`), ranked after `modelled` and before `non_representative`, with `not_applicable` (owner, BD-22) |
+| `Setting` | `community`, `health_facility`, `school`, `workplace`, `other` | Where the people measured were found (BD-22). `health_facility`, `school` and `workplace` narrow a figure: Not city-level. Free text stored before BD-22 is read as the vocabulary (`hospital`, `clinic` → `health_facility`; anything else → `other`) |
 | `MeasureType` | `measured_prevalence`, `self_reported_prevalence`, `screening_positivity`, `cascade_awareness`, `cascade_treatment`, `cascade_control`, `share_of_subgroup`, `incidence`, `mortality_rate`, `programme_output`, `modelled_estimate`, `target`, `budget`, `population_count`, `qualitative` | Screening positivity and programme output are never prevalence (T-04) |
 | `Method` | `measured`, `self_reported`, `modelled`, `administrative`, `not_stated` | |
 | `PeriodType` | `point_in_time`, `period`, `cumulative`, `publication_date_proxy` | `publication_date_proxy` when the source states no reference period; always flagged (§2.3) |
 | `DatePrecision` | `day`, `month`, `year` | |
 | `Sex` | `all`, `female`, `male`, `not_stated` | |
 | `ClaimStatus` | `extracted`, `dropped`, `supported`, `refuted`, `insufficient`, `contested`, `superseded` | Lifecycle in LLD-2 §5 (R-47) |
-| `ClaimFlag` | `period_not_stated`, `denominator_not_stated`, `small_sample`, `non_representative`, `republished`, `translated`, `value_unparsed`, `setting_not_stated`, `governing_body_uncertain` | Stored flags. Badges are computed at read time (§1.4) |
+| `ClaimFlag` | `period_not_stated`, `denominator_not_stated`, `small_sample`, `non_representative`, `republished`, `translated`, `value_unparsed`, `setting_not_stated`, `governing_body_uncertain`, `label_not_located` (BD-22) | Stored flags. Badges are computed at read time (§1.4) |
 
 ### 1.2 Sources, crawling, verification
 
@@ -140,7 +141,8 @@ class Labels(BaseModel):
     population_sex: Sex = Sex.not_stated
     population_group: str | None     # 'adults', 'university staff', 'clinic patients'
     setting: str | None              # 'community', 'hospital', 'workplace'; NULL → flag setting_not_stated
-    sample_size: int | None
+    sample_size: int | None          # read by code from the extractor's sample_size_as_written (BD-22)
+    population_subgroup: bool | None  # a part chosen by more than age, sex or area; not a cascade denominator (BD-22)
     case_definition: str | None      # as written: 'SBP>=140 and/or DBP>=90, or on medication'
     threshold_code: str | None       # normalised by code: 'bp_140_90', 'bp_130_80' (§3.3)
     method: Method = Method.not_stated

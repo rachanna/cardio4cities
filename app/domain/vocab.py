@@ -49,6 +49,7 @@ class Representativeness(StrEnum):
     NON_REPRESENTATIVE = "non_representative"
     MODELLED = "modelled"
     NOT_APPLICABLE = "not_applicable"
+    NOT_STATED = "not_stated"  # the source does not say how it sampled (BD-22)
 
 
 class MeasureType(StrEnum):
@@ -102,6 +103,20 @@ class DatePrecision(StrEnum):
     YEAR = "year"
 
 
+class Setting(StrEnum):
+    """Where the people measured were found (BD-22). Facilities, schools and workplaces
+    reach only part of a city's population."""
+
+    COMMUNITY = "community"  # households, door to door, a general population survey
+    HEALTH_FACILITY = "health_facility"  # hospitals, clinics, health centres, pharmacies
+    SCHOOL = "school"  # schools, colleges, universities
+    WORKPLACE = "workplace"
+    OTHER = "other"
+
+
+NARROW_SETTINGS = frozenset({Setting.HEALTH_FACILITY, Setting.SCHOOL, Setting.WORKPLACE})
+
+
 class Sex(StrEnum):
     ALL = "all"
     FEMALE = "female"
@@ -133,6 +148,7 @@ class ClaimFlag(StrEnum):
     TRANSLATED = "translated"
     VALUE_UNPARSED = "value_unparsed"
     SETTING_NOT_STATED = "setting_not_stated"
+    LABEL_NOT_LOCATED = "label_not_located"  # a label's numbers were not in the evidence (BD-22)
     GOVERNING_BODY_UNCERTAIN = "governing_body_uncertain"
 
 

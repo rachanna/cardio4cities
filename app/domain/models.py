@@ -4,7 +4,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.domain.vocab import (
     AnswerKind,
@@ -25,6 +25,7 @@ from app.domain.vocab import (
     PublisherClass,
     RelationType,
     Representativeness,
+    Setting,
     Sex,
     SlotFlag,
     SlotStatus,
@@ -33,6 +34,16 @@ from app.domain.vocab import (
 )
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
+
+
+# Free-text settings stored before BD-22, read back as the vocabulary
+LEGACY_SETTINGS: dict[str, Setting] = {
+    "hospital": Setting.HEALTH_FACILITY,
+    "clinic": Setting.HEALTH_FACILITY,
+    "health facility": Setting.HEALTH_FACILITY,
+    "household": Setting.COMMUNITY,
+    "community": Setting.COMMUNITY,
+}
 
 
 class SlotDef(BaseModel):
@@ -152,14 +163,26 @@ class Labels(BaseModel):
     population_age_max: int | None = None
     population_sex: Sex = Sex.NOT_STATED
     population_group: str | None = None
-    setting: str | None = None
-    sample_size: int | None = None
+    population_subgroup: bool | None = None  # a part chosen by more than age, sex or area (BD-22)
+    setting: Setting | None = None
+    sample_size: int | None = None  # read by code from the words the source uses (BD-22)
     case_definition: str | None = None
     threshold_code: str | None = None  # set by code (LLD-2 §4.3)
     method: Method = Method.NOT_STATED
     representativeness: Representativeness
     denominator_text: str | None = None
     denominator_stated: bool
+
+    @field_validator("setting", mode="before")
+    @classmethod
+    def _legacy_setting(cls, value: object) -> object:
+        """Claims stored before BD-22 hold free text: known words map, the rest is other."""
+        if value is None or isinstance(value, Setting):
+            return value
+        text = str(value).strip().casefold()
+        if text in Setting._value2member_map_:
+            return text
+        return LEGACY_SETTINGS.get(text, Setting.OTHER)
 
     @model_validator(mode="after")
     def _ordered(self) -> "Labels":

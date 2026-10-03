@@ -59,6 +59,22 @@ def parse_number(token: str) -> Decimal | None:
     return None
 
 
+_COUNT = re.compile(r"\d{1,3}(?:(?:,\d{3})+|(?:\.\d{3})+|(?: \d{3})+)(?!\d)|\d+")
+
+
+def read_sample_size(as_written: str | None) -> int | None:
+    """The number of people in "n = 1,204", "1 204 adults" or "300": exactly one whole
+    number, or None (BD-22: models never produce numbers, LD-04)."""
+    if not as_written:
+        return None
+    text = as_written.replace("\u202f", " ").replace("\u00a0", " ")
+    found = _COUNT.findall(text)
+    if len(found) != 1 or re.search(r"\d[.,]\d{1,2}(?!\d)", text):
+        return None  # several numbers, or a decimal: not a count
+    value = parse_number(found[0])
+    return int(value) if value is not None and value > 0 else None
+
+
 def _clean(value: str) -> str:
     text = unicodedata.normalize("NFKC", value)
     text = text.replace("–", "-").replace("—", "-").replace("−", "-")

@@ -10,6 +10,7 @@ from app.domain.geography import effective_level
 from app.domain.models import Claim
 from app.domain.params import BadgeParams
 from app.domain.vocab import (
+    NARROW_SETTINGS,
     Badge,
     ClaimKind,
     ClaimStatus,
@@ -19,8 +20,6 @@ from app.domain.vocab import (
 )
 
 SEVERITY: tuple[Badge, ...] = tuple(Badge)  # declaration order, most severe first
-GENERAL_POPULATIONS = frozenset({"adults", "all ages", "general population"})
-NARROW_SETTINGS = frozenset({"hospital", "clinic", "workplace", "school"})
 
 
 @dataclass(frozen=True)
@@ -33,10 +32,10 @@ def _is_not_city_level(claim: Claim, accepted: Sequence[GeographyLevel]) -> bool
     labels = claim.labels
     if effective_level(claim) not in accepted:
         return True
-    group = (labels.population_group or "").strip().casefold()
-    if group and group not in GENERAL_POPULATIONS:
-        return True
-    return (labels.setting or "").strip().casefold() in NARROW_SETTINGS
+    # A subgroup, or people reached only through facilities, schools or workplaces, is
+    # part of a city's population (BD-22). "Adults with hypertension" in a cascade figure
+    # is its denominator, not a subgroup.
+    return bool(labels.population_subgroup) or labels.setting in NARROW_SETTINGS
 
 
 def _is_outdated(

@@ -281,3 +281,46 @@
     controlled in 2024.
   expect:
     - {value: "9.8%", denominator_stated: true}
+
+# --- v3 (BD-22): labels the source states, and only those -------------------------------
+
+- id: sampling-not-described
+  trap: A city figure whose sampling is not described
+  slots: [S03]
+  text: |
+    In 2024, 27.4% of adults in Halden Bay had raised blood pressure, the city's health
+    office reported.
+  expect:
+    - {value: "27.4%", geography_name: Halden Bay, representativeness: not_stated}
+
+- id: random-sample-with-size
+  slots: [S03]
+  text: |
+    The 2023 Halden Bay household survey interviewed a random sample of 1,204 adults in
+    their homes; 31.2% of them had hypertension.
+  expect:
+    - {value: "31.2%", representativeness: representative_sample, sample_size: 1204,
+       setting: community}
+
+- id: area-not-named
+  trap: The city in the task copied as the area of a figure that names none
+  text: |
+    One in three adults has high blood pressure, and 34.0% of adults had raised blood
+    pressure in the 2024 survey, the report says.
+  expect_none: true
+
+- id: cascade-denominator-not-subgroup
+  text: |
+    Of the adults with hypertension in Halden Bay, 41.5% were aware of their condition in
+    the 2024 household survey.
+  expect:
+    - {value: "41.5%", subgroup: false, denominator_stated: true}
+
+- id: clinic-patients-subgroup
+  trap: Patients at clinics reported as if they were the city
+  slots: [S03]
+  text: |
+    Among 812 patients attending Halden Bay's district clinics in 2024, 36.0% had
+    hypertension.
+  expect:
+    - {value: "36.0%", subgroup: true, setting: health_facility, sample_size: 812}

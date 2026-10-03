@@ -9,7 +9,8 @@ from scripts.eval_prompts import GOLDEN, _labels
 GRADED = {
     "kind", "value", "match", "geography_level", "geography_name", "measure_type",
     "denominator_stated", "period_year", "period_none", "label_quote", "relation_type",
-    "programme_status", "sample_size", "population_group",
+    "programme_status", "sample_size", "population_group", "representativeness", "setting",
+    "subgroup",
 }  # fmt: skip
 
 

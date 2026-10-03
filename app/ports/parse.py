@@ -5,6 +5,8 @@ from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict
 
+from app.domain.vocab import DatePrecision
+
 
 class ParsedDocument(BaseModel):
     model_config = ConfigDict(frozen=True)
@@ -13,6 +15,7 @@ class ParsedDocument(BaseModel):
     title: str | None = None
     language: str | None = None
     published_date: date | None = None
+    published_precision: DatePrecision | None = None  # as precise as the metadata states it
     tables: list[tuple[int, int]] = []  # [start, end) offsets of table blocks in `text`
     pages: list[tuple[int, int]] = []  # (page number, start offset) for PDFs
 

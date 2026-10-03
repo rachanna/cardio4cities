@@ -32,6 +32,7 @@ REPRESENTATIVENESS_POINTS: dict[Representativeness, int] = {
     Representativeness.CENSUS: 2,
     Representativeness.REPRESENTATIVE_SAMPLE: 2,
     Representativeness.MODELLED: 1,
+    Representativeness.NOT_STATED: 1,  # unknown: neither credit nor penalty (owner, BD-22)
     Representativeness.NOT_APPLICABLE: 1,
     Representativeness.NON_REPRESENTATIVE: 0,
 }

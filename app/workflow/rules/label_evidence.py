@@ -10,7 +10,8 @@ its "not stated" flags instead. The geography label is required, so it is never 
 the checker decides whether the passages establish it.
 """
 
-from collections.abc import Mapping
+import re
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from app.domain.models import LabelKind, Labels
@@ -57,6 +58,74 @@ def locate_label_quotes(
     return LabelEvidence(spans=spans, cleared=frozenset(cleared))
 
 
+_NUMBER = re.compile(r"\d+(?:[.,]\d+)?")
+_SPAN_MARKS = "-/\u2013"  # hyphen, slash, en dash
+
+
+def _number_forms(token: str) -> set[str]:
+    """A number as a source may write it: "7.0" or "7,0"; "1204" or "1,204"."""
+    forms = {token, token.replace(".", ","), token.replace(",", ".")}
+    if token.isdigit() and len(token) > 3:
+        head, tail = token[:-3], token[-3:]
+        forms |= {f"{head}{sep}{tail}" for sep in (",", ".", " ")}
+    return forms
+
+
+def states_number(texts: Sequence[str], token: str) -> bool:
+    """`token` stands as a whole number in one of the texts: "30" is in "aged 30-79", not
+    in "130" or "30.5"."""
+    for form in _number_forms(token):
+        pattern = re.compile(rf"(?<![\d.,]){re.escape(form)}(?![\d]|[.,]\d)")
+        if any(pattern.search(t) for t in texts):
+            return True
+    return False
+
+
+def _states_year(texts: Sequence[str], year: str) -> bool:
+    """A year in full, or as the short end of a span: "2024" in "2023-24" or "2023/24"."""
+    short = re.compile(rf"\d{{4}}\s*[{_SPAN_MARKS}]\s*{year[2:]}(?!\d)")
+    return states_number(texts, year) or any(short.search(t) for t in texts)
+
+
+@dataclass(frozen=True)
+class Located:
+    labels: Labels
+    cleared: tuple[str, ...]  # label names cleared because the evidence does not state them
+
+
+def keep_located(labels: Labels, evidence: Sequence[str]) -> Located:
+    """Labels whose numbers code can find in `evidence` (the located quote and label
+    passages) are kept; the others are cleared, never guessed (owner, BD-22; R-89).
+    Checked: the age band, the sample size, the numbers in the case definition (which set
+    its threshold) and the years of a stated period."""
+    texts = [normalise_text(t) for t in evidence]
+    update: dict[str, object] = {}
+    cleared: list[str] = []
+    ages = [a for a in (labels.population_age_min, labels.population_age_max) if a is not None]
+    if ages and not all(states_number(texts, str(a)) for a in ages):
+        update |= {"population_age_min": None, "population_age_max": None}
+        cleared.append("age_band")
+    if labels.sample_size is not None and not states_number(texts, str(labels.sample_size)):
+        update["sample_size"] = None
+        cleared.append("sample_size")
+    if labels.case_definition:
+        numbers = _NUMBER.findall(labels.case_definition)
+        if numbers and not all(states_number(texts, n) for n in numbers):
+            update |= {"case_definition": None, "threshold_code": None}
+            cleared.append("case_definition")
+    if labels.period_type is not PeriodType.PUBLICATION_DATE_PROXY:
+        years = sorted(_years(labels))
+        if years and not all(_states_year(texts, y) for y in years):
+            update |= {
+                "reference_start": None,
+                "reference_end": None,
+                "reference_precision": None,
+                "period_type": PeriodType.PUBLICATION_DATE_PROXY,
+            }
+            cleared.append("period")
+    return Located(labels.model_copy(update=update) if update else labels, tuple(cleared))
+
+
 def clear_labels(labels: Labels, cleared: frozenset[LabelKind]) -> Labels:
     update: dict[str, object] = {}
     if "period" in cleared:
@@ -72,5 +141,6 @@ def clear_labels(labels: Labels, cleared: frozenset[LabelKind]) -> Labels:
             "population_age_max": None,
             "population_sex": Sex.NOT_STATED,
             "population_group": None,
+            "population_subgroup": None,
         }
     return labels.model_copy(update=update) if update else labels

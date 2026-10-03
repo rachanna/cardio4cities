@@ -120,6 +120,11 @@ NEW_GOV_QUOTE = (
 )
 
 
+AREA_QUOTE = LabelQuotesOut(
+    period=None, geography="In the Halden Bay Heart Survey, 31.5% of adults", population=None
+)
+
+
 def page() -> bytes:
     body = (
         f"<p>{TRUE_SENTENCE}</p><p>{OTHER_SENTENCE}</p><p>{NEARBY_SENTENCE}</p>"
@@ -162,7 +167,7 @@ def labels(measure: MeasureType, period: str | None, place: str = "Halden Bay") 
         reference_period=PeriodOut(start=period, end=period) if period else None,
         population=PopulationOut(age_min=18, age_max=None, sex=Sex.ALL, group=None),
         setting=None,
-        sample_size=None,
+        sample_size_as_written=None,
         case_definition=None,
         method=Method.MEASURED,
         representativeness=Representativeness.REPRESENTATIVE_SAMPLE,
@@ -227,6 +232,7 @@ def extractor(user: str) -> ExtractorOutput:
             claim(  # planted: the quote is real, the statement overreaches (AT-08)
                 PLANTED_STATEMENT,
                 "The survey team visited 40 clinics across the coastal districts",
+                label_quotes=AREA_QUOTE,  # the area is named elsewhere on the page (BD-22)
             ),
             claim(  # the quote is not on the page: dropped by code, never checked
                 MISSING_STATEMENT, "the screening budget was doubled in the last financial year"

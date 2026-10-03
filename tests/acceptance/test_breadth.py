@@ -209,8 +209,7 @@ async def test_a_programme_takes_the_status_of_its_newest_supported_claim(
     relational: PostgresRelational, migrated: str, valid_env: dict[str, str]
 ) -> None:
     """T-06: a programme announced as planned and later reported running is shown as
-    running, with the claim that says so. Both statuses are observed on the page's date
-    (BD-19); the later stated start is the later state."""
+    running, with the claim that says so (BD-19, BD-22)."""
     run_id, _, _ = await sparse_run(relational, migrated, valid_env, {"S07": PROGRAMME_URL})
     rows = await query_rows(
         relational,
@@ -228,7 +227,10 @@ async def test_a_programme_takes_the_status_of_its_newest_supported_claim(
         r=run_id,
     )
     assert attributes["status_claim_id"] == stated[0]["claim_id"]
-    assert attributes["status_as_of"] == stated[0]["reference_end"].isoformat()
+    # The page states no date, and none is guessed from its text (BD-22): the status is
+    # observed as of its stated start
+    assert stated[0]["reference_end"] is None
+    assert attributes["status_as_of"] == "2025-03-01"
     assert (await slot_rows(relational, run_id))["S07"]["status"] == "answered"
 
 

@@ -11,16 +11,18 @@ from app.domain.vocab import CrawlOutcome, EventType
 from app.workflow.budget import BudgetExhaustedError
 from app.workflow.collection import GateDecision
 from app.workflow.deps import RunDeps
-from app.workflow.ids import new_id
+from app.workflow.ids import stable_id
 from app.workflow.nodes._deps import deps
 from app.workflow.state import SlotState
 
 
 async def record_decision(d: RunDeps, run_id: str, decision: GateDecision) -> str:
-    decision_id = new_id("cd")
     reason = decision.reason
     if decision.usage_preferences and decision.outcome is CrawlOutcome.ALLOWED:
         reason += f"; stated AI-use preferences recorded: {decision.usage_preferences}"
+    decision_id = stable_id(
+        "cd", run_id, decision.url, decision.outcome.value, decision.rule or "", reason
+    )
     await d.relational.sources.add_crawl_decision(
         CrawlDecision(
             decision_id=decision_id,
@@ -63,4 +65,5 @@ async def crawl_gate(state: SlotState, config: RunnableConfig) -> dict[str, Any]
 
 
 def route_after_gate(state: SlotState) -> str:
-    return "fetch_parse" if state.get("allowed") else "record_gate_gap"
+    """Reused sources passed the gate when another slot fetched them (BD-14)."""
+    return "fetch_parse" if state.get("allowed") or state.get("reused") else "record_gate_gap"

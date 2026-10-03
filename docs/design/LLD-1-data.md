@@ -268,25 +268,20 @@ class SlotResult(BaseModel):
     best_claim_ids: list[str]        # claims shown for this slot, ranked
     gap_note: str | None             # template text when status != answered
 
-class RunSummary(BaseModel):
-    run_id: str
-    claims_extracted: int
-    claims_dropped_quote: int
-    claims_supported: int
-    claims_refuted: int
-    claims_insufficient: int
-    claims_contested: int
-    sources_fetched: int
-    sources_blocked: int
-    sources_unreachable: int
-    sources_unreadable: int
-    searches_used: int
-    fetches_used: int
-    tokens_in: int
-    tokens_out: int
-    cost_micro_usd: int
-    wall_clock_ms: int
-    by_model: dict[str, dict]        # tokens and cost per model id
+class RunSummary(BaseModel):          # stored as run_summary.summary (BD-14, AT-38)
+    claims: dict[str, int]           # claim rows by status, plus `dropped` (no row, BD-09)
+    dropped: dict[str, int]          # claim_dropped by reason; geography_unresolved always present
+    sources: dict                    # read: int; blocked, unreachable: crawl outcome -> URLs;
+                                     # unreadable: parse outcome -> pages
+    slots: dict[str, int]            # slots by status
+    slot_results: dict[str, dict]    # per slot: status, flags, replans_used, gap_note
+    models: dict[str, dict]          # per model id: calls, tokens_in, tokens_out, cost_micro_usd
+    cost_usd: float                  # model cost of the run
+    time: dict                       # wall_clock_ms; busy_ms per stage (wave0, planning, search,
+                                     # fetch, extraction, verification, writes, coverage), summed
+                                     # across parallel slots
+    graph_retry: dict[str, int]      # graph writes retried at brief_ready
+    budget: dict                     # the ledger's counters, phase and refused counters
 ```
 
 ---
@@ -386,7 +381,7 @@ DHS is not in the registry: its indicator API has no hypertension indicator (BD-
 
 ## 4. PostgreSQL schema
 
-Migrations create everything below in schema `c4c`. LangGraph's checkpointer creates its own tables in schema `lg` through its own setup call.
+Migrations create everything below in schema `c4c`. Migration 0009 creates schema `lg`; LangGraph's checkpointer creates its own tables there through its own setup call (BD-14).
 
 ### 4.1 Reference tables
 
@@ -442,9 +437,10 @@ CREATE TABLE run (
   city_id text NOT NULL REFERENCES city,
   status text NOT NULL CHECK (status IN ('queued','running','completed','stopped_by_budget','failed')),
   started_at timestamptz, finished_at timestamptz,
-  budget jsonb NOT NULL,                         -- limits in force
+  budget jsonb NOT NULL,                         -- limits in force; `used`: the ledger's saved counters (BD-14)
   versions jsonb NOT NULL,                       -- model ids and prompt versions per role
-  error text
+  error text,
+  resume_attempts int NOT NULL DEFAULT 0         -- resumed at start-up at most once (BD-14)
 );
 CREATE INDEX run_city_idx ON run (city_id, started_at DESC);
 ALTER TABLE city ADD CONSTRAINT city_latest_run_fk FOREIGN KEY (latest_run_id) REFERENCES run;
@@ -600,7 +596,9 @@ CREATE TABLE relation (
   subject_entity_id text NOT NULL REFERENCES entity,
   relation_type text NOT NULL,
   object_entity_id text NOT NULL REFERENCES entity,
-  valid_from date, valid_to date, valid_from_is_proxy boolean NOT NULL DEFAULT false
+  valid_from date, valid_to date, valid_from_is_proxy boolean NOT NULL DEFAULT false,
+  programme_status text CHECK (programme_status IN ('planned','piloting','running','ended','unknown'))
+                                                 -- as the source states it (T-06, BD-14)
 );
 
 CREATE TABLE verdict (
@@ -752,7 +750,7 @@ Declared as Pydantic models and passed to Graphiti as custom entity types. Attri
 | `Place` | `entity_id`, `gazetteer_id` (when known), `level` (GeographyLevel) |
 | `Organization` | `entity_id`, `subtype` (`government`, `facility`, `academic`, `ngo`, `funder`, `other`) |
 | `Person` | `entity_id` |
-| `Programme` | `entity_id`, `status` (`planned`, `piloting`, `running`, `ended`, `unknown`) |
+| `Programme` | `entity_id`, `status` (`planned`, `piloting`, `running`, `ended`, `unknown`), `status_claim_id`, `status_as_of`: set from the newest supported claim that states a status, never from `unknown` or an undated claim over a stated one (T-06, BD-14) |
 | `Policy` | `entity_id`, `level` (GeographyLevel), `year` |
 | `Indicator` | `entity_id`, `indicator_code` |
 
@@ -800,6 +798,8 @@ graph.add_triplet(subject_node, edge, object_node)
 **Supersession.** For `GOVERNS` and `LEADS`, before writing a new edge the write node finds the current edge with the same subject role and place or organisation. If the new claim's `valid_from` is later, it sets `invalid_at` on the old edge, sets `graph_link.invalidated_at`, and marks the old claim `superseded`. Nothing is deleted (R-44, R-60).
 
 **Contested relations.** When two supported claims disagree on a `GOVERNS` or `LEADS` relation with overlapping validity, both edges are written with `status = contested` in their attributes, and a `contested_pair` row is created. Neither is end-dated.
+
+**Embedding marker (R-82, BD-14).** One `C4CMeta {name: 'embedding'}` node holds the `embeddings.key` that made the graph's name and fact embeddings. Start-up refuses a different key, or entities with no marker, and names the fix (`poe purge-graph`, local only); an empty graph takes the configured key.
 
 ### 6.4 Graph queries the system relies on
 

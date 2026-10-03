@@ -9,6 +9,49 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from app.domain.models import Claim, Relation, Statistic, Verdict
 
 
+def _claim(row: Any) -> Claim:
+    """A claim row (with its label columns) as the domain model."""
+    labels = {
+        "geography_level": row["geography_level"],
+        "geography_name": row["geography_name"],
+        "measure_type": row["measure_type"],
+        "reference_start": row["reference_start"],
+        "reference_end": row["reference_end"],
+        "reference_precision": row["reference_precision"],
+        "period_type": row["period_type"],
+        "representativeness": row["representativeness"],
+        **row["optional_labels"],
+    }
+    return Claim.model_validate(
+        {
+            **{
+                k: row[k]
+                for k in (
+                    "claim_id",
+                    "run_id",
+                    "city_id",
+                    "slot_id",
+                    "source_id",
+                    "kind",
+                    "statement",
+                    "quote",
+                    "quote_lang",
+                    "quote_translation",
+                    "span_start",
+                    "span_end",
+                    "status",
+                    "extractor_model",
+                    "prompt_version",
+                )
+            },
+            "labels": labels,
+            "flags": frozenset(row["flags"]),
+            "label_spans": {k: tuple(v) for k, v in row["label_spans"].items()},
+            "geography_fit": row["geography_fit"],
+        }
+    )
+
+
 class PostgresResearchRepo:
     def __init__(self, engine: AsyncEngine) -> None:
         self._engine = engine
@@ -29,6 +72,7 @@ class PostgresResearchRepo:
                 text(
                     "INSERT INTO search_query (query_id, run_id, slot_id, query, lang, provider,"
                     " result_count, replan_round) VALUES (:q, :r, :s, :t, :l, :p, :n, :rr)"
+                    " ON CONFLICT (query_id) DO NOTHING"
                 ),
                 {
                     "q": query_id,
@@ -78,7 +122,7 @@ class PostgresResearchRepo:
                     " :geography_level, :geography_name, :measure_type, :reference_start,"
                     " :reference_end, :reference_precision, :period_type, :representativeness,"
                     " :optional_labels, :flags, :status, :extractor_model, :prompt_version,"
-                    " :label_spans, :geography_fit)"
+                    " :label_spans, :geography_fit) ON CONFLICT (claim_id) DO NOTHING"
                 ),
                 {
                     "claim_id": claim.claim_id,
@@ -119,7 +163,7 @@ class PostgresResearchRepo:
                     text(
                         "INSERT INTO statistic (claim_id, indicator_code, value_as_written,"
                         " value_num, unit, lower, upper, comparability_key) VALUES (:c, :i, :w,"
-                        " :n, :u, :lo, :hi, :k)"
+                        " :n, :u, :lo, :hi, :k) ON CONFLICT (claim_id) DO NOTHING"
                     ),
                     {
                         "c": statistic.claim_id,
@@ -136,8 +180,9 @@ class PostgresResearchRepo:
                 await conn.execute(
                     text(
                         "INSERT INTO relation (claim_id, subject_entity_id, relation_type,"
-                        " object_entity_id, valid_from, valid_to, valid_from_is_proxy)"
-                        " VALUES (:c, :s, :t, :o, :f, :u, :p)"
+                        " object_entity_id, valid_from, valid_to, valid_from_is_proxy,"
+                        " programme_status) VALUES (:c, :s, :t, :o, :f, :u, :p, :ps)"
+                        " ON CONFLICT (claim_id) DO NOTHING"
                     ),
                     {
                         "c": relation.claim_id,
@@ -147,6 +192,9 @@ class PostgresResearchRepo:
                         "f": relation.valid_from,
                         "u": relation.valid_to,
                         "p": relation.valid_from_is_proxy,
+                        "ps": relation.programme_status.value
+                        if relation.programme_status
+                        else None,
                     },
                 )
 
@@ -172,7 +220,7 @@ class PostgresResearchRepo:
                     " period_verified, verifier_model, verifier_family, fallback_used,"
                     " prompt_version) VALUES (:claim_id, :label, :rationale, :scope_verified,"
                     " :period_verified, :verifier_model, :verifier_family, :fallback_used,"
-                    " :prompt_version)"
+                    " :prompt_version) ON CONFLICT (claim_id) DO NOTHING"
                 ),
                 verdict.model_dump(mode="json"),
             )
@@ -215,45 +263,7 @@ class PostgresResearchRepo:
                 .mappings()
                 .one()
             )
-        labels = {
-            "geography_level": row["geography_level"],
-            "geography_name": row["geography_name"],
-            "measure_type": row["measure_type"],
-            "reference_start": row["reference_start"],
-            "reference_end": row["reference_end"],
-            "reference_precision": row["reference_precision"],
-            "period_type": row["period_type"],
-            "representativeness": row["representativeness"],
-            **row["optional_labels"],
-        }
-        claim = Claim.model_validate(
-            {
-                **{
-                    k: row[k]
-                    for k in (
-                        "claim_id",
-                        "run_id",
-                        "city_id",
-                        "slot_id",
-                        "source_id",
-                        "kind",
-                        "statement",
-                        "quote",
-                        "quote_lang",
-                        "quote_translation",
-                        "span_start",
-                        "span_end",
-                        "status",
-                        "extractor_model",
-                        "prompt_version",
-                    )
-                },
-                "labels": labels,
-                "flags": frozenset(row["flags"]),
-                "label_spans": {k: tuple(v) for k, v in row["label_spans"].items()},
-                "geography_fit": row["geography_fit"],
-            }
-        )
+        claim = _claim(row)
         statistic = None
         if row["indicator_code"] is not None:
             statistic = Statistic(
@@ -391,3 +401,41 @@ class PostgresResearchRepo:
                 .one_or_none()
             )
         return dict(row) if row else None
+
+    # --- coverage (D2-5, LLD-2 §11) -----------------------------------------------------
+
+    async def slot_claims(self, run_id: str, slot_id: str) -> list[tuple[Claim, str]]:
+        """Every claim row of the slot in the run, with its source's publisher class."""
+        async with self._engine.connect() as conn:
+            rows = await conn.execute(
+                text(
+                    "SELECT c.*, so.publisher_class AS source_class FROM claim c"
+                    " JOIN source so USING (source_id)"
+                    " WHERE c.run_id = :r AND c.slot_id = :s ORDER BY c.claim_id"
+                ),
+                {"r": run_id, "s": slot_id},
+            )
+            return [(_claim(r), str(r["source_class"])) for r in rows.mappings()]
+
+    async def contested_claim_ids(self, run_id: str) -> set[str]:
+        async with self._engine.connect() as conn:
+            rows = await conn.execute(
+                text(
+                    "SELECT p.claim_a, p.claim_b FROM contested_pair p"
+                    " JOIN claim c ON c.claim_id = p.claim_a WHERE c.run_id = :r"
+                ),
+                {"r": run_id},
+            )
+            return {c for r in rows for c in (r.claim_a, r.claim_b)}
+
+    async def queries(self, query_ids: list[str]) -> list[tuple[str, str]]:
+        """(text, language) of the given searches, in the order given."""
+        if not query_ids:
+            return []
+        async with self._engine.connect() as conn:
+            rows = await conn.execute(
+                text("SELECT query_id, query, lang FROM search_query WHERE query_id = ANY(:ids)"),
+                {"ids": query_ids},
+            )
+            found = {r.query_id: (r.query, r.lang) for r in rows}
+        return [found[q] for q in query_ids if q in found]

@@ -266,7 +266,7 @@ llm:
     ollama:    { base_url: http://ollama:11434 }
   concurrency: 4
   allow_same_family_checker: false   # BD-02; see §5.2
-embeddings: { provider: openai, model: "<confirm day 1>", dimension: 0, key: openai_small_v1 }
+embeddings: { provider: openai, model: "<confirm day 1>", dimension: 0, key: openai_small_v1, concurrency: 4 }   # concurrency: BD-14
 search:     { provider: brave, mode: links_only, api_key_env: BRAVE_API_KEY, rate_per_s: 1 }
             # searxng (local): { provider: searxng, mode: links_only, base_url: http://localhost:8888, rate_per_s: 1 } (BD-02)
 relational: { dsn_env: DATABASE_URL }
@@ -284,7 +284,7 @@ verify:     { max_claims_per_slot: 5, label_margin_chars: 200 }   # BD-10
 geography:  { nearby_km: 75 }   # BD-10
 eval:       { checker_agreement_min: 0.9 }   # LLD-3 §9
 stream:     { poll_interval_s: 0.5, heartbeat_s: 15 }   # BD-09
-select:     { max_new_urls_per_slot_round: 4 }
+select:     { max_new_urls_per_slot_round: 4, max_reused_per_slot_round: 2 }   # reused: BD-14
 replan:     { max_rounds: 2, max_rounds_wider_geo: 1 }
 extract:    { window_tokens: 12000, overlap_tokens: 500 }
 quote:      { min_words: 6, max_words: 60 }   # BD-06
@@ -536,10 +536,10 @@ Relational access uses repository classes per aggregate (`RunRepo`, `ClaimRepo`,
 | AT-12, AT-27 | `tests/acceptance/test_evidence.py` | Automated |
 | AT-13, AT-14, AT-21, AT-31 | `tests/acceptance/test_scope_and_badges.py` | Automated |
 | AT-15, AT-28 | `tests/acceptance/test_answers.py` | Automated |
-| AT-16, AT-32 | `tests/acceptance/test_sparse_city.py` | Automated (fixture of a sparse fictional city) |
+| AT-16, AT-32 | `tests/acceptance/test_breadth.py` | Automated (sparse fictional web; BD-14) |
 | AT-17, AT-29 | `tests/smoke/test_deployed.py` | Automated against the deployed URL |
 | AT-18 | `tests/acceptance/test_report.py` | Automated |
-| AT-19 | `tests/acceptance/test_budget.py` | Automated |
+| AT-19 | `tests/acceptance/test_breadth.py` (tiny budget), `tests/unit/test_budget.py` | Automated |
 | AT-20 | `tests/acceptance/test_conflicts.py` | Automated |
 | AT-22 | `tests/acceptance/test_injection.py` | Automated |
 | AT-24 | `tests/acceptance/test_resolve.py` | Automated |
@@ -549,7 +549,8 @@ Relational access uses repository classes per aggregate (`RunRepo`, `ClaimRepo`,
 | AT-34 | `tests/architecture/test_import_lint.py` | Automated |
 | AT-35 | `tests/contract/` | Automated |
 | AT-36 | `tests/acceptance/test_config_validation.py` | Automated |
-| AT-38 | `tests/acceptance/test_run_summary.py` | Automated |
+| AT-38 | `tests/acceptance/test_breadth.py` | Automated |
+| Resume after a crash (LLD-2 §17) | `tests/acceptance/checkpointed/test_resume.py` | Automated (real checkpointer; BD-14) |
 | AT-39 to AT-46 | `tests/acceptance/test_retrieval.py` | Automated (CHG-01) |
 | AT-47 | `tests/acceptance/test_retrieval_eval.py` | Automated (CHG-01) |
 | R-14 exploration, DS-1 to DS-7 | `docs/REHEARSAL.md` checklist | Demo rehearsal |

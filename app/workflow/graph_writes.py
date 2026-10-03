@@ -5,7 +5,8 @@ indicator becomes an `Indicator -MEASURED_IN-> Place` edge that carries no value
 Edge UUID = uuid5(claim_id); attributes carry claim and source IDs, status and the
 proxy-date flag. Supersession is applied as `invalid_at`; nothing is deleted (R-44).
 A graph failure leaves the claim supported in Postgres with no `graph_link`; the write
-is retried once at `brief_ready` (LLD-2 §3.3).
+is retried once at `brief_ready` (LLD-2 §3.3). A supported claim that states a programme's
+status also updates the Programme entity (T-06).
 """
 
 import logging
@@ -16,6 +17,7 @@ from app.domain.models import Claim, Entity, Statistic
 from app.domain.vocab import ClaimKind, EntityType, PeriodType, RelationType
 from app.ports.graph import GraphEdge, GraphEntity
 from app.workflow.deps import RunDeps
+from app.workflow.rules.programme_status import programme_status_update
 
 log = logging.getLogger(__name__)
 
@@ -129,3 +131,33 @@ async def mark_edge(d: RunDeps, claim_id: str, status: str) -> None:
         await d.graph.update_edge_attributes(edge_uuid, {"status": status})
     except Exception as exc:
         log.warning("graph status update failed for %s (%s)", claim_id, type(exc).__name__)
+
+
+async def apply_programme_status(d: RunDeps, claim: Claim) -> None:
+    """A supported relation claim that states a programme's status updates the Programme
+    entity, in Postgres and in the graph, when it is newer than the status held (T-06)."""
+    if claim.kind is not ClaimKind.RELATION:
+        return
+    relation = await d.relational.research.relation(claim.claim_id)
+    if relation is None or relation.programme_status is None:
+        return
+    # The relation's own dates say when the status held: an end for `ended`, a start
+    # otherwise; the claim's period (possibly a publication-date proxy) comes last.
+    as_of = relation.valid_to or relation.valid_from or claim.labels.reference_end
+    ents = await d.relational.entities.get([relation.subject_entity_id, relation.object_entity_id])
+    for entity in ents.values():
+        if entity.entity_type is not EntityType.PROGRAMME:
+            continue
+        update = programme_status_update(
+            entity.attributes, relation.programme_status, claim.claim_id, as_of
+        )
+        if update is None:
+            continue
+        await d.relational.entities.merge_attributes(entity.entity_id, update)
+        updated = entity.model_copy(update={"attributes": {**entity.attributes, **update}})
+        try:
+            await d.graph.upsert_entity(_node(updated))
+        except Exception as exc:  # Postgres holds the status; the node catches up on retry
+            log.warning(
+                "graph programme status failed for %s (%s)", claim.claim_id, type(exc).__name__
+            )

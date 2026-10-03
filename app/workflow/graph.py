@@ -1,21 +1,24 @@
 """The LangGraph workflow (LLD-2 §3): a main graph that fans out one slot subgraph per
 slot. The conditional edges are the routing points the rendered graph shows (AT-03):
-the crawl decision, the verdict and, from D2-5, sufficiency.
+the crawl decision, the verdict and sufficiency (coverage: re-plan or move on).
 
-D2-3 builds the thin slice: wave0, coverage and analytics join the main graph in D2-5,
-and the checkpointer with them."""
+Every node adds its busy time to its stage (AT-38). With a checkpointer (D2-5, BD-14),
+each step is saved, so a run stopped by a restart resumes where it was."""
 
 from collections.abc import Awaitable
 from typing import Any, Protocol
 
 from langchain_core.runnables import RunnableConfig
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Send
 
 from app.workflow.budget import BudgetExhaustedError
+from app.workflow.nodes._deps import deps
 from app.workflow.nodes.brief_ready import brief_ready
 from app.workflow.nodes.consistency import consistency
+from app.workflow.nodes.coverage import analytics, coverage, route_after_coverage
 from app.workflow.nodes.crawl_gate import crawl_gate, route_after_gate
 from app.workflow.nodes.extract import extract
 from app.workflow.nodes.fetch_parse import fetch_parse
@@ -34,17 +37,38 @@ class SlotNode(Protocol):
     def __call__(self, state: SlotState, config: RunnableConfig) -> Awaitable[dict[str, Any]]: ...
 
 
+class RunNode(Protocol):
+    def __call__(self, state: RunState, config: RunnableConfig) -> Awaitable[dict[str, Any]]: ...
+
+
 def guarded(name: str, node: SlotNode) -> SlotNode:
     """One slot's failure never stops the run: the error goes on the slot report and the
     following nodes see empty inputs (LLD-2 §17). Budget exhaustion is not an error."""
 
     async def run(state: SlotState, config: RunnableConfig) -> dict[str, Any]:
+        clock = deps(config).stages
+        started = clock.start()
         try:
             return await node(state, config)
         except BudgetExhaustedError:
             return {}
         except Exception as exc:  # recorded on the slot report
             return {"error": f"{name}: {type(exc).__name__}"}
+        finally:
+            clock.stop(name, started)
+
+    run.__name__ = name
+    return run
+
+
+def timed(name: str, node: RunNode) -> RunNode:
+    async def run(state: RunState, config: RunnableConfig) -> dict[str, Any]:
+        clock = deps(config).stages
+        started = clock.start()
+        try:
+            return await node(state, config)
+        finally:
+            clock.stop(name, started)
 
     run.__name__ = name
     return run
@@ -83,34 +107,44 @@ def build_slot_graph() -> CompiledStateGraph[Any, Any, Any, Any]:
     return g.compile()
 
 
-def fan_out(state: RunState) -> list[Send]:
-    return [
+def fan_out(state: RunState) -> list[Send] | str:
+    """One slot subgraph per slot with a plan for this round; none left: to coverage."""
+    round_no = state.get("round", 0)
+    plans = state.get("plans", {})
+    sends = [
         Send(
             "slot_subgraph",
             {
                 "run_id": state["run_id"],
                 "city": state["city"],
                 "slot_id": slot_id,
-                "round": state.get("round", 0),
-                "plan": state["plans"][slot_id],
+                "round": round_no,
+                "plan": plans[slot_id],
             },
         )
         for slot_id in state["slots_to_work"]
-        if slot_id in state.get("plans", {})
+        if slot_id in plans and plans[slot_id].round == round_no
     ]
+    return sends or "coverage"
 
 
-def build_graph() -> CompiledStateGraph[Any, Any, Any, Any]:
+def build_graph(
+    checkpointer: BaseCheckpointSaver[Any] | None = None,
+) -> CompiledStateGraph[Any, Any, Any, Any]:
     g = StateGraph(RunState)
     g.add_node("resolve_city", resolve_city)
-    g.add_node("wave0", wave0)
-    g.add_node("plan_slots", plan_slots)
+    g.add_node("wave0", timed("wave0", wave0))
+    g.add_node("plan_slots", timed("plan_slots", plan_slots))
     g.add_node("slot_subgraph", build_slot_graph())
-    g.add_node("brief_ready", brief_ready)
+    g.add_node("coverage", timed("coverage", coverage))
+    g.add_node("analytics", analytics)
+    g.add_node("brief_ready", brief_ready)  # writes the summary: not timed by it
     g.add_edge(START, "resolve_city")
     g.add_edge("resolve_city", "wave0")
     g.add_edge("wave0", "plan_slots")
-    g.add_conditional_edges("plan_slots", fan_out, ["slot_subgraph"])
-    g.add_edge("slot_subgraph", "brief_ready")
+    g.add_conditional_edges("plan_slots", fan_out, ["slot_subgraph", "coverage"])
+    g.add_edge("slot_subgraph", "coverage")
+    g.add_conditional_edges("coverage", route_after_coverage, ["plan_slots", "analytics"])
+    g.add_edge("analytics", "brief_ready")
     g.add_edge("brief_ready", END)
-    return g.compile()
+    return g.compile(checkpointer=checkpointer)

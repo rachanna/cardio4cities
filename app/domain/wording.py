@@ -45,3 +45,19 @@ CONFIDENCE_WORDS: dict[ConfidenceLabel, str] = {
     ConfidenceLabel.MEDIUM: "Medium confidence",
     ConfidenceLabel.LOW: "Low confidence",
 }
+
+# Search languages in gap notes (LLD-2 §11.4). Generic ISO 639-1 names; a code not listed
+# is shown as written.
+LANGUAGE_NAMES: dict[str, str] = {
+    "ar": "Arabic", "bn": "Bengali", "de": "German", "en": "English", "es": "Spanish",
+    "fa": "Persian", "fr": "French", "gu": "Gujarati", "hi": "Hindi", "id": "Indonesian",
+    "it": "Italian", "ja": "Japanese", "kn": "Kannada", "ko": "Korean", "ml": "Malayalam",
+    "mr": "Marathi", "ms": "Malay", "nl": "Dutch", "pa": "Punjabi", "pl": "Polish",
+    "pt": "Portuguese", "ru": "Russian", "sw": "Swahili", "ta": "Tamil", "te": "Telugu",
+    "th": "Thai", "tl": "Tagalog", "tr": "Turkish", "uk": "Ukrainian", "ur": "Urdu",
+    "vi": "Vietnamese", "zh": "Chinese",
+}  # fmt: skip
+
+
+def language_name(code: str) -> str:
+    return LANGUAGE_NAMES.get(code.lower(), code)

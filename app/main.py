@@ -3,7 +3,8 @@
 Settings are loaded and validated, the container built and reference data
 checked in the lifespan: a bad configuration or an unloaded database stops
 start-up with a message naming each problem (R-82), while importing this
-module stays free of side effects.
+module stays free of side effects. Start-up also refuses a graph whose embeddings were
+made by another model, and resumes a run a stopped process left behind (D2-5, BD-14).
 """
 
 import logging
@@ -21,6 +22,7 @@ from app.api.limits import FailureLimiter
 from app.api.routers import health, runs, session
 from app.api.routers.health import HealthService
 from app.container import AdapterRegistry, Container, build_container
+from app.ports.graph import GraphPort
 from app.settings import ConfigError, check_indicator_codes, check_reference_slots, load_settings
 from app.workflow.runner import RunManager
 
@@ -51,6 +53,35 @@ async def check_reference_data(container: Container) -> None:
         raise ConfigError(problems)
 
 
+PURGE_HINT = "run `uv run poe purge-graph` (local only), or point NEO4J_URI at an empty database"
+
+
+async def check_graph_marker(graph: GraphPort | None, embedding_key: str) -> None:
+    """R-82: one embedding model per store. The graph records the key of the model that
+    made its embeddings; start-up refuses a different one. An unreachable graph is left
+    to the health check: it never blocks start-up."""
+    if graph is None:
+        return
+    try:
+        marker = await graph.embedding_marker()
+        if marker is None and not await graph.has_entities():
+            await graph.set_embedding_marker(embedding_key)
+            return
+    except Exception as exc:
+        log.warning("graph embedding marker not checked (%s)", type(exc).__name__)
+        return
+    if marker is None:
+        raise ConfigError(
+            [f"the graph holds entities with no embedding marker, so they may come from "
+             f"another embedding model than {embedding_key!r}: {PURGE_HINT}"]
+        )  # fmt: skip
+    if marker != embedding_key:
+        raise ConfigError(
+            [f"the graph's embeddings were made with {marker!r} but the configuration uses "
+             f"{embedding_key!r}: {PURGE_HINT}"]
+        )  # fmt: skip
+
+
 def _lifespan(
     env_file: Path | None, registry: AdapterRegistry | None
 ) -> Callable[[FastAPI], AbstractAsyncContextManager[None]]:
@@ -62,6 +93,7 @@ def _lifespan(
         container = build_container(settings, registry)
         try:
             await check_reference_data(container)
+            await check_graph_marker(container.graph, settings.config.embeddings.key)
             if container.missing:
                 log.warning("adapters not built yet: %s", ", ".join(container.missing))
             access = settings.config.access
@@ -73,6 +105,10 @@ def _lifespan(
             )
             app.state.session_limiter = FailureLimiter()
             app.state.runs = RunManager(container, settings)
+            if container.relational is not None:
+                resumed = await app.state.runs.resume_stranded()
+                if resumed:
+                    log.warning("resumed runs left by a stopped process: %s", ", ".join(resumed))
             app.state.health = HealthService(
                 relational=container.relational,
                 probes=container.probes,

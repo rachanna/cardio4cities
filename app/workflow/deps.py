@@ -3,6 +3,7 @@ LangGraph config. Ports and parameters only: nodes never import adapters."""
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import date
 
 from app.domain.models import IndicatorDef, SlotDef
 from app.domain.params import (
@@ -10,6 +11,7 @@ from app.domain.params import (
     ConsistencyParams,
     GeographyParams,
     QuoteParams,
+    ReplanParams,
     VerifyParams,
 )
 from app.ports.embeddings import EmbeddingsPort
@@ -24,6 +26,8 @@ from app.workflow.budget import BudgetLedger
 from app.workflow.collection import Collector
 from app.workflow.entities import EntityResolver
 from app.workflow.events import EventEmitter
+from app.workflow.fetch_cache import FetchCache
+from app.workflow.limits import StageClock
 from app.workflow.rules.chunking import ChunkParams
 from app.workflow.rules.selection import PublisherTable
 from app.workflow.rules.thresholds import ThresholdRule
@@ -82,7 +86,11 @@ class RunDeps:
     chunk: ChunkParams
     window: WindowParams
     max_new_urls: int  # select.max_new_urls_per_slot_round [tunable]
-    today: Callable[[], object] = field(default=lambda: None)
+    max_reused_urls: int  # select.max_reused_per_slot_round [tunable] (BD-14)
+    replan: ReplanParams
+    today: Callable[[], date] = date.today
+    fetch_cache: FetchCache = field(default_factory=FetchCache)  # one fetch per URL per run
+    stages: StageClock = field(default_factory=StageClock)  # busy time per stage (AT-38)
 
     @property
     def collection(self) -> str:

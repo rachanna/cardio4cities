@@ -19,6 +19,8 @@ from app.workflow.nodes._deps import deps
 from app.workflow.state import SlotState
 
 LABEL_ORDER = ("period", "geography", "population")
+# A resumed run meets claims the checker already judged (BD-14): their verdict stands.
+PASSED_CHECKER = frozenset({ClaimStatus.SUPPORTED, ClaimStatus.CONTESTED, ClaimStatus.SUPERSEDED})
 STATUS_FOR = {
     VerdictLabel.SUPPORTED: ClaimStatus.SUPPORTED,
     VerdictLabel.REFUTED: ClaimStatus.REFUTED,
@@ -32,6 +34,10 @@ async def verify(state: SlotState, config: RunnableConfig) -> dict[str, Any]:
     supported: list[str] = []
     for claim_id in state.get("matched_claim_ids", [])[: d.verify.max_claims_per_slot]:
         claim, statistic = await d.relational.research.claim_with_statistic(claim_id)
+        if claim.status is not ClaimStatus.EXTRACTED:
+            if claim.status in PASSED_CHECKER:
+                supported.append(claim_id)
+            continue
         source = await d.relational.sources.source_for_extraction(claim.source_id) or {}
         text = str(source.get("parsed_text") or "")
         user = context.build_user_message(

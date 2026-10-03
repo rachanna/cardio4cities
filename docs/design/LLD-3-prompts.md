@@ -87,6 +87,7 @@ Few-shot examples use the fictional city **"Halden Bay"** in the fictional count
 city: {name}, {admin1_name}, {country_name}
 languages: {languages}                 # primary first
 round: {round}                         # 0 first pass; 1–2 re-plan
+government_sites: {site_filters}       # v2: site:<label>.<iso2> for the generic government labels
 slots:
 - {slot_id}: {question} (looking for: {kind}; indicators: {indicator_names})
 …
@@ -117,6 +118,22 @@ Rules:
 - Keep each query under 15 words.
 ```
 
+### 3.2a System prompt (v2, BD-14)
+
+v1 plus two rules, generic and free of city content (R-01):
+
+```text
+- Survey names you may use when they fit the country: WHO STEPS survey, Demographic and
+  Health Survey (DHS), national family health survey, national health survey, NCD risk
+  factor survey, Global Burden of Disease, NCD-RisC. Never invent a survey name.
+- government_sites lists site: filters for the country's government domains. For a
+  slot about government programmes, policies, budgets or official figures, you may make
+  one query use one of them, for example "hypertension programme site:gov.xx". Use them
+  as given; never write a site: filter that is not in the list.
+```
+
+and the re-plan rule names `previous_attempts` and a government site filter as one more change of approach. The filters come from the government `second_level` labels in `reference/publishers.yaml` under the city's ISO 3166 code; code refuses a `site:` filter that is not in the list (§3.4, repair).
+
 ### 3.3 Output schema
 
 ```python
@@ -138,6 +155,7 @@ class SlotQueries(BaseModel):
 - `slot_id` set equals the input set; `lang` in `languages ∪ {en}`.
 - If a non-English primary language exists, each slot has at least one query in it; otherwise repair.
 - On re-plan, any query identical (after normalising case and spaces) to an earlier one is removed; if fewer than 1 remains, repair.
+- v2: a `site:` filter must be one of `government_sites`; otherwise repair.
 
 ---
 

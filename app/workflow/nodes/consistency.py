@@ -24,7 +24,7 @@ from app.domain.vocab import (
 from app.workflow.claim_index import set_status
 from app.workflow.deps import RunDeps
 from app.workflow.graph_writes import end_edge, mark_edge
-from app.workflow.ids import new_id
+from app.workflow.ids import stable_id
 from app.workflow.nodes._deps import deps
 from app.workflow.rules.comparability import comparability_key
 from app.workflow.rules.consistency import (
@@ -52,7 +52,7 @@ async def _relation_fact(d: RunDeps, claim_id: str) -> RelationFact | None:
 
 async def _contest(d: RunDeps, run_id: str, pairs: tuple[ContestedPair, ...]) -> None:
     for pair in pairs:
-        pair_id = new_id("cp")
+        pair_id = stable_id("cp", pair.claim_a, pair.claim_b)
         await d.relational.research.add_contested_pair(
             pair_id, pair.claim_a, pair.claim_b, pair.headline_claim, pair.reason
         )

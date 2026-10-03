@@ -2,6 +2,7 @@
 deterministic embeddings. Fictional organisations and people only."""
 
 from dataclasses import dataclass, field
+from typing import Any
 
 import pytest
 
@@ -63,6 +64,12 @@ class MemoryEntities:
 
     async def get(self, entity_ids: list[str]) -> dict[str, Entity]:
         return {i: self.by_id[i] for i in entity_ids if i in self.by_id}
+
+    async def merge_attributes(self, entity_id: str, attributes: dict[str, Any]) -> None:
+        old = self.by_id[entity_id]
+        self.by_id[entity_id] = old.model_copy(
+            update={"attributes": {**old.attributes, **attributes}}
+        )
 
 
 class LetterEmbeddings:

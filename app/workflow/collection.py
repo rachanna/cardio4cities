@@ -140,6 +140,7 @@ class Collector:
         self._budget, self._params = budget, params
         self._clock, self._sleep = clock, sleep
         self._robots: dict[str, _Robots] = {}  # per origin, for the run
+        self._robots_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
         self._domain_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
         self._last_request: dict[str, float] = {}
         self._global = asyncio.Semaphore(params.concurrency)
@@ -219,9 +220,11 @@ class Collector:
         )
 
     async def _robots_for(self, url: str, pinned: str) -> _Robots:
+        """One robots.txt request per origin per run, even when slots ask at once."""
         origin = origin_of(url)
-        if origin not in self._robots:
-            self._robots[origin] = await self._fetch_robots(origin, pinned)
+        async with self._robots_locks[origin]:
+            if origin not in self._robots:
+                self._robots[origin] = await self._fetch_robots(origin, pinned)
         return self._robots[origin]
 
     async def _fetch_robots(self, origin: str, pinned: str) -> _Robots:

@@ -5,6 +5,7 @@ import re
 
 from pydantic import BaseModel
 
+SITE_FILTER = re.compile(r"\bsite:(\S+)", re.IGNORECASE)
 MAX_QUERY_CHARS = 120
 MAX_PURPOSE_CHARS = 80
 QUERIES_PER_SLOT = (2, 3)
@@ -34,9 +35,11 @@ def validate(
     slot_ids: set[str],
     languages: list[str],
     earlier_queries: set[str] = frozenset(),  # type: ignore[assignment]
+    sites: set[str] = frozenset(),  # type: ignore[assignment]
 ) -> list[str]:
     """Problems to send back in a repair request; empty when the output is usable.
-    Removes queries already tried on an earlier round (§3.4) in place."""
+    Removes queries already tried on an earlier round (§3.4) in place. A `site:` filter
+    must be one of `sites`, the government filters the planner was given (v2)."""
     problems = []
     if {s.slot_id for s in output.slots} != slot_ids:
         problems.append(f"return exactly these slot ids: {sorted(slot_ids)}")
@@ -55,6 +58,9 @@ def validate(
                 )
             if len(q.text) > MAX_QUERY_CHARS or len(q.purpose) > MAX_PURPOSE_CHARS:
                 problems.append(f"{slot.slot_id}: keep queries under 15 words")
+            for found in SITE_FILTER.findall(q.text):
+                if f"site:{found.lower()}" not in {x.lower() for x in sites}:
+                    problems.append(f"{slot.slot_id}: site:{found} is not in government_sites")
         if primary != "en" and not any(q.lang == primary for q in slot.queries):
             problems.append(f"{slot.slot_id}: include at least one query in {primary!r}")
     return problems

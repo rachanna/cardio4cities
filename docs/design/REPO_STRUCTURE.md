@@ -72,16 +72,18 @@ cardio4cities/
 │   │   ├── entities.py           # entity resolver: alias, acronym, key, embedding, new (LLD-2 §6, BD-12)
 │   │   ├── graph_writes.py       # one edge per supported claim; supersession as invalid_at (BD-12)
 │   │   ├── claim_index.py        # set_status: Postgres, then search_tsv and the claim index (CHG-01)
-│   │   ├── budget.py             # BudgetLedger (LLD-2 §12)
+│   │   ├── budget.py             # BudgetLedger: wind-down, warnings, restore (LLD-2 §12, BD-14)
+│   │   ├── limits.py             # run-wide model and embedding concurrency; StageClock (BD-14)
+│   │   ├── fetch_cache.py        # one fetch per URL per run, shared by slots (LLD-2 §14, BD-14)
 │   │   ├── events.py             # EventEmitter (LLD-2 §10)
 │   │   ├── collection.py         # Collector: gate, pinned fetch, parse for one URL (LLD-2 §9, BD-07)
-│   │   ├── ids.py                # prefixed ULIDs (LLD-1 §0)
+│   │   ├── ids.py                # prefixed ULIDs; content-derived stable_id for replay (BD-14)
 │   │   ├── nodes/                # one file per node
 │   │   └── rules/                # pure: crawl_gate, robots, content_usage, selection, chunking, quotes,
 │   │                             #       numbers, thresholds, comparability, consistency,
 │   │                             #       entity_resolution, slot_status, gap_notes, wave0_record,
 │   │                             #       labels (reference-period rule, derived flags), label_evidence,
-│   │                             #       geography_fit
+│   │                             #       geography_fit, programme_status, region_match
 │   ├── query/                    # LLD-5 (CHG-01): understand.py, routes/ (structured.py, keyword.py,
 │   │                             #   semantic.py, graph.py), revalidate.py, fuse.py, anchors.py,
 │   │                             #   bundle.py, answer.py, postcheck.py, trace.py
@@ -118,10 +120,12 @@ cardio4cities/
 │   │                             # search_links_only.py, pdf_quotes.py, run_timing.py,
 │   │                             # thin_slice.py (D2-3 live check; city typed at run time);
 │   │                             # replay_source.py (BD-10: re-run a stored source, no web);
-│   │                             # structured_endpoints.py (S-2, BD-13); outputs naming real
+│   │                             # structured_endpoints.py (S-2, BD-13); brave_links.py (S-4)
+│   │                             # and full_run.py (S-6, BD-14); outputs naming real
 │   │                             # places go to the git-ignored spike_results/
 │   │                             # results/ holds each spike's written outcome
 │   ├── purge_city.py             # LLD-1 §8
+│   ├── purge_graph.py            # local only: empty Neo4j and its embedding marker (BD-14)
 │   ├── eval_prompts.py           # LLD-3 §9
 │   └── keepalive.sh              # calls /api/v1/health
 │
@@ -181,7 +185,7 @@ container, main → everything                 (composition root)
 
 The fetch adapter uses `httpx`, chosen over `httpx2` for the security-critical path (BD-07); `httpx2` is a test-only dependency.
 
-**Vendor packages allowed only under `app/adapters/`:** `anthropic`, `openai`, `ollama`, `sentence_transformers`, `qdrant_client`, `graphiti_core`, `neo4j`, `httpx`, `httpx2`, `httpcore`, `httpcore2`, `protego`, `trafilatura`, `lxml`, `pdfplumber`, `weasyprint`, `langsmith`, `opentelemetry`, `asyncpg`, `sqlalchemy`, `alembic`.
+**Vendor packages allowed only under `app/adapters/`:** `anthropic`, `openai`, `ollama`, `sentence_transformers`, `qdrant_client`, `graphiti_core`, `neo4j`, `httpx`, `httpx2`, `httpcore`, `httpcore2`, `protego`, `trafilatura`, `lxml`, `pdfplumber`, `weasyprint`, `langsmith`, `opentelemetry`, `asyncpg`, `sqlalchemy`, `alembic`, `psycopg`, `psycopg_pool` (the LangGraph checkpointer's driver, BD-14).
 
 Expressed as import-linter `layers` and `forbidden` contracts. The architecture test fails the build on any violation.
 
@@ -209,6 +213,7 @@ Run as `uv run poe <task>`; tasks are defined in `pyproject.toml` under `[tool.p
 | `poe eval-rag` | Retrieval evaluation with real models (costs money; ask the owner first; CHG-01) |
 | `poe smoke URL` | Smoke tests against a deployed URL |
 | `poe purge CITY` | Remove a city from all stores |
+| `poe purge-graph` | Delete the local Neo4j graph and its embedding marker; refuses when `APP_ENV=deployed` (BD-14) |
 
 ---
 

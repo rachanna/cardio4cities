@@ -3,7 +3,12 @@ deployment (CON-10). The graph runs as a background task in the API process; eve
 it does reaches the browser through the event log, so the stream replays from Postgres.
 
 The runner receives the ports from the composition root as a `RunPorts`; it never
-imports adapters."""
+imports adapters.
+
+Checkpoints and resume (D2-5, BD-14): with a checkpointer, every step of a run is saved
+under the run ID. At start-up, a run left `running` by a stopped process is resumed once
+from its last checkpoint, with the budget counters it had used; a run that cannot be
+resumed (no checkpoint, or already resumed once) is marked `failed`, visibly."""
 
 import asyncio
 import logging
@@ -23,9 +28,11 @@ from app.domain.params import (
     EntityParams,
     GeographyParams,
     QuoteParams,
+    ReplanParams,
     VerifyParams,
 )
 from app.domain.vocab import EventType
+from app.ports.checkpoint import CheckpointPort, CheckpointUnavailableError
 from app.ports.embeddings import EmbeddingsPort
 from app.ports.fetch import FetchPort
 from app.ports.graph import GraphPort
@@ -46,6 +53,7 @@ from app.workflow.entities import EntityResolver
 from app.workflow.events import EventEmitter
 from app.workflow.graph import build_graph
 from app.workflow.ids import new_id
+from app.workflow.limits import LimitedEmbeddings, LimitedLLM
 from app.workflow.rules.chunking import ChunkParams
 from app.workflow.rules.selection import PublisherTable, publisher_table
 from app.workflow.rules.thresholds import ThresholdRule, threshold_table
@@ -70,6 +78,7 @@ class RunPorts(Protocol):
     snapshots: SnapshotPort | None
     graph: GraphPort | None
     structured: dict[str, StructuredDataPort]
+    checkpointer: CheckpointPort | None
 
 
 class RunInProgressError(Exception):
@@ -169,38 +178,81 @@ class RunManager:
                 run_id, city_id, deps.ledger.limits.__dict__, model_versions(deps.roles)
             )
         slot_ids = list(slots) if slots is not None else sorted(deps.slots)
-        task = asyncio.create_task(self._run(deps, city, slot_ids), name=run_id)
-        self.tasks[run_id] = task
-        task.add_done_callback(lambda _: self.tasks.pop(run_id, None))
+        state: RunState = {
+            "run_id": run_id,
+            "city": city,
+            "round": 0,
+            "all_slots": slot_ids,
+            "slots_to_work": slot_ids,
+        }
+        self._launch(deps, state)
         return StartedRun(run_id=run_id, city_id=city_id)
 
     async def wait(self, run_id: str) -> None:
         if (task := self.tasks.get(run_id)) is not None:
             await asyncio.shield(task)
 
-    async def _run(self, deps: RunDeps, city: CityIdentity, slot_ids: list[str]) -> None:
-        state: RunState = {
-            "run_id": deps.run_id,
-            "city": city,
-            "round": 0,
-            "slots_to_work": slot_ids,
-        }
+    async def _saver(self) -> Any:
+        """The checkpointer, or None when none is configured or it cannot run here."""
+        if self.ports.checkpointer is None:
+            return None
         try:
-            await build_graph().ainvoke(
+            return await self.ports.checkpointer.saver()
+        except CheckpointUnavailableError as exc:
+            log.warning("running without checkpoints: %s", exc)
+            return None
+
+    def _launch(self, deps: RunDeps, state: RunState | None) -> None:
+        run_id = deps.run_id
+        task = asyncio.create_task(self._run(deps, state), name=run_id)
+        self.tasks[run_id] = task
+        task.add_done_callback(lambda _: self.tasks.pop(run_id, None))
+
+    async def _run(self, deps: RunDeps, state: RunState | None) -> None:
+        """`state` None: resume the run from its last checkpoint."""
+        try:
+            graph = build_graph(await self._saver())
+            await graph.ainvoke(
                 state,
                 {
-                    "configurable": {"deps": deps},
-                    "max_concurrency": self.settings.config.llm.concurrency,
+                    "configurable": {"deps": deps, "thread_id": deps.run_id},
+                    # Slots run side by side; what they share is limited per resource
+                    # (model, embeddings, fetch, search), not by the number of slots.
+                    "max_concurrency": max(len(deps.slots), 1),
                 },
             )
         except Exception as exc:  # the run fails visibly, never silently
             log.exception("run %s failed", deps.run_id)
-            await deps.events.emit(
-                deps.run_id,
-                EventType.RUN_FINISHED,
-                {"status": "failed", "error": type(exc).__name__},
+            await self._fail(deps.run_id, type(exc).__name__)
+
+    async def _fail(self, run_id: str, error: str) -> None:
+        await EventEmitter(self.relational.runs).emit(
+            run_id, EventType.RUN_FINISHED, {"status": "failed", "error": error}
+        )
+        await self.relational.runs.set_status(run_id, "failed", error)
+
+    async def resume_stranded(self) -> list[str]:
+        """At start-up: resume each run a stopped process left behind, once (BD-14)."""
+        resumed = []
+        saver = await self._saver()
+        for row in await self.relational.runs.stranded_runs():
+            run_id = row["run_id"]
+            checkpoint = (
+                await saver.aget_tuple({"configurable": {"thread_id": run_id}})
+                if saver is not None
+                else None
             )
-            await self.relational.runs.set_status(deps.run_id, "failed", type(exc).__name__)
+            if checkpoint is None or row["resume_attempts"] >= 1:
+                reason = "no checkpoint" if checkpoint is None else "already resumed once"
+                log.warning("run %s cannot be resumed (%s)", run_id, reason)
+                await self._fail(run_id, f"interrupted by a restart ({reason})")
+                continue
+            await self.relational.runs.note_resume(run_id)
+            deps = await self.build_deps(run_id)
+            deps.ledger.restore((row["budget"] or {}).get("used", {}))
+            self._launch(deps, None)
+            resumed.append(run_id)
+        return resumed
 
     async def build_deps(self, run_id: str) -> RunDeps:
         p, cfg = self.ports, self.settings.config
@@ -209,7 +261,11 @@ class RunManager:
             _need(p.fetch, "fetch"),
             _need(p.robots, "robots"),
         )
-        parser, embeddings = _need(p.parser, "parser"), _need(p.embeddings, "embeddings")
+        parser = _need(p.parser, "parser")
+        embeddings = LimitedEmbeddings(
+            _need(p.embeddings, "embeddings"), asyncio.Semaphore(cfg.embeddings.concurrency)
+        )
+        model_gate = asyncio.Semaphore(cfg.llm.concurrency)  # shared by every provider
         vector, snapshots = _need(p.vector, "vector"), _need(p.snapshots, "snapshots")
         graph = _need(p.graph, "graph")
         if self._publishers is None:
@@ -244,10 +300,11 @@ class RunManager:
             ),
         )
         reference = self.relational.reference
+        events = EventEmitter(self.relational.runs)
         deps = RunDeps(
             run_id=run_id,
             relational=self.relational,
-            llm=p.llm,
+            llm={name: LimitedLLM(port, model_gate) for name, port in p.llm.items()},
             roles=role_bindings(self.settings),
             search=search,
             search_provider=cfg.search.provider,
@@ -264,7 +321,7 @@ class RunManager:
             ),
             snapshots=snapshots,
             ledger=ledger,
-            events=EventEmitter(self.relational.runs),
+            events=events,
             slots={s.slot_id: s for s in await reference.slots()},
             indicators={i.code: i for i in await reference.indicators()},
             publishers=self._publishers,
@@ -280,8 +337,21 @@ class RunManager:
             chunk=ChunkParams(**cfg.chunk.model_dump()),
             window=WindowParams(**cfg.extract.model_dump()),
             max_new_urls=cfg.select.max_new_urls_per_slot_round,
+            max_reused_urls=cfg.select.max_reused_per_slot_round,
+            replan=ReplanParams(**cfg.replan.model_dump()),
             today=date.today,
         )
+
+        async def warn(counter: str, used: float, limit: float) -> None:
+            """`budget_warning` (LLD-2 §10.2), with the counters saved for a resume."""
+            await events.emit(
+                run_id,
+                EventType.BUDGET_WARNING,
+                {"counter": counter, "used": round(used, 1), "limit": round(limit, 1)},
+            )
+            await self.relational.runs.save_budget_used(run_id, ledger.snapshot())
+
+        ledger.on_warning = warn
         await vector.ensure_collection(deps.collection, embeddings.dimension)
         await vector.ensure_collection(deps.claim_collection, embeddings.dimension)
         return deps

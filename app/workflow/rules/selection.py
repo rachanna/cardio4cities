@@ -95,3 +95,14 @@ def select_urls(
         best.values(), key=lambda c: (SOURCE_TIER[c.publisher_class], c.search_rank, c.url)
     )
     return ranked[:max_new]
+
+
+def government_sites(table: PublisherTable, country_iso2: str) -> list[str]:
+    """`site:` patterns for the planner (prompt v2, BD-14): the generic government
+    second-level labels under the country's code, e.g. `site:gov.xx`. Names no site."""
+    code = country_iso2.lower()
+    return [
+        f"site:{label}.{code}"
+        for label, cls in table.second_level
+        if cls is PublisherClass.GOVERNMENT
+    ]

@@ -1,6 +1,11 @@
 """plan_slots (LLD-2 §3.3, LLD-3 §3): the planner writes queries; on failure, template
-queries keep the run moving without inventing anything (§3.4)."""
+queries keep the run moving without inventing anything (§3.4).
 
+On a re-plan round (§11.3) the planner sees each slot's status, the queries already
+tried and the gap note; queries tried before are removed, from the planner's output and
+from the templates alike. A slot left with no new query is not searched again."""
+
+import re
 from typing import Any
 
 from langchain_core.runnables import RunnableConfig
@@ -13,16 +18,32 @@ from app.prompts.planner.schema import PlannerOutput, validate
 from app.workflow.budget import BudgetExhaustedError
 from app.workflow.llm import call_role
 from app.workflow.nodes._deps import deps
+from app.workflow.rules.selection import government_sites
 from app.workflow.state import PlannedQuery, RunState, SlotPlan
+
+
+def _key(text: str) -> str:
+    return re.sub(r"\s+", " ", text).strip().casefold()
 
 
 async def plan_slots(state: RunState, config: RunnableConfig) -> dict[str, Any]:
     d = deps(config)
-    city = state["city"]
+    city, round_no = state["city"], state.get("round", 0)
     slots = [d.slots[s] for s in state["slots_to_work"]]
-    prompt = load_prompt("planner")
-    user = context.build_user_message(city, slots, d.indicators, state.get("round", 0))
     slot_ids = {s.slot_id for s in slots}
+    earlier: set[str] = set()
+    previous: list[str] = []
+    if round_no > 0:
+        for row in await d.relational.runs.slot_results(state["run_id"]):
+            if row["slot_id"] in slot_ids:
+                texts = [t for t, _ in await d.relational.research.queries(row["queries_tried"])]
+                earlier |= set(texts)
+                previous.append(
+                    context.previous_attempt(row["slot_id"], row["status"], texts, row["gap_note"])
+                )
+    sites = government_sites(d.publishers, city.country_iso2)
+    prompt = load_prompt("planner")
+    user = context.build_user_message(city, slots, d.indicators, round_no, previous, sites)
     plans: dict[str, SlotPlan] = {}
     try:
         out = await call_role(
@@ -31,34 +52,37 @@ async def plan_slots(state: RunState, config: RunnableConfig) -> dict[str, Any]:
             prompt.system,
             user,
             PlannerOutput,
-            problems=lambda o: validate(o, slot_ids, city.languages),
+            problems=lambda o: validate(o, slot_ids, city.languages, earlier, set(sites)),
         )
         for s in out.parsed.slots:
             plans[s.slot_id] = SlotPlan(
                 slot_id=s.slot_id,
+                round=round_no,
                 queries=[
                     PlannedQuery(text=q.text, lang=q.lang, purpose=q.purpose) for q in s.queries
                 ],
             )
     except (PortError, BudgetExhaustedError):
         pass  # every slot without a plan gets the template below
+    tried = {_key(q) for q in earlier}
     for slot in slots:
         if slot.slot_id not in plans:
-            plans[slot.slot_id] = SlotPlan(
-                slot_id=slot.slot_id,
-                queries=[
-                    PlannedQuery(text=t, lang=lang, purpose="template")
-                    for t, lang in context.fallback_queries(city, slot)
-                ],
-                fallback=True,
-            )
+            queries = [
+                PlannedQuery(text=t, lang=lang, purpose="template")
+                for t, lang in context.fallback_queries(city, slot)
+                if _key(t) not in tried
+            ]
+            if queries:
+                plans[slot.slot_id] = SlotPlan(
+                    slot_id=slot.slot_id, queries=queries, fallback=True, round=round_no
+                )
     for plan in plans.values():
         await d.events.emit(
             state["run_id"],
             EventType.SLOT_PLANNED,
             {
                 "slot_id": plan.slot_id,
-                "round": state.get("round", 0),
+                "round": round_no,
                 "queries": [q.model_dump() for q in plan.queries],
             },
         )

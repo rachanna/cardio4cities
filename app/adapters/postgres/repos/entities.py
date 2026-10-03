@@ -96,3 +96,10 @@ class PostgresEntityRepo:
                 {"ids": entity_ids},
             )
             return {r["entity_id"]: _entity(dict(r)) for r in rows.mappings()}
+
+    async def merge_attributes(self, entity_id: str, attributes: dict[str, object]) -> None:
+        async with self._engine.begin() as conn:
+            await conn.execute(
+                text("UPDATE entity SET attributes = attributes || :a WHERE entity_id = :i"),
+                {"a": json.dumps(attributes), "i": entity_id},
+            )

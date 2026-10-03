@@ -30,7 +30,7 @@ llm:
     ollama:    { base_url_env: OLLAMA_BASE_URL }   # required only when a role uses it
   concurrency: 4
   allow_same_family_checker: false   # BD-02; when true it is shown on every verdict and in /health
-embeddings: { provider: openai, model: text-embedding-3-small, dimension: 1536, key: openai_small_v1 }
+embeddings: { provider: openai, model: text-embedding-3-small, dimension: 1536, key: openai_small_v1, concurrency: 4 }
 search:     { provider: searxng, mode: links_only, base_url: http://127.0.0.1:8888, rate_per_s: 1 }   # base_url: BD-02
 relational: { dsn_env: DATABASE_URL }
 vector:     { provider: qdrant, url_env: QDRANT_URL }   # no API key locally
@@ -43,7 +43,7 @@ budget:     { wall_clock_s: 300, searches: 48, fetches: 60, tokens: 2500000, cos
 limits:     { runs_per_day: 20, ask_per_min: 20, resolve_per_min: 30 }
 fetch:      { concurrency: 6, min_interval_s: 1, max_bytes: 10485760, connect_timeout_s: 5, read_timeout_s: 20, allowed_ports: [80, 443], robots_timeout_s: 15 }
 verify:     { max_claims_per_slot: 5, label_margin_chars: 200 }   # BD-05, BD-10
-select:     { max_new_urls_per_slot_round: 4 }
+select:     { max_new_urls_per_slot_round: 4, max_reused_per_slot_round: 2 }   # BD-14
 replan:     { max_rounds: 2, max_rounds_wider_geo: 1 }
 extract:    { window_tokens: 12000, overlap_tokens: 500 }
 quote:      { min_words: 6, max_words: 60, min_words_unique: 3 }   # LLD-2 §4.1 [tunable] (BD-06, BD-08)

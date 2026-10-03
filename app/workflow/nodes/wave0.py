@@ -45,7 +45,7 @@ from app.workflow.budget import BudgetExhaustedError
 from app.workflow.claim_index import set_status
 from app.workflow.deps import RunDeps
 from app.workflow.graph_writes import write_graph
-from app.workflow.ids import new_id
+from app.workflow.ids import stable_id
 from app.workflow.nodes._deps import deps
 from app.workflow.nodes.crawl_gate import record_decision
 from app.workflow.rules.labels import derive_flags
@@ -112,7 +112,7 @@ async def _fetch(
     records = adapter.parse(indicator.code, raw)
     final = fetched.decisions[-1]
     source = Source(
-        source_id=new_id("src"),
+        source_id=stable_id("src", run_id, url),
         run_id=run_id,
         url=url,
         url_canonical=final.url,
@@ -179,7 +179,7 @@ async def _claim(
     unit = indicator.unit or ""
     note = f" ({provider.note})" if provider.note else ""
     claim = Claim(
-        claim_id=new_id("clm"),
+        claim_id=stable_id("clm", state["run_id"], fetched.source_id, key),
         run_id=state["run_id"],
         city_id=city.city_id,
         slot_id=str(indicator.slot),

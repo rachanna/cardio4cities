@@ -29,6 +29,9 @@ class FakeRuns:
     async def run_row(self, run_id: str) -> dict[str, Any] | None:
         return RUNS.get(run_id)
 
+    async def stranded_runs(self) -> list[dict[str, Any]]:
+        return []  # nothing left behind: start-up resumes nothing
+
 
 class FakeRelational:
     def __init__(self) -> None:

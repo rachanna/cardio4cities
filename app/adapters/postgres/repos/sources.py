@@ -17,6 +17,7 @@ class PostgresSourceRepo:
                     "INSERT INTO crawl_decision (decision_id, run_id, url, domain, outcome, rule,"
                     " reason, robots_http_status, decided_at) VALUES (:decision_id, :run_id, :url,"
                     " :domain, :outcome, :rule, :reason, :robots_http_status, :decided_at)"
+                    " ON CONFLICT (decision_id) DO NOTHING"
                 ),
                 decision.model_dump(mode="python") | {"outcome": decision.outcome.value},
             )
@@ -46,6 +47,7 @@ class PostgresSourceRepo:
                     " :publisher_class, :title, :language, :published_date, :published_precision,"
                     " :retrieved_at, :http_status, :content_type, :content_sha256, :size_bytes,"
                     " :parse_outcome, :parsed_text, :found_via, :crawl_decision_id)"
+                    " ON CONFLICT (source_id) DO NOTHING"
                 ),
                 values,
             )
@@ -81,3 +83,49 @@ class PostgresSourceRepo:
                 .one_or_none()
             )
         return dict(row) if row else None
+
+    async def fetched_sources(self, run_id: str) -> dict[str, str | None]:
+        """URL -> source ID for the run's stored pages; None when the page gave no text.
+        Seeds the fetch cache on resume (BD-14)."""
+        async with self._engine.connect() as conn:
+            rows = await conn.execute(
+                text(
+                    "SELECT url, source_id, parse_outcome FROM source"
+                    " WHERE run_id = :r AND kind <> 'structured_api'"
+                ),
+                {"r": run_id},
+            )
+            return {r.url: r.source_id if r.parse_outcome == "parsed" else None for r in rows}
+
+    async def crawl_outcomes(self, decision_ids: list[str]) -> list[str]:
+        if not decision_ids:
+            return []
+        async with self._engine.connect() as conn:
+            rows = await conn.execute(
+                text("SELECT outcome FROM crawl_decision WHERE decision_id = ANY(:ids)"),
+                {"ids": decision_ids},
+            )
+            return [r.outcome for r in rows]
+
+    async def outcome_counts(self, run_id: str) -> dict[str, dict[str, int]]:
+        """Run summary (AT-38): crawl decisions by outcome, and stored pages by parse
+        outcome, counted once per URL."""
+        async with self._engine.connect() as conn:
+            crawl = await conn.execute(
+                text(
+                    "SELECT outcome, count(DISTINCT url) AS n FROM crawl_decision"
+                    " WHERE run_id = :r GROUP BY outcome"
+                ),
+                {"r": run_id},
+            )
+            parse = await conn.execute(
+                text(
+                    "SELECT coalesce(parse_outcome, 'none') AS outcome, count(*) AS n FROM source"
+                    " WHERE run_id = :r AND kind <> 'structured_api' GROUP BY 1"
+                ),
+                {"r": run_id},
+            )
+            return {
+                "crawl": {r.outcome: int(r.n) for r in crawl},
+                "parse": {r.outcome: int(r.n) for r in parse},
+            }

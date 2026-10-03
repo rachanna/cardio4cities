@@ -4,6 +4,7 @@ import http.server
 import json
 import threading
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
@@ -45,6 +46,7 @@ def provider() -> Iterator[tuple[Provider, str]]:
     server.server_close()
 
 
+RECORDED_BRAVE = Path(__file__).parents[1] / "fixtures" / "search" / "brave_web_search.json"
 RESULTS = [
     {"url": "https://health.halden-bay.test/report", "title": "Annual report", "content": "short"},
     {"title": "no url, skipped"},
@@ -98,3 +100,25 @@ async def test_brave_request_disables_content_retrieval(provider: tuple[Provider
         SearchHit(url=RESULTS[0]["url"], title="Annual report", snippet="short", rank=1)
     ]
     assert set(SearchHit.model_fields) == {"url", "title", "snippet", "rank"}  # no content field
+
+
+async def test_brave_recorded_response_yields_links_titles_and_snippets_only(
+    provider: tuple[Provider, str],
+) -> None:
+    """AT-33 against a recorded response (spike S-4, BD-14): Brave's real field layout,
+    fictional values. Article metadata, profiles and thumbnails never reach a hit."""
+    state, base = provider
+    state.payload = json.loads(RECORDED_BRAVE.read_text(encoding="utf-8"))
+
+    hits = await BraveSearch("test-key", 100, base_url=f"{base}/res/v1/web/search").search(
+        "Halden Bay hypertension control survey", "en", 10
+    )
+
+    assert [h.url for h in hits] == [
+        "https://health.halden-bay.test/heart-survey",
+        "https://health.halden-bay.test/public-health",
+    ]
+    assert hits[0].title == "Halden Bay Heart Survey 2024"
+    assert hits[0].snippet.startswith("Adults with hypertension")
+    assert [h.rank for h in hits] == [1, 2]
+    assert all(set(h.model_dump()) == {"url", "title", "snippet", "rank"} for h in hits)

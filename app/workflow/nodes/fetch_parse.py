@@ -1,5 +1,9 @@
 """fetch_parse (LLD-2 §3.3, §9.3-9.4): fetch through the gate, store the source and its
-snapshot, chunk and embed parsed text into Qdrant."""
+snapshot, chunk and embed parsed text into Qdrant.
+
+One fetch per URL per run (BD-14): the first slot to reach a URL fetches it; another slot
+that wants it waits for that fetch, or reuses the stored source, and extracts it for its
+own question."""
 
 from datetime import UTC, datetime
 from hashlib import sha256
@@ -13,7 +17,7 @@ from app.domain.vocab import EventType, ParseOutcome, PublisherClass
 from app.ports.vector import VectorPoint
 from app.workflow.budget import BudgetExhaustedError
 from app.workflow.deps import RunDeps
-from app.workflow.ids import new_id
+from app.workflow.ids import stable_id
 from app.workflow.nodes._deps import deps
 from app.workflow.nodes.crawl_gate import record_decision
 from app.workflow.rules.chunking import chunk_text
@@ -96,7 +100,7 @@ async def _one(d: RunDeps, state: SlotState, candidate: Candidate) -> tuple[str 
         return None, decision_ids
     doc = collected.document
     source = Source(
-        source_id=new_id("src"),
+        source_id=stable_id("src", run_id, candidate.url),
         run_id=run_id,
         url=candidate.url,
         url_canonical=collected.final_url,
@@ -151,13 +155,30 @@ async def _one(d: RunDeps, state: SlotState, candidate: Candidate) -> tuple[str 
     return None, decision_ids
 
 
+async def _owned(
+    d: RunDeps, state: SlotState, candidate: Candidate
+) -> tuple[str | None, list[str]]:
+    """Fetch a URL this slot owns, and tell any slot waiting for it what came of it."""
+    source_id: str | None = None
+    try:
+        source_id, ids = await _one(d, state, candidate)
+    finally:  # also on failure: a waiting slot must never hang
+        d.fetch_cache.resolve(candidate.url, source_id)
+    return source_id, ids
+
+
 async def fetch_parse(state: SlotState, config: RunnableConfig) -> dict[str, Any]:
     d = deps(config)
     source_ids: list[str] = []
     decision_ids: list[str] = []
-    for candidate in state.get("allowed", []):
+    for candidate in [*state.get("reused", []), *state.get("allowed", [])]:
+        pending = d.fetch_cache.claim(candidate.url)
+        if pending is not None:  # fetched, or being fetched, by another slot
+            if (source_id := await pending) is not None and source_id not in source_ids:
+                source_ids.append(source_id)
+            continue
         try:
-            source_id, ids = await _one(d, state, candidate)
+            source_id, ids = await _owned(d, state, candidate)
         except BudgetExhaustedError:
             break
         decision_ids += ids

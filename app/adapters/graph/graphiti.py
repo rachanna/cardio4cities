@@ -321,6 +321,32 @@ class GraphitiGraph:
         await self._setup()
         await EntityNode.delete_by_group_id(self._g.driver, group_id)
 
+    # --- embedding marker (R-82, BD-14) ----------------------------------------------
+
+    async def embedding_marker(self) -> str | None:
+        records, _, _ = await self._g.driver.execute_query(
+            "MATCH (m:C4CMeta {name: 'embedding'}) RETURN m.key AS key"
+        )
+        return str(records[0]["key"]) if records else None
+
+    async def set_embedding_marker(self, key: str) -> None:
+        await self._g.driver.execute_query(
+            "MERGE (m:C4CMeta {name: 'embedding'}) SET m.key = $key", key=key
+        )
+
+    async def has_entities(self) -> bool:
+        records, _, _ = await self._g.driver.execute_query(
+            "MATCH (n:Entity) RETURN n.uuid AS uuid LIMIT 1"
+        )
+        return bool(records)
+
+    async def purge(self) -> int:
+        """Delete every node and edge, the marker too (`poe purge-graph`, local only)."""
+        records, _, _ = await self._g.driver.execute_query(
+            "MATCH (n) WITH n LIMIT 100000 DETACH DELETE n RETURN count(*) AS n"
+        )
+        return int(records[0]["n"]) if records else 0
+
     async def close(self) -> None:
         await self._g.close()  # type: ignore[no-untyped-call]
 

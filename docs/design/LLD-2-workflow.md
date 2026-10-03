@@ -27,6 +27,8 @@
 | `app/workflow/rules/` | Crawl gate, selection, quote matching, number parsing, comparability, consistency, slot status, gap notes |
 | `app/domain/` | Types (LLD-1), confidence, badges, vocabulary mapping |
 | `app/workflow/budget.py` | `BudgetLedger` |
+| `app/workflow/limits.py` | Run-wide model and embedding concurrency wrappers; `StageClock` (busy time per stage) (BD-14) |
+| `app/workflow/fetch_cache.py` | `FetchCache`: one fetch per URL per run, shared by slots (§14, BD-14) |
 | `app/workflow/events.py` | `EventEmitter` |
 | `app/query/` | Question answering (§15) |
 | `app/report/` | Report assembly (§16) |
@@ -42,9 +44,11 @@ class RunState(TypedDict):
     run_id: str
     city: CityIdentity
     round: int                                   # 0 = first pass, 1–2 = re-plans
+    all_slots: list[str]                         # every slot of the run: each ends with a status
     slots_to_work: list[str]                     # slot ids for the next fan-out
+    replans: Annotated[dict[str, int], merge_dicts]             # slot_id -> re-plans used
     plans: Annotated[dict[str, SlotPlan], merge_dicts]          # slot_id -> queries for this round
-    slot_reports: Annotated[dict[str, SlotReport], merge_dicts] # written by each slot subgraph
+    slot_reports: Annotated[dict[str, SlotReport], merge_dicts] # keyed '<slot_id>@<round>' (BD-14)
     finished: bool
 ```
 
@@ -52,6 +56,8 @@ class RunState(TypedDict):
 class SlotPlan(BaseModel):
     slot_id: str
     queries: list[PlannedQuery]                  # text, lang, purpose
+    fallback: bool                               # template queries (§3.4)
+    round: int                                   # only the current round's plans are sent
 
 class SlotReport(BaseModel):                     # what one slot subgraph returns to the run
     slot_id: str
@@ -77,6 +83,7 @@ class SlotState(TypedDict):
     plan: SlotPlan
     query_ids: list[str]
     candidates: list[Candidate]                  # url, title, rank, query_id, publisher_class
+    reused: list[Candidate]                      # fetched by another slot this run (§14)
     allowed: list[Candidate]
     crawl_decision_ids: list[str]
     source_ids: list[str]
@@ -88,7 +95,7 @@ class SlotState(TypedDict):
 
 ### 2.3 Budget is not in state (decision WD-01)
 
-Parallel slot branches would race on counters held in graph state. Budget lives in a process-level `BudgetLedger` keyed by `run_id` (§12), guarded by an `asyncio.Lock`, with its counters written to `run.budget` on every `budget_warning` and at the end of the run. On resume, the ledger is rebuilt from `search_query`, `source` and model-usage rows.
+Parallel slot branches would race on counters held in graph state. Budget lives in a process-level `BudgetLedger` keyed by `run_id` (§12), guarded by an `asyncio.Lock`, with its counters written to `run.budget.used` on every `budget_warning`, after every coverage round and at the end of the run. On resume, the ledger restores those saved counters, and its wall clock carries on from the saved value (BD-14).
 
 ---
 
@@ -100,11 +107,12 @@ Parallel slot branches would race on counters held in graph state. Budget lives 
 START → resolve_city → wave0 → plan_slots → [fan_out: Send(slot_subgraph) per slot in slots_to_work]
       → coverage ─┬─(needs_replan)→ plan_slots
                   └─(done)→ analytics → brief_ready → END
+(plan_slots → coverage directly when no slot has a plan for the round)
 ```
 
 | Edge | Condition (code) |
 |---|---|
-| `fan_out` | `[Send("slot_subgraph", SlotState(...)) for slot_id in state["slots_to_work"]]` |
+| `fan_out` | `[Send("slot_subgraph", SlotState(...)) for slot_id in state["slots_to_work"]]` with a plan for this round; `"coverage"` when there is none |
 | `coverage → plan_slots` | `route_after_coverage(state) == "replan"`: at least one slot qualifies for re-plan (§11.3) and the ledger allows a new round |
 | `coverage → analytics` | otherwise |
 
@@ -130,7 +138,7 @@ These conditional edges make the three required routing points visible in the re
 | `wave0` | code | `ref_source` | `source`, `snapshot`, `claim`, `statistic`, `verdict` | `wave0_finding` per claim | — | Log, continue: Wave 0 failure never stops a run |
 | `plan_slots` | model | `ref_slot`; on re-plan, `slot_result` gap notes | `search_query` rows are written later by `search` | `slot_planned` per slot | Planner (LLD-3 §3) | Fallback: template queries from `ref_slot.question` + city name (§3.4) |
 | `search` | code | plan | `search_query` | `search_done` | — | Slot report `error`; slot continues with zero candidates |
-| `select_sources` | code | `search_query` results, run fetch cache | — | — | — | — |
+| `select_sources` | code | `search_query` results, run fetch cache | — (new URLs to the gate, cached ones to `reused`) | — | — | — |
 | `crawl_gate` | code agent | candidates | `crawl_decision` | `crawl_decision` per URL | — | A URL whose gate errors is `unreachable_network` |
 | `record_gate_gap` | code | decisions | — | — | — | — |
 | `fetch_parse` | code | allowed | `source`, `snapshot`, Qdrant points | `source_fetched` or `source_unreadable` | Embeddings | Per-URL; failure recorded on `source.parse_outcome` |
@@ -141,7 +149,7 @@ These conditional edges make the three required routing points visible in the re
 | `consistency` | code | supported claims, prior claims | `consistency`, `contested_pair`, `claim.status`; claim-index payload status for contested claims | `conflict_found` | — | — |
 | `write` | code | supported claims | `entity`, `entity_alias`, `relation`, Graphiti edges, `graph_link`; `claim.search_tsv`; Qdrant claim-index point (LLD-5 §4.2) | `fact_written` | Embeddings (entity merge) | Graph write failure: claim stays supported in Postgres, `graph_link` absent, event payload notes it; retried once at `brief_ready` |
 | `slot_done` | code | subgraph state | returns `SlotReport` | — | — | — |
-| `coverage` | code agent | all slot reports, claims | `slot_result` | `slot_status` per slot | — | — |
+| `coverage` | code agent | all slot reports, claims | `slot_result` (one row per slot, replaced each round), `run.budget.used` | `slot_status` per slot worked this round | — | — |
 | `analytics` | code | Graphiti subgraph | `entity.attributes.centrality` | — | — | Skip silently |
 | `brief_ready` | code | everything | `run_summary`, `run.status`, `city.latest_run_id` | `run_finished` | — | — |
 
@@ -448,7 +456,7 @@ The stream endpoint always reads from Postgres after `Last-Event-ID`, then follo
 | `claim_verdict` | `claim_id`, `label`, `verifier_model`, `fallback_used` |
 | `conflict_found` | `pair_id`, `claim_a`, `claim_b`, `headline_claim` |
 | `fact_written` | `claim_id`, `kind`, `graph_edge` (bool) |
-| `slot_status` | `slot_id`, `status`, `flags`, `gap_note` |
+| `slot_status` | `slot_id`, `round`, `status`, `flags`, `gap_note` |
 | `budget_warning` | `counter`, `used`, `limit` |
 | `run_finished` | `status`, `summary` |
 
@@ -484,7 +492,7 @@ A slot is re-planned when all hold:
 - `replans_used < 2`, or `< 1` when the status is `answered_wider_geo` `[tunable]`;
 - the ledger reports no `budget_warning` for searches, fetches or wall clock.
 
-`route_after_coverage` returns `replan` when at least one slot qualifies; `slots_to_work` is set to those slots and `round` increments.
+`route_after_coverage` returns `replan` when at least one slot qualifies; `slots_to_work` is set to those slots and `round` increments. Queries tried in earlier rounds are removed from the planner's output and from the template fallback; a slot left with no new query is not searched again (BD-14).
 
 ### 11.4 Gap notes (templates, HD-05)
 
@@ -495,6 +503,7 @@ A slot is re-planned when all hold:
 | `blocked` | "{n} candidate sources refuse automated access ({top_reasons})." |
 | `unreachable` | "{n} candidate sources could not be reached ({top_reasons})." |
 | Claims found but none confirmed | append: " {n} claims were found but could not be confirmed against their sources." |
+| Budget stopped allowed sources (BD-14) | append: " The run's budget ran out before {n} allowed sources could be read." Allowed but unread pages never make a slot `blocked` or `unreachable` |
 
 `level_word` comes from a fixed map: `national` → "national", `state_province` → "state or regional", and so on.
 
@@ -519,9 +528,11 @@ class BudgetLedger:
 | Tokens | set after day-1 measurement | No re-plans | `reserve("model")` raises |
 | Model cost | set after day-1 measurement | No re-plans | `reserve("model")` raises |
 
-Every external call goes through `reserve` first. Nodes catch `BudgetExhausted`, stop new work for their slot, and return what they have. `coverage`, `analytics` and `brief_ready` call no external service, so they always run, and the run ends as `stopped_by_budget` with every slot carrying a status.
+Every external call goes through `reserve` first. Nodes catch `BudgetExhausted`, stop new work for their slot, and return what they have. `coverage`, `analytics` and `brief_ready` call no external service, so they always run, and the run ends as `stopped_by_budget` with every slot carrying a status. A run ends `stopped_by_budget` when the ledger refused at least one reservation; a run that used its whole budget without a refusal is `completed` (BD-14).
 
-Global concurrency limits: model calls `llm.concurrency = 4`, embeddings `embed.concurrency = 4` `[tunable]`; the search queue releases about one request per second (Δ9).
+At 85 % of the wall clock, `reserve("search")`, `reserve("robots")` and `reserve("fetch")` raise; model calls go on until a limit is reached, so claims in hand are still extracted and checked. Each counter emits one `budget_warning` the first time it passes `wind_down_at`.
+
+Global concurrency limits, shared by every slot branch: model calls `llm.concurrency = 4`, embeddings `embeddings.concurrency = 4` `[tunable]` (`workflow/limits.py`); fetches `fetch.concurrency` with per-domain spacing (the collector); the search adapter releases about `search.rate_per_s` requests per second (Δ9). Slots themselves all run side by side.
 
 ---
 
@@ -544,7 +555,7 @@ Global concurrency limits: model calls `llm.concurrency = 4`, embeddings `embed.
 
 ## 14. Source selection (R-41, R-59)
 
-1. Canonicalise and deduplicate all candidate URLs across the run (fetch cache: a URL already fetched in this run is reused, not refetched).
+1. Canonicalise and deduplicate all candidate URLs across the run (fetch cache: a URL already fetched in this run is reused, not refetched; a slot that wants a URL another slot is fetching waits for that fetch; the reusing slot extracts the stored source for its own question, BD-14).
 2. Drop domains in `reference/publishers.yaml` `deny` (social media, question-and-answer sites, generic aggregators). This list is generic, never city-specific.
 3. Classify publisher class by domain patterns in `reference/publishers.yaml`:
    - `government`: `.gov`, `.gov.*`, `.gob.*`, `.gouv.*`, `.go.*`, `.govt.*`, `.gv.*` and similar national patterns;
@@ -553,7 +564,7 @@ Global concurrency limits: model calls `llm.concurrency = 4`, embeddings `embed.
    - `news`: a list of news publisher domains;
    - other `.org` domains: `ngo`; anything else: `other`.
 4. API preference: if the domain has an entry in `publishers.yaml` `api` (for example an article site that offers an official API), route to that adapter instead of fetching the page (COULD for the PoC).
-5. Rank by publisher tier, then search rank. Keep the top `select.max_new_urls_per_slot_round = 4` `[tunable]` not already fetched.
+5. Rank by publisher tier, then search rank. Keep the top `select.max_new_urls_per_slot_round = 4` `[tunable]` not already fetched, and up to `select.max_reused_per_slot_round = 2` `[tunable]` already fetched (reused without a new gate decision).
 
 ---
 
@@ -610,7 +621,7 @@ With the admin parameter `graph=off`, retrieval for `relationship` and `change_o
 | Exception inside a slot subgraph | Caught in `slot_done`; `SlotReport.error` set; the slot still gets a status from data so far |
 | Postgres unavailable | Run `failed`; the only fatal condition |
 | Graphiti write fails | Claim stays supported in Postgres; retried once at `brief_ready`; if still failing, the graph-only demo question will show it, and the run summary records the count |
-| Resume after crash | LangGraph checkpoint resumes the run; all writes are idempotent: IDs are deterministic or checked, Qdrant point IDs and graph edge UUIDs are derived from our IDs, and inserts use `ON CONFLICT DO NOTHING` |
+| Resume after crash | LangGraph checkpoint (Postgres, schema `lg`, thread ID = run ID) resumes the run once at start-up; all writes are idempotent: IDs are content-derived (`workflow/ids.stable_id`) or checked, Qdrant point IDs and graph edge UUIDs are derived from our IDs, inserts use `ON CONFLICT (<primary key>) DO NOTHING`, an event already stored is not appended again, and `verify` skips a claim that has a verdict. A run with no checkpoint, or already resumed once, is marked `failed` (BD-14) |
 
 ---
 
@@ -654,5 +665,5 @@ With the admin parameter `graph=off`, retrieval for `relationship` and `change_o
 |---|---|
 | Exact RFC 9309 wording for 4xx and 5xx handling | When implementing the gate |
 | Parser libraries (Protego, trafilatura, pdfplumber) behave as assumed | Day 1 |
-| Token and cost caps | Day-1 measurement |
+| Token and cost caps | Spike S-6 (BD-14) |
 | Thresholds: agreement tolerance, small sample, staleness, embedding merge | Tune during rehearsal |

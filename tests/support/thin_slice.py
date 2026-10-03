@@ -299,6 +299,8 @@ class Slice:
     search: ListSearch
     graph: GraphitiGraph
     vector: MemoryVector
+    ports: Ports | None = None  # to build the run's dependencies again in a test
+    settings: Any = None
 
 
 @asynccontextmanager
@@ -357,8 +359,9 @@ async def run_slice(
             city_id = started.city_id
             await manager.wait(started.run_id)
         yield Slice(
-            relational, started.run_id, started.city_id, anthropic, openai, search, graph, vector
-        )
+            relational, started.run_id, started.city_id, anthropic, openai, search, graph,
+            vector, ports, settings,
+        )  # fmt: skip
     finally:  # clean up the graph even when the run or a test fails
         if city_id:
             await graph.delete_group(city_id)

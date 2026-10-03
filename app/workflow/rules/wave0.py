@@ -6,14 +6,33 @@ text. Code verification re-parses the stored snapshot and requires the same reco
 indicator, area, period and value exactly equal.
 """
 
+import re
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from decimal import Decimal
 
 from app.domain.models import SourceIndicator
 from app.ports.structured import StructuredRecord
+from app.workflow.rules.numbers import PERCENT, ParsedValue, parse_value
 
 CODE_VERIFIER = "code:record_match"
 CODE_FAMILY = "code"
+
+
+_PLAIN_NUMBER = re.compile(r"^-?\d+(?:\.\d+)?$")
+UNIT_NAMES = {"%": PERCENT}  # registry units in the parser's words (BD-19)
+
+
+def record_value(value_as_written: str, unit: str | None) -> ParsedValue:
+    """The value of an official record: parsed as any figure, and a bare number such as
+    "22.6" (how the WHO API writes values) read in code with the registry's unit."""
+    parsed = parse_value(value_as_written)
+    named = UNIT_NAMES.get(unit or "", unit)
+    if parsed.unparsed and _PLAIN_NUMBER.match(value_as_written.strip()):
+        return ParsedValue(Decimal(value_as_written.strip()), named)
+    if parsed.unit is None and named:
+        return replace(parsed, unit=named)
+    return parsed
 
 
 def select_record(

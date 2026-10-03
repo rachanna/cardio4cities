@@ -26,6 +26,7 @@ from app.domain.vocab import (
     SlotStatus,
 )
 from app.domain.wording import language_name
+from app.workflow.conflicts import sweep_statistics
 from app.workflow.deps import RunDeps
 from app.workflow.nodes._deps import deps
 from app.workflow.rules.gap_notes import gap_note
@@ -120,6 +121,8 @@ async def coverage(state: RunState, config: RunnableConfig) -> dict[str, Any]:
     reports = state.get("slot_reports", {})
     replans = state.get("replans", {})
     worked = set(state.get("slots_to_work", []))
+    # Conflicts across the whole run first, so flags and best claims see them (BD-19)
+    await sweep_statistics(d, run_id)
     winding_down = d.ledger.phase() != "normal"
     again: list[str] = []
     for slot_id in state.get("all_slots", sorted(worked)):

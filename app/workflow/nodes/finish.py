@@ -5,7 +5,6 @@
 exist (CHG-01: `search_tsv` includes entity names). A graph failure leaves the claim
 supported in Postgres; `fact_written` says whether the edge was written."""
 
-from datetime import date
 from typing import Any
 
 from langchain_core.runnables import RunnableConfig
@@ -22,17 +21,11 @@ FACTS = frozenset({ClaimStatus.SUPPORTED, ClaimStatus.CONTESTED})
 
 async def write(state: SlotState, config: RunnableConfig) -> dict[str, Any]:
     d = deps(config)
-    ended = state.get("ended", {})
-    in_slot = set(state.get("claim_ids", []))
-    ids = dict.fromkeys(
-        [*state.get("supported_claim_ids", []), *(c for c in ended if c in in_slot)]
-    )
-    for claim_id in ids:
+    for claim_id in dict.fromkeys(state.get("supported_claim_ids", [])):
         claim, _ = await d.relational.research.claim_with_statistic(claim_id)
         if claim.status not in IN_GRAPH:
             continue
-        at = date.fromisoformat(ended[claim_id]) if claim_id in ended else None
-        written = await write_graph(d, claim_id, at)
+        written = await write_graph(d, claim_id)  # superseded: ended on its stored date
         await sync(d, claim_id)
         if claim.status in FACTS:
             await apply_programme_status(d, claim)

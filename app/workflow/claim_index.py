@@ -68,7 +68,7 @@ async def sync(d: RunDeps, claim_id: str) -> None:
         if row["status"] not in INDEXED:
             await d.vector.delete_by_filter(d.claim_collection, {"claim_id": claim_id})
             return
-        await d.ledger.reserve("model")
+        await d.ledger.reserve("indexing")  # a confirmed claim: never refused (BD-19)
         text = index_text(row["statement"], row["quote"], row["quote_translation"])
         (vector,) = await d.embeddings.embed([text])
         payload = {k: row[k] for k in PAYLOAD_FIELDS if row.get(k) is not None}

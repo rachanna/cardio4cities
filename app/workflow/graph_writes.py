@@ -14,12 +14,14 @@ from datetime import date
 
 from app.domain.ids import graph_uuid
 from app.domain.models import Claim, Entity, Statistic
-from app.domain.vocab import ClaimKind, EntityType, PeriodType, RelationType
+from app.domain.vocab import ClaimKind, ClaimStatus, EntityType, PeriodType, RelationType
 from app.ports.graph import GraphEdge, GraphEntity
 from app.workflow.deps import RunDeps
-from app.workflow.rules.programme_status import programme_status_update
+from app.workflow.rules.programme_status import observed_on, programme_status_update
 
 log = logging.getLogger(__name__)
+# Statistics that name no indicator a slot asks about: no MEASURED_IN edge (BD-19)
+NO_EDGE_INDICATORS = frozenset({"OTHER", "POP_TOTAL"})
 
 
 def _node(entity: Entity) -> GraphEntity:
@@ -63,7 +65,11 @@ async def triplet(
             attributes=_attributes(claim, relation.valid_from_is_proxy),
         )
         return _node(ents[relation.subject_entity_id]), edge, _node(ents[relation.object_entity_id])
-    if statistic is None or statistic.indicator_code not in d.indicators:
+    if (
+        statistic is None
+        or statistic.indicator_code not in d.indicators
+        or statistic.indicator_code in NO_EDGE_INDICATORS
+    ):
         return None
     indicator = d.indicators[statistic.indicator_code]
     indicator_id = await d.entities.ensure_indicator(claim.city_id, indicator.code, indicator.name)
@@ -86,18 +92,28 @@ async def triplet(
     return _node(ents[indicator_id]), edge, _node(place)
 
 
-async def write_graph(d: RunDeps, claim_id: str, ended_at: date | None = None) -> bool:
-    """Write the claim's edge once; True when an edge exists afterwards."""
+async def write_graph(d: RunDeps, claim_id: str) -> bool:
+    """Write the claim's edge once; True when an edge exists afterwards. A superseded
+    claim's edge is written ended on its stored `superseded_on`, and never without it:
+    a superseded edge must not look current (BD-19)."""
     research = d.relational.research
     if await research.graph_link(claim_id):
         return True
     claim, statistic = await research.claim_with_statistic(claim_id)
+    ended_at: date | None = None
+    if claim.status is ClaimStatus.SUPERSEDED:
+        relation = await research.relation(claim_id)
+        ended_at = relation.superseded_on if relation else None
+        if ended_at is None:
+            return False
     try:
         built = await triplet(d, claim, statistic, ended_at)
         if built is None:
             return False
         subject, edge, obj = built
-        await d.ledger.reserve("model")  # the edge fact and new node names are embedded
+        # The edge fact and new node names are embedded. A confirmed claim's edge is never
+        # refused by the budget (BD-19).
+        await d.ledger.reserve("indexing")
         await d.graph.add_triplet(subject, edge, obj)
     except Exception as exc:  # graph down or refused: the claim stays supported in Postgres
         log.warning("graph write failed for %s (%s)", claim_id, type(exc).__name__)
@@ -141,21 +157,27 @@ async def apply_programme_status(d: RunDeps, claim: Claim) -> None:
     relation = await d.relational.research.relation(claim.claim_id)
     if relation is None or relation.programme_status is None:
         return
-    # The relation's own dates say when the status held: an end for `ended`, a start
-    # otherwise; the claim's period (possibly a publication-date proxy) comes last.
-    as_of = relation.valid_to or relation.valid_from or claim.labels.reference_end
+    status = relation.programme_status
+    as_of = observed_on(
+        status, claim.labels.reference_end, relation.valid_from, relation.valid_to
+    )  # when the status was observed (owner, BD-19)
     ents = await d.relational.entities.get([relation.subject_entity_id, relation.object_entity_id])
     for entity in ents.values():
         if entity.entity_type is not EntityType.PROGRAMME:
             continue
-        update = programme_status_update(
-            entity.attributes, relation.programme_status, claim.claim_id, as_of
+        # Decided under a row lock, so two slots updating one programme cannot let an
+        # older status win (BD-19)
+        merged = await d.relational.entities.update_attributes(
+            entity.entity_id,
+            lambda held: programme_status_update(
+                held, status, claim.claim_id, as_of, relation.valid_from
+            ),
         )
-        if update is None:
+        if merged is None:
             continue
-        await d.relational.entities.merge_attributes(entity.entity_id, update)
-        updated = entity.model_copy(update={"attributes": {**entity.attributes, **update}})
+        updated = entity.model_copy(update={"attributes": merged})
         try:
+            await d.ledger.reserve("indexing")  # the node name is embedded again
             await d.graph.upsert_entity(_node(updated))
         except Exception as exc:  # Postgres holds the status; the node catches up on retry
             log.warning(

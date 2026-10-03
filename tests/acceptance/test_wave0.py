@@ -210,7 +210,7 @@ async def test_a_supported_national_claim_with_the_registry_labels(run_wave0: Ru
     assert (c["status"], c["verdict"]) == ("supported", "supported")
     assert (c["verifier_model"], c["verifier_family"]) == ("code:record_match", "code")
     assert (c["slot_id"], c["quote"], c["parsed_text"]) == ("S04", line, line)
-    assert (c["value_as_written"], c["unit"]) == ("14.8", "%")
+    assert (c["value_as_written"], c["unit"]) == ("14.8", "percent")  # parser's name (BD-19)
     assert (c["geography_level"], c["geography_name"]) == ("national", "Norvania")
     assert (c["measure_type"], c["representativeness"]) == ("cascade_control", "modelled")
     assert str(c["reference_start"]) == "2019-01-01"

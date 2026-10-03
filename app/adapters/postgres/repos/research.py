@@ -1,6 +1,7 @@
 """Searches, claims, statistics and verdicts of a run (LLD-1 §4.3-4.4)."""
 
 import json
+from datetime import date
 from typing import Any
 
 from sqlalchemy import text
@@ -321,6 +322,66 @@ class PostgresResearchRepo:
                 .one_or_none()
             )
         return Relation.model_validate(dict(row)) if row else None
+
+    async def statistic_claims(self, run_id: str, statuses: list[str]) -> list[str]:
+        """Statistic claims of the run with one of `statuses`, every slot and Wave 0."""
+        async with self._engine.connect() as conn:
+            rows = await conn.execute(
+                text(
+                    "SELECT c.claim_id FROM claim c JOIN statistic s USING (claim_id)"
+                    " WHERE c.run_id = :r AND c.status = ANY(:s) ORDER BY c.claim_id"
+                ),
+                {"r": run_id, "s": statuses},
+            )
+            return [str(x) for x in rows.scalars()]
+
+    async def record_consistency(
+        self, claim_id: str, outcome: str, compared_with: list[str], reason: str
+    ) -> None:
+        """The latest consistency decision for a claim (LLD-1 §4.4); a later round
+        replaces it."""
+        async with self._engine.begin() as conn:
+            await conn.execute(
+                text(
+                    "INSERT INTO consistency (claim_id, outcome, compared_with, reason)"
+                    " VALUES (:c, :o, :w, :r) ON CONFLICT (claim_id) DO UPDATE SET"
+                    " outcome = EXCLUDED.outcome, compared_with = EXCLUDED.compared_with,"
+                    " reason = EXCLUDED.reason"
+                ),
+                {"c": claim_id, "o": outcome, "w": compared_with, "r": reason},
+            )
+
+    async def set_superseded_on(self, claim_id: str, on: date) -> None:
+        async with self._engine.begin() as conn:
+            await conn.execute(
+                text("UPDATE relation SET superseded_on = :d WHERE claim_id = :c"),
+                {"d": on, "c": claim_id},
+            )
+
+    async def superseded_live_links(self, run_id: str) -> list[str]:
+        """Superseded claims of the run whose graph edge is not yet end-dated."""
+        async with self._engine.connect() as conn:
+            rows = await conn.execute(
+                text(
+                    "SELECT g.claim_id FROM graph_link g JOIN claim c USING (claim_id)"
+                    " WHERE c.run_id = :r AND c.status = 'superseded'"
+                    " AND g.invalidated_at IS NULL ORDER BY g.claim_id"
+                ),
+                {"r": run_id},
+            )
+            return [str(x) for x in rows.scalars()]
+
+    async def contested_links(self, run_id: str) -> list[str]:
+        """Contested claims of the run that have a graph edge."""
+        async with self._engine.connect() as conn:
+            rows = await conn.execute(
+                text(
+                    "SELECT g.claim_id FROM graph_link g JOIN claim c USING (claim_id)"
+                    " WHERE c.run_id = :r AND c.status = 'contested' ORDER BY g.claim_id"
+                ),
+                {"r": run_id},
+            )
+            return [str(x) for x in rows.scalars()]
 
     async def relation_claims(self, run_id: str, statuses: list[str]) -> list[str]:
         async with self._engine.connect() as conn:

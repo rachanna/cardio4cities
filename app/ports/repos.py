@@ -4,6 +4,8 @@ repositories are the port and SQL lives only in `app/adapters/postgres/`.
 Each repository is added by the task that first needs it (BD-03).
 """
 
+from collections.abc import Callable
+from datetime import date
 from typing import Any, Protocol
 
 from app.domain.models import (
@@ -170,6 +172,20 @@ class ResearchRepo(Protocol):
 
     async def relation(self, claim_id: str) -> Relation | None: ...
 
+    async def statistic_claims(self, run_id: str, statuses: list[str]) -> list[str]:
+        """Statistic claims of the run with one of `statuses` (all slots, Wave 0)."""
+        ...
+
+    async def record_consistency(
+        self, claim_id: str, outcome: str, compared_with: list[str], reason: str
+    ) -> None: ...
+
+    async def set_superseded_on(self, claim_id: str, on: date) -> None: ...
+
+    async def superseded_live_links(self, run_id: str) -> list[str]: ...
+
+    async def contested_links(self, run_id: str) -> list[str]: ...
+
     async def relation_claims(self, run_id: str, statuses: list[str]) -> list[str]:
         """Relation claims of the run with one of `statuses`."""
         ...
@@ -223,6 +239,12 @@ class EntityRepo(Protocol):
     async def entities(self, city_id: str, entity_type: str) -> list[Entity]: ...
 
     async def get(self, entity_ids: list[str]) -> dict[str, Entity]: ...
+
+    async def update_attributes(
+        self, entity_id: str, change: Callable[[dict[str, Any]], dict[str, Any] | None]
+    ) -> dict[str, Any] | None:
+        """Merge what `change` returns into the attributes under a row lock (BD-19)."""
+        ...
 
     async def merge_attributes(self, entity_id: str, attributes: dict[str, Any]) -> None:
         """Shallow-merge into `entity.attributes`, e.g. a programme's status (T-06)."""

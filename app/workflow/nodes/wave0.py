@@ -49,13 +49,13 @@ from app.workflow.ids import stable_id
 from app.workflow.nodes._deps import deps
 from app.workflow.nodes.crawl_gate import record_decision
 from app.workflow.rules.labels import derive_flags
-from app.workflow.rules.numbers import parse_value
 from app.workflow.rules.thresholds import threshold_code
 from app.workflow.rules.wave0 import (
     CODE_FAMILY,
     CODE_VERIFIER,
     canonical_line,
     code_check,
+    record_value,
     select_record,
 )
 from app.workflow.state import RunState
@@ -175,7 +175,7 @@ async def _claim(
 ) -> str:
     city: CityIdentity = state["city"]
     labels = _labels(d, provider, indicator, city, record.year)
-    parsed = parse_value(record.value_as_written)
+    parsed = record_value(record.value_as_written, indicator.unit)
     unit = indicator.unit or ""
     note = f" ({provider.note})" if provider.note else ""
     claim = Claim(
@@ -206,7 +206,7 @@ async def _claim(
         indicator_code=key if key in d.indicators else "OTHER",
         value_as_written=record.value_as_written,
         value_num=parsed.value_num,
-        unit=indicator.unit or parsed.unit,
+        unit=parsed.unit,  # in the parser's words, so figures compare (BD-19)
         lower=parsed.lower,
         upper=parsed.upper,
     )

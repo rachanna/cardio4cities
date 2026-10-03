@@ -15,6 +15,7 @@ from dataclasses import dataclass, field, replace
 from typing import Literal, Protocol
 from urllib.parse import urljoin, urlsplit
 
+from app.domain.charset import charset_of, decode_text
 from app.domain.vocab import CrawlOutcome, ParseOutcome, SourceKind
 from app.ports.errors import FetchError, TLSCertificateError
 from app.ports.fetch import FetchLimits, FetchPort, FetchResult
@@ -45,6 +46,8 @@ RETRY_AFTER_MAX_S = 10.0  # LLD-2 §9.3: honour Retry-After up to 10 s, retry on
 MAX_ISSUER_URLS = 2  # AIA URLs tried per certificate (BD-15)
 CERTIFICATE_MAX_BYTES = 64 * 1024  # an issuer certificate, DER, PEM or PKCS#7 (BD-15)
 MIN_READABLE_CHARS = 200  # LLD-2 §9.4
+NETWORK_RETRY_DELAY_S = 1.0  # LLD-2 §17: one retry after 1 s
+_PAGE_MARKER = re.compile(r"^\[page \d+\]$", re.MULTILINE)  # the PDF parser's markers
 ALLOWED_TYPES = {
     "text/html": SourceKind.WEB_HTML,
     "application/xhtml+xml": SourceKind.WEB_HTML,
@@ -269,7 +272,7 @@ class Collector:
         url, ip = f"{origin}/robots.txt", pinned
         for _ in range(ROBOTS_MAX_REDIRECTS + 1):
             try:
-                result = await self._request(url, ip, limits, "robots", crawl_delay=None)
+                result = await self._retrying(url, ip, limits, "robots", None)
             except FetchError as exc:
                 return _Robots("unreachable_network", None, detail=str(exc))
             location = result.headers.get("location")
@@ -412,6 +415,20 @@ class Collector:
             finally:
                 self._last_request[domain] = self._clock()
 
+    async def _retrying(
+        self, url: str, ip: str, limits: FetchLimits, kind: FetchKind, crawl_delay: float | None
+    ) -> FetchResult:
+        """`_request`, tried once more after 1 s when the connection failed (LLD-2 §17,
+        BD-21). A timeout has already used its whole time, and a certificate, a refused
+        wait or an undecodable body would fail the same way: none is retried."""
+        try:
+            return await self._request(url, ip, limits, kind, crawl_delay)
+        except FetchError as exc:
+            if not exc.retryable:
+                raise
+        await self._sleep(NETWORK_RETRY_DELAY_S)
+        return await self._request(url, ip, limits, kind, crawl_delay)
+
     def _limits(self) -> FetchLimits:
         p = self._params
         return FetchLimits(
@@ -515,7 +532,7 @@ class Collector:
         if pinned is None:  # an allowed decision always carries the checked address
             raise FetchError("no checked address to dial")
         for attempt in range(2):
-            result = await self._request(
+            result = await self._retrying(
                 decision.url, pinned, self._limits(), "fetch", decision.crawl_delay
             )
             if result.status != 429:
@@ -568,13 +585,18 @@ class Collector:
         if kind is None:
             return Collected(url, tuple(decisions), "fetched",
                              parse_outcome=ParseOutcome.UNSUPPORTED_TYPE, **common)  # type: ignore[arg-type]  # fmt: skip
-        if mime == "application/pdf":
-            document = self._parser.parse_pdf(result.content, keywords)
-        elif mime == "text/plain":
-            document = ParsedDocument(text=result.content.decode("utf-8", errors="replace"))
-        else:
-            document = self._parser.parse_html(result.content, decision.url)
-        readable = len(document.text.strip()) >= MIN_READABLE_CHARS
+        charset = charset_of(result.content_type)
+        try:
+            if mime == "application/pdf":
+                document = self._parser.parse_pdf(result.content, keywords)
+            elif mime == "text/plain":
+                document = ParsedDocument(text=decode_text(result.content, charset))
+            else:
+                document = self._parser.parse_html(result.content, decision.url, charset)
+        except Exception:  # a parser must not raise (BD-21); if one does, it is unreadable
+            document = ParsedDocument(text="")
+        # PDF page markers are ours, not the document's: a scanned PDF has no text (BD-21)
+        readable = len(_PAGE_MARKER.sub("", document.text).strip()) >= MIN_READABLE_CHARS
         if kind is SourceKind.WEB_HTML and not readable and _PASSWORD_FIELD.search(result.content):
             return blocked(
                 CrawlOutcome.BLOCKED_LOGIN_OR_PAYWALL,

@@ -13,6 +13,7 @@ from datetime import date
 from typing import Any
 
 from langchain_core.runnables import RunnableConfig
+from pydantic import ValidationError
 
 from app.domain.models import (
     CityIdentity,
@@ -34,8 +35,10 @@ from app.domain.vocab import (
     PublisherClass,
 )
 from app.prompts.extractor.schema import ClaimOut, RelationOut, parse_partial_date, to_labels
+from app.workflow.budget import BudgetExhaustedError
 from app.workflow.deps import RunDeps
 from app.workflow.nodes._deps import deps
+from app.workflow.problems import step_failed
 from app.workflow.rules.entity_resolution import acronym_pairs
 from app.workflow.rules.geography_fit import (
     PlaceCandidate,
@@ -121,113 +124,126 @@ async def match_quotes(state: SlotState, config: RunnableConfig) -> dict[str, An
     acronyms: dict[str, dict[str, str]] = {}  # per source (LLD-2 §6 step 3)
     matched: list[Candidate] = []
     for draft in state.get("drafts", []):
-        if draft.source_id not in texts:
-            texts[draft.source_id] = (
-                await d.relational.sources.source_for_extraction(draft.source_id) or {}
+        try:
+            if draft.source_id not in texts:
+                texts[draft.source_id] = (
+                    await d.relational.sources.source_for_extraction(draft.source_id) or {}
+                )
+            source = texts[draft.source_id]
+            text = str(source.get("parsed_text") or "")
+            out = ClaimOut.model_validate(draft.output)
+            value = out.statistic.value_as_written if out.statistic else None
+            window = text[draft.window_start : draft.window_end]
+            found = match_quote(out.quote, window, d.quote, value)
+            if isinstance(found, QuoteDrop):
+                await d.events.emit(
+                    state["run_id"],
+                    EventType.CLAIM_DROPPED,
+                    {
+                        "claim_id": draft.claim_id,
+                        "reason": found.reason,
+                        "statement": out.statement,
+                        "quote": out.quote,
+                    },
+                )
+                continue
+            start, end = draft.window_start + found.span_start, draft.window_start + found.span_end
+            labels, period_unparsed = to_labels(
+                out.labels, threshold_code(out.labels.case_definition, d.thresholds)
             )
-        source = texts[draft.source_id]
-        text = str(source.get("parsed_text") or "")
-        out = ClaimOut.model_validate(draft.output)
-        value = out.statistic.value_as_written if out.statistic else None
-        window = text[draft.window_start : draft.window_end]
-        found = match_quote(out.quote, window, d.quote, value)
-        if isinstance(found, QuoteDrop):
+            label_quotes: dict[LabelKind, str | None] = (
+                out.label_quotes.model_dump() if out.label_quotes else {}  # type: ignore[assignment]
+            )
+            evidence = locate_label_quotes(
+                label_quotes, window, draft.window_start, labels, d.quote
+            )
+            labels = clear_labels(labels, evidence.cleared)
+            located = [text[start:end], *(text[a:b] for a, b in evidence.spans.values())]
+            if draft.source_id not in regions:
+                regions[draft.source_id] = region_named(state["city"], text)
+            fit = await fit_for(d, state["city"], labels, located, regions[draft.source_id])
+            if fit.relation not in USABLE_RELATIONS:
+                await d.events.emit(
+                    state["run_id"],
+                    EventType.CLAIM_DROPPED,
+                    {
+                        "claim_id": draft.claim_id,
+                        "reason": f"geography_{fit.relation.value}",
+                        "statement": out.statement,
+                        "geography_name": labels.geography_name,
+                        "place": fit.place_name,
+                        "distance_km": fit.distance_km,
+                    },
+                )
+                continue
+            precision = source.get("published_precision")
+            labels = apply_reference_period_rule(
+                labels,
+                source.get("published_date"),
+                DatePrecision(str(precision)) if precision else None,
+            )
+            parsed = parse_value(value) if value is not None else None
+            flags = set(derive_flags(out.kind, labels, out.quote_lang, parsed, d.badge))
+            if period_unparsed:
+                flags.add(ClaimFlag.PERIOD_NOT_STATED)
+            claim = Claim(
+                claim_id=draft.claim_id,
+                run_id=state["run_id"],
+                city_id=state["city"].city_id,
+                slot_id=slot.slot_id,
+                source_id=draft.source_id,
+                kind=out.kind,
+                statement=out.statement,
+                quote=text[start:end],
+                quote_lang=out.quote_lang,
+                quote_translation=out.quote_translation,
+                span_start=start,
+                span_end=end,
+                labels=labels,
+                flags=frozenset(flags),
+                status=ClaimStatus.EXTRACTED,
+                extractor_model=draft.extractor_model,
+                prompt_version=draft.prompt_version,
+                label_spans=evidence.spans,
+                geography_fit=fit,
+            )
+            statistic = None
+            if out.kind is ClaimKind.STATISTIC and out.statistic is not None and parsed is not None:
+                code = out.statistic.indicator_code
+                statistic = Statistic(
+                    claim_id=claim.claim_id,
+                    indicator_code=code if code in d.indicators else "OTHER",
+                    value_as_written=out.statistic.value_as_written,
+                    value_num=parsed.value_num,
+                    unit=parsed.unit,
+                    lower=parsed.lower,
+                    upper=parsed.upper,
+                )
+            relation = None
+            if out.kind is ClaimKind.RELATION and out.relation is not None:
+                if draft.source_id not in acronyms:
+                    acronyms[draft.source_id] = acronym_pairs(text)
+                published = source.get("published_date")
+                relation = await relation_for(
+                    d,
+                    claim.city_id,
+                    claim.claim_id,
+                    out.relation,
+                    acronyms[draft.source_id],
+                    published if isinstance(published, date) else None,
+                )
+            await d.relational.research.add_claim(claim, statistic, relation)
+            matched.append(Candidate(claim, PublisherClass(str(source["publisher_class"]))))
+        except BudgetExhaustedError:
+            break
+        except ValidationError:  # labels that cannot hold, e.g. an inverted age band (BD-21)
             await d.events.emit(
                 state["run_id"],
                 EventType.CLAIM_DROPPED,
-                {
-                    "claim_id": draft.claim_id,
-                    "reason": found.reason,
-                    "statement": out.statement,
-                    "quote": out.quote,
-                },
+                {"claim_id": draft.claim_id, "reason": "invalid_labels"},
             )
-            continue
-        start, end = draft.window_start + found.span_start, draft.window_start + found.span_end
-        labels, period_unparsed = to_labels(
-            out.labels, threshold_code(out.labels.case_definition, d.thresholds)
-        )
-        label_quotes: dict[LabelKind, str | None] = (
-            out.label_quotes.model_dump() if out.label_quotes else {}  # type: ignore[assignment]
-        )
-        evidence = locate_label_quotes(label_quotes, window, draft.window_start, labels, d.quote)
-        labels = clear_labels(labels, evidence.cleared)
-        located = [text[start:end], *(text[a:b] for a, b in evidence.spans.values())]
-        if draft.source_id not in regions:
-            regions[draft.source_id] = region_named(state["city"], text)
-        fit = await fit_for(d, state["city"], labels, located, regions[draft.source_id])
-        if fit.relation not in USABLE_RELATIONS:
-            await d.events.emit(
-                state["run_id"],
-                EventType.CLAIM_DROPPED,
-                {
-                    "claim_id": draft.claim_id,
-                    "reason": f"geography_{fit.relation.value}",
-                    "statement": out.statement,
-                    "geography_name": labels.geography_name,
-                    "place": fit.place_name,
-                    "distance_km": fit.distance_km,
-                },
-            )
-            continue
-        precision = source.get("published_precision")
-        labels = apply_reference_period_rule(
-            labels,
-            source.get("published_date"),
-            DatePrecision(str(precision)) if precision else None,
-        )
-        parsed = parse_value(value) if value is not None else None
-        flags = set(derive_flags(out.kind, labels, out.quote_lang, parsed, d.badge))
-        if period_unparsed:
-            flags.add(ClaimFlag.PERIOD_NOT_STATED)
-        claim = Claim(
-            claim_id=draft.claim_id,
-            run_id=state["run_id"],
-            city_id=state["city"].city_id,
-            slot_id=slot.slot_id,
-            source_id=draft.source_id,
-            kind=out.kind,
-            statement=out.statement,
-            quote=text[start:end],
-            quote_lang=out.quote_lang,
-            quote_translation=out.quote_translation,
-            span_start=start,
-            span_end=end,
-            labels=labels,
-            flags=frozenset(flags),
-            status=ClaimStatus.EXTRACTED,
-            extractor_model=draft.extractor_model,
-            prompt_version=draft.prompt_version,
-            label_spans=evidence.spans,
-            geography_fit=fit,
-        )
-        statistic = None
-        if out.kind is ClaimKind.STATISTIC and out.statistic is not None and parsed is not None:
-            code = out.statistic.indicator_code
-            statistic = Statistic(
-                claim_id=claim.claim_id,
-                indicator_code=code if code in d.indicators else "OTHER",
-                value_as_written=out.statistic.value_as_written,
-                value_num=parsed.value_num,
-                unit=parsed.unit,
-                lower=parsed.lower,
-                upper=parsed.upper,
-            )
-        relation = None
-        if out.kind is ClaimKind.RELATION and out.relation is not None:
-            if draft.source_id not in acronyms:
-                acronyms[draft.source_id] = acronym_pairs(text)
-            published = source.get("published_date")
-            relation = await relation_for(
-                d,
-                claim.city_id,
-                claim.claim_id,
-                out.relation,
-                acronyms[draft.source_id],
-                published if isinstance(published, date) else None,
-            )
-        await d.relational.research.add_claim(claim, statistic, relation)
-        matched.append(Candidate(claim, PublisherClass(str(source["publisher_class"]))))
+        except Exception as exc:  # one draft never costs the others (BD-21)
+            await step_failed(d, state, "match_quotes", draft.claim_id, exc)
     order = [c.claim.claim_id for c in ranked(matched, slot.accepted_levels)]
     return {"claim_ids": order, "matched_claim_ids": order}
 

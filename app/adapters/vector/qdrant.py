@@ -4,7 +4,9 @@ chunks can never answer for another (contract test, AT-35)."""
 from typing import Any
 
 from qdrant_client import AsyncQdrantClient, models
+from qdrant_client.http.exceptions import ResponseHandlingException, UnexpectedResponse
 
+from app.ports.errors import ProviderUnavailableError
 from app.ports.vector import VectorHit, VectorPoint
 from app.settings import Settings
 
@@ -66,13 +68,16 @@ class QdrantVectorStore:
     async def upsert(self, name: str, points: list[VectorPoint]) -> None:
         if not points:
             return
-        await self._client.upsert(
-            name,
-            points=[
-                models.PointStruct(id=p.id, vector=p.vector, payload=p.payload) for p in points
-            ],
-            wait=True,
-        )
+        try:
+            await self._client.upsert(
+                name,
+                points=[
+                    models.PointStruct(id=p.id, vector=p.vector, payload=p.payload) for p in points
+                ],
+                wait=True,
+            )
+        except (UnexpectedResponse, ResponseHandlingException) as exc:  # a port error (BD-21)
+            raise ProviderUnavailableError(f"qdrant: {type(exc).__name__}") from exc
 
     async def search(
         self, name: str, vector: list[float], filters: dict[str, Any], limit: int

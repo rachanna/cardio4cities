@@ -16,6 +16,7 @@ from app.workflow.budget import BudgetExhaustedError
 from app.workflow.ids import stable_id
 from app.workflow.llm import call_role
 from app.workflow.nodes._deps import deps
+from app.workflow.problems import step_failed
 from app.workflow.rules.chunking import windows
 from app.workflow.rules.quotes import normalise_text
 from app.workflow.state import Draft, SlotState
@@ -61,6 +62,7 @@ async def extract(state: SlotState, config: RunnableConfig) -> dict[str, Any]:
             except PortError as exc:
                 if roles.escalate_to is None:
                     skipped.append(_skip(source_id, n, exc))
+                    await step_failed(d, state, "extract", f"{source_id}#{n}", exc)
                     continue  # skip the window (LLD-2 §17)
                 try:
                     out = await call_role(
@@ -72,8 +74,11 @@ async def extract(state: SlotState, config: RunnableConfig) -> dict[str, Any]:
                         problems=repair_problems,
                         binding=roles.escalate_to,
                     )
-                except (PortError, BudgetExhaustedError) as exc:
+                except BudgetExhaustedError:
+                    return {"drafts": drafts, **_skipped(skipped)}
+                except PortError as exc:
                     skipped.append(_skip(source_id, n, exc))
+                    await step_failed(d, state, "extract", f"{source_id}#{n}", exc)
                     continue
             for claim in out.parsed.claims:
                 key = normalise_text(claim.quote)

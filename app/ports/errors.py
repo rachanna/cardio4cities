@@ -18,11 +18,14 @@ class LLMOutputValidationError(PortError):
 
 
 class FetchError(PortError):
-    """A fetch failed at the network level (connection, TLS, timeout)."""
+    """A fetch failed at the network level (connection, TLS, timeout). `retryable`: a
+    connection-level failure worth one more try (LLD-2 §17, BD-21); a timeout, a
+    certificate or a body we cannot decode is not."""
 
-    def __init__(self, message: str, timeout: bool = False) -> None:
+    def __init__(self, message: str, timeout: bool = False, retryable: bool = False) -> None:
         super().__init__(message)
         self.timeout = timeout
+        self.retryable = retryable
 
 
 CERTIFICATE_CAUSES = {

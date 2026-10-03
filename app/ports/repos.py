@@ -60,14 +60,22 @@ class SourceRepo(Protocol):
 
     async def add_source(
         self, source: Source, parsed_text: str | None, crawl_decision_id: str | None
-    ) -> None: ...
+    ) -> None:
+        """Inserts nothing when the run already holds the source ID or its canonical URL."""
+        ...
+
+    async def source_at(self, run_id: str, url_canonical: str) -> tuple[str, bool] | None:
+        """The run's source stored at this final URL, and whether it has parsed text
+        (BD-21: two candidates that redirect to one page share one source)."""
+        ...
 
     async def fetched_urls(self, run_id: str) -> set[str]:
         """Canonical URLs already fetched in the run (HD-01)."""
         ...
 
     async def fetched_sources(self, run_id: str) -> dict[str, str | None]:
-        """URL -> source ID of the run's stored pages, None when unreadable (BD-14)."""
+        """URL (as found and as fetched) -> source ID of the run's stored pages, None
+        when unreadable (BD-14, BD-21)."""
         ...
 
     async def crawl_outcomes(self, decision_ids: list[str]) -> list[str]: ...

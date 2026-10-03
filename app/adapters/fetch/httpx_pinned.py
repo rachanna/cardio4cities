@@ -134,7 +134,7 @@ async def _getaddrinfo(host: str) -> list[str]:
     loop = asyncio.get_running_loop()
     try:
         infos = await loop.getaddrinfo(host, None, type=socket.SOCK_STREAM)
-    except socket.gaierror:
+    except (socket.gaierror, UnicodeError):  # UnicodeError: a label IDNA cannot encode
         return []
     return sorted({str(info[4][0]) for info in infos})
 
@@ -300,7 +300,7 @@ class PinnedFetcher:
             OSError,
             ssl.SSLError,
         ) as exc:
-            raise FetchError(f"network error: {type(exc).__name__}") from exc
+            raise FetchError(f"network error: {type(exc).__name__}", retryable=True) from exc
 
 
 def _verify_error(exc: BaseException) -> ssl.SSLCertVerificationError | None:

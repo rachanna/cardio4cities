@@ -8,6 +8,7 @@ contains a slot keyword, rendered as pipe tables after the page text.
 
 import copy
 import io
+import logging
 import re
 from datetime import date
 
@@ -16,8 +17,11 @@ import trafilatura
 from lxml import etree
 from lxml import html as lxml_html
 
+from app.domain.charset import decode_text
 from app.ports.parse import ParsedDocument
 from app.settings import Settings
+
+log = logging.getLogger(__name__)
 
 _TABLE_LINE = re.compile(r"^\|.*\|\s*$")
 
@@ -143,8 +147,22 @@ def _date(value: str | None) -> date | None:
 
 
 class DocumentParser:
-    def parse_html(self, content: bytes, url: str) -> ParsedDocument:
-        html = expand_spans(content.decode("utf-8", errors="replace"))
+    def parse_html(self, content: bytes, url: str, charset: str | None = None) -> ParsedDocument:
+        try:
+            return self._html(content, url, charset)
+        except Exception as exc:  # a page the libraries cannot read is unreadable (BD-21)
+            log.warning("parse: unreadable HTML (%s)", type(exc).__name__)
+            return ParsedDocument(text="")
+
+    def parse_pdf(self, content: bytes, table_keywords: list[str]) -> ParsedDocument:
+        try:
+            return self._pdf(content, table_keywords)
+        except Exception as exc:  # malformed or encrypted PDF: unreadable (BD-21)
+            log.warning("parse: unreadable PDF (%s)", type(exc).__name__)
+            return ParsedDocument(text="")
+
+    def _html(self, content: bytes, url: str, charset: str | None) -> ParsedDocument:
+        html = expand_spans(decode_text(content, charset, html=True))
         text = trafilatura.extract(
             html,
             url=url,
@@ -165,7 +183,7 @@ class DocumentParser:
             tables=_table_spans(body),
         )
 
-    def parse_pdf(self, content: bytes, table_keywords: list[str]) -> ParsedDocument:
+    def _pdf(self, content: bytes, table_keywords: list[str]) -> ParsedDocument:
         keywords = [k.lower() for k in table_keywords if k]
         parts: list[str] = []
         pages: list[tuple[int, int]] = []

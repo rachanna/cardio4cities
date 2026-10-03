@@ -13,6 +13,7 @@ from app.workflow.collection import GateDecision
 from app.workflow.deps import RunDeps
 from app.workflow.ids import stable_id
 from app.workflow.nodes._deps import deps
+from app.workflow.problems import step_failed
 from app.workflow.state import SlotState
 
 
@@ -58,6 +59,9 @@ async def crawl_gate(state: SlotState, config: RunnableConfig) -> dict[str, Any]
             decision = await d.collector.gate(candidate.url)
         except BudgetExhaustedError:
             break
+        except Exception as exc:  # BD-21: not fetched, and the reason is stored
+            await step_failed(d, state, "crawl_gate", candidate.url, exc)
+            continue
         decision_ids.append(await record_decision(d, state["run_id"], decision))
         if decision.outcome is CrawlOutcome.ALLOWED:
             allowed.append(candidate)

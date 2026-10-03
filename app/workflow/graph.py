@@ -30,6 +30,7 @@ from app.workflow.nodes.search import search
 from app.workflow.nodes.select_sources import select_sources
 from app.workflow.nodes.verify import route_after_verify, verify
 from app.workflow.nodes.wave0 import wave0
+from app.workflow.problems import step_failed
 from app.workflow.state import RunState, SlotOutput, SlotState
 
 
@@ -52,7 +53,8 @@ def guarded(name: str, node: SlotNode) -> SlotNode:
             return await node(state, config)
         except BudgetExhaustedError:
             return {}
-        except Exception as exc:  # recorded on the slot report
+        except Exception as exc:  # recorded on the slot report and stored (BD-21)
+            await step_failed(deps(config), state, name, None, exc)
             return {"error": f"{name}: {type(exc).__name__}"}
         finally:
             clock.stop(name, started)

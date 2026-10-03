@@ -227,6 +227,7 @@ class EventType(StrEnum):
     FACT_WRITTEN = "fact_written"
     SLOT_STATUS = "slot_status"
     BUDGET_WARNING = "budget_warning"
+    STEP_FAILED = "step_failed"  # BD-21
     RUN_FINISHED = "run_finished"
 
 

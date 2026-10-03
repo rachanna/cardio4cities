@@ -772,7 +772,9 @@ Any other pair is refused by the write adapter before reaching Graphiti.
 
 ### 6.3 Write contract
 
-One supported relation claim becomes one edge. Primary design `[spike]`:
+**Decided by spike S-1 (BD-11):** `add_triplet` makes model calls on every write (dedupe and timestamp extraction) and lost claim IDs on edges, so the adapter saves our nodes and edges directly through Graphiti's model classes (`EntityNode.save`, `EntityEdge.save`) with our embeddings, sets `invalid_at` by code, and reads through Graphiti's hybrid search and filters. The fields below are written exactly as listed; no Graphiti model call is ever made.
+
+One supported relation claim becomes one edge. Original design, kept for its field contract:
 
 ```text
 graph.upsert_entity(node)               # node.uuid = entity.graph_uuid, group_id = city_id

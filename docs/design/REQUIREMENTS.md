@@ -386,7 +386,7 @@ Reasoning for each item is in `docs/design/BRAINSTORM.md`.
 | R-90 | **Plain user-facing vocabulary**: Confirmed · Reported, not confirmed · Not city-level · Not found · Sources disagree. Internal terms (claim, verdict, entailment) never appear on screen | SHOULD | R-27, R-30 | D |
 | R-91 | **Demo-day change freeze**: no deploys on rehearsal or demo days; health check an hour before | SHOULD | R-09, R-80 | I |
 
-### 7.8 Added by CR-01 (retrieval for reliable answers)
+### 7.8 Added by CHG-01 (retrieval for reliable answers)
 
 Design: `docs/design/LLD-5-retrieval.md`.
 
@@ -719,4 +719,4 @@ The submission is complete when:
 |---|---|---|
 | 1.0 | 2026-10-02 | Baseline. Brief requirements R-01–R-28 restated with strict readings and acceptance criteria; derived requirements R-29–R-54 carried over; R-55–R-76 added from prior design work and probes; hazards T-12–T-16 added; acceptance test catalogue AT-01–AT-28 created. |
 | 1.1 | 2026-10-02 | Moved to `docs/design/`. Added slot catalogue and statuses (§3.1); R-77–R-91 (health check and keep-alive, one main badge, slots as unit of work, replayable progress, vendor neutrality, config validation, research always fresh, run summary, Wave 0, crawl standards, statistics owned by Postgres, graph switch, required labels, plain vocabulary, demo-day freeze); tightened R-01, R-03, R-30, R-49, R-56, R-58; AT-29–AT-38; CON-04–CON-12 updated to decided defaults; A-13, A-14; all Q-xx resolved (Q-12 added); WON'T list extended. |
-| 1.2 | 2026-10-03 | CR-01: R-92–R-100, AT-39–AT-47, R-64 extended; retrieval design in LLD-5. |
+| 1.2 | 2026-10-03 | CHG-01: R-92–R-100, AT-39–AT-47, R-64 extended; retrieval design in LLD-5. |

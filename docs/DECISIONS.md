@@ -153,7 +153,7 @@ Added during the build as `BD-01`, `BD-02`… Spike results go here first.
 
 ## 9a. Retrieval (LLD-5 §16)
 
-Added by CR-01. Design: `docs/design/LLD-5-retrieval.md`.
+Added by change request CHG-01, approved by the owner on 2026-10-03 and circulated as "CR-01". It was renamed because `CR-xx` IDs are the content requirements in REQUIREMENTS §3 (CR-01 is the cardiovascular health landscape); `CHG-xx` now identifies change requests. Design: `docs/design/LLD-5-retrieval.md`.
 
 | ID | Decision | Alternative | Reason | Status |
 |---|---|---|---|---|

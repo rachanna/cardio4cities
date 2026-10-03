@@ -376,14 +376,14 @@ city: {name}
 slots: {slot_id}: {short label} …           # from ref_slot
 indicators: {code}: {name} …
 today: {date}
-previous turn: {slots, indicators, entity mentions, or "none"}   # classifier@v2 (CR-01, LLD-5 §3.2)
+previous turn: {slots, indicators, entity mentions, or "none"}   # classifier@v2 (CHG-01, LLD-5 §3.2)
 </context>
 <question>{question}</question>
 ```
 
 The question is user input; it sits in its own tag and the system prompt treats it as text to classify, not as instructions.
 
-### 6.2 System prompt (`classifier@v2`, CR-01)
+### 6.2 System prompt (`classifier@v2`, CHG-01)
 
 ```text
 Classify a user's question about a city's cardiovascular health landscape.
@@ -406,7 +406,7 @@ class EntityMention(BaseModel):
     text: str
     type: EntityType | None
 
-class ClassifierOutput(BaseModel):    # LLD-5 §3.1 (CR-01)
+class ClassifierOutput(BaseModel):    # LLD-5 §3.1 (CHG-01)
     question_type: Literal['figure', 'relationship', 'change_over_time', 'open', 'out_of_scope']
     slot_ids: list[str]                 # from the catalogue
     indicator_codes: list[str]
@@ -432,7 +432,7 @@ question: {question}
 evidence:
 - [{ref_id}] FACT: {statement} | value {value_as_written} | describes {geography_level}
   ({geography_name}) | period {period} | badge {main_badge or "none"} | confidence {label}
-  | slot {slot_id} | contested_with: {ref_id or "none"}         # answerer@v2 (CR-01)
+  | slot {slot_id} | contested_with: {ref_id or "none"}         # answerer@v2 (CHG-01)
 - [{ref_id}] MENTION (not confirmed): {chunk excerpt ≤ 400 chars} | source {publisher_class}
 gaps:                                                          # one entry per attached gap (LLD-5 §6.2, §7)
 - {slot_id}: {gap_note}
@@ -441,7 +441,7 @@ gaps:                                                          # one entry per a
 
 `ref_id` is a claim ID for facts and `m:{source_id}:{char_start}` for mentions. Evidence text is shown as data; mentions are untrusted content and carry the §2.2 instruction.
 
-### 7.2 System prompt (`answerer@v2`, CR-01)
+### 7.2 System prompt (`answerer@v2`, CHG-01)
 
 ```text
 You answer questions for a public-health lead who may repeat your words to officials.

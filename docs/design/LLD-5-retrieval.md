@@ -4,7 +4,7 @@
 |---|---|
 | **Version** | 1.0 |
 | **Date** | 2026-10-03 |
-| **Status** | Baseline for build. Introduced by change request CR-01 |
+| **Status** | Baseline for build. Introduced by change request CHG-01 (circulated as "CR-01"; renamed because `CR-xx` IDs are the content requirements in REQUIREMENTS §3) |
 | **Replaces** | LLD-2 §15.1 steps 1–4 (classification, retrieval, bundle). LLD-2 §15.1 step 5 (post-check) stays and is extended in §9 here |
 | **Inputs** | `REQUIREMENTS.md` · `HLD.md` §7 · `LLD-1` to `LLD-4` |
 
@@ -91,7 +91,7 @@ All routes run in parallel. Each returns a ranked list of `(claim_id, rank, rout
 
 ### 4.1 R2: keyword route
 
-- A generated column on `claim`, `search_tsv`, holds `to_tsvector('simple', statement || ' ' || coalesce(quote_translation, '') || ' ' || coalesce(indicator name, ''))` plus entity canonical names for relation claims, maintained by the write node. GIN index.
+- A `tsvector` column on `claim`, `search_tsv`, holds `to_tsvector('simple', statement || ' ' || coalesce(quote_translation, '') || ' ' || coalesce(indicator name, ''))` plus entity canonical names for relation claims, maintained by code: written by the write node and refreshed on every status change. It is a plain column, not a generated one, because Postgres generated columns can read only their own row, and this text comes from `statistic`, `ref_indicator` and `entity` (LLD-1 §4.4). GIN index.
 - The `simple` configuration is used on purpose: no stemming and no stop-word removal, so "STEPS", "NCD", "HEARTS", acronyms and numbers match exactly (RD-07).
 - Query: `websearch_to_tsquery('simple', question)`, ranked by `ts_rank_cd`, top 20 `[tunable]`. Entity mentions are also matched with trigram similarity on `entity.canonical_name` and `entity_alias.surface_form` (≥ 0.4 `[tunable]`), adding the claims of matched entities.
 
@@ -307,11 +307,11 @@ The local embedding model must be multilingual; start-up validation refuses a lo
 
 ---
 
-## 15. Data changes (applied through LLD-1 by CR-01)
+## 15. Data changes (applied through LLD-1 by CHG-01)
 
 | Change | Where |
 |---|---|
-| Generated column `claim.search_tsv` and GIN index | New migration |
+| Column `claim.search_tsv` (plain `tsvector`, maintained by code) and GIN index | New migration |
 | `answer.conversation_id`, `answer.turn`, `answer.trace` | New migration |
 | Qdrant collection `claim_index__{embedding_key}` | LLD-1 §5; created at start-up like `source_chunks` |
 | Write node upserts claim points; status changes update or delete them | LLD-2 §3.3 (`write`, `consistency`) |

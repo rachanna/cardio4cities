@@ -145,7 +145,7 @@ These conditional edges make the three required routing points visible in the re
 | `analytics` | code | Graphiti subgraph | `entity.attributes.centrality` | — | — | Skip silently |
 | `brief_ready` | code | everything | `run_summary`, `run.status`, `city.latest_run_id` | `run_finished` | — | — |
 
-**Claim index (CR-01).** Supersession (where a claim becomes `superseded`) and any change to `refuted` or `insufficient` after indexing delete the claim's index point (LLD-5 §4.2).
+**Claim index (CHG-01).** Supersession (where a claim becomes `superseded`) and any change to `refuted` or `insufficient` after indexing delete the claim's index point (LLD-5 §4.2).
 
 ### 3.4 Planner fallback
 

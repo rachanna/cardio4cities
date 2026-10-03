@@ -78,7 +78,7 @@ cardio4cities/
 │   │                             #       numbers, thresholds, comparability, consistency,
 │   │                             #       entity_resolution, slot_status, gap_notes, wave0_record,
 │   │                             #       labels (reference-period rule, derived flags)
-│   ├── query/                    # LLD-5 (CR-01): understand.py, routes/ (structured.py, keyword.py,
+│   ├── query/                    # LLD-5 (CHG-01): understand.py, routes/ (structured.py, keyword.py,
 │   │                             #   semantic.py, graph.py), revalidate.py, fuse.py, anchors.py,
 │   │                             #   bundle.py, answer.py, postcheck.py, trace.py
 │   ├── report/                   # assemble, render, templates/report.{md,html}.j2 (LLD-2 §16)
@@ -128,7 +128,7 @@ cardio4cities/
 │   ├── smoke/                    # deployed URL (AT-17, AT-29)
 │   ├── prompts/golden/           # fictional snippets and expected outputs; results/ per profile (BD-10)
 │   └── fixtures/                 # fictional city "Halden Bay, Norvania"; recorded provider responses;
-│                                 # retrieval/halden_bay/: claims, entities, edges, questions with gold answers (CR-01)
+│                                 # retrieval/halden_bay/: claims, entities, edges, questions with gold answers (CHG-01)
 │
 ├── docs/
 │   ├── ARCHITECTURE.md           # concise, for the panel (R-20)
@@ -200,7 +200,7 @@ Run as `uv run poe <task>`; tasks are defined in `pyproject.toml` under `[tool.p
 | `poe types` | Regenerate `web/lib/api-types.ts` from the OpenAPI document |
 | `poe spike NAME` | Run one script in `scripts/spikes/` |
 | `poe eval` | Prompt golden set against real models (costs money) |
-| `poe eval-rag` | Retrieval evaluation with real models (costs money; ask the owner first; CR-01) |
+| `poe eval-rag` | Retrieval evaluation with real models (costs money; ask the owner first; CHG-01) |
 | `poe smoke URL` | Smoke tests against a deployed URL |
 | `poe purge CITY` | Remove a city from all stores |
 

@@ -561,7 +561,7 @@ CREATE TABLE claim (
 CREATE INDEX claim_city_slot_idx ON claim (city_id, slot_id, status);
 CREATE INDEX claim_run_idx ON claim (run_id);
 
--- CR-01: keyword route (LLD-5 §4.1). Maintained by the write node.
+-- CHG-01: keyword route (LLD-5 §4.1). Maintained by the write node.
 ALTER TABLE claim ADD COLUMN search_tsv tsvector;
 CREATE INDEX claim_search_tsv_idx ON claim USING gin (search_tsv);
 
@@ -642,9 +642,9 @@ CREATE TABLE answer (
   body jsonb NOT NULL,                           -- sentences with cited claim ids, badges, abstentions
   cited_claim_ids text[] NOT NULL DEFAULT '{}',
   graph_used boolean NOT NULL, models jsonb NOT NULL,
-  conversation_id text,                          -- CR-01: follow-up questions (LLD-5 §3.2)
+  conversation_id text,                          -- CHG-01: follow-up questions (LLD-5 §3.2)
   turn int NOT NULL DEFAULT 1,
-  trace jsonb NOT NULL DEFAULT '{}',             -- CR-01: retrieval trace (LLD-5 §10)
+  trace jsonb NOT NULL DEFAULT '{}',             -- CHG-01: retrieval trace (LLD-5 §10)
   created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX answer_conversation_idx ON answer (conversation_id, turn);
@@ -724,7 +724,7 @@ Qdrant never holds verdicts or anything shown as a fact. A chunk reaches the use
 
 ### 5.4 Claim index
 
-Added by CR-01 (LLD-5 §4.2). `source_chunks__{embedding_key}` is now used only to find unconfirmed mentions; confirmed claims are found through this collection.
+Added by CHG-01 (LLD-5 §4.2). `source_chunks__{embedding_key}` is now used only to find unconfirmed mentions; confirmed claims are found through this collection.
 
 | Setting | Value |
 |---|---|

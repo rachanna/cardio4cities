@@ -171,7 +171,7 @@ Only facts in `v_city_facts` (LLD-1 §4.6) are returned as FactCards. A request 
 ```json
 // request
 { "question": "Who runs public health in Halden Bay now?", "options": { "graph": "on" },
-  "conversation_id": "conv_01J9Z6" }              // optional (CR-01); the server creates one when absent
+  "conversation_id": "conv_01J9Z6" }              // optional (CHG-01); the server creates one when absent
 // 200
 {
   "answer_id": "ans_01J9Z6",
@@ -185,7 +185,7 @@ Only facts in `v_city_facts` (LLD-1 §4.6) are returned as FactCards. A request 
   ],
   "graph_used": true,
   "run_id": "run_01J9Z4",
-  "conversation_id": "conv_01J9Z6", "turn": 1,   // CR-01 (LLD-5 §3.2)
+  "conversation_id": "conv_01J9Z6", "turn": 1,   // CHG-01 (LLD-5 §3.2)
   "trace": { "...": "admins only (LLD-5 §10)" }
 }
 ```
@@ -202,7 +202,7 @@ Only facts in `v_city_facts` (LLD-1 §4.6) are returned as FactCards. A request 
 | `GET /api/v1/workflow/diagram` | viewer | Mermaid text generated from the compiled graphs (`draw_mermaid`), main graph and slot subgraph, for DS-2 (AT-03) |
 | `GET /api/v1/admin/planted-cases` | admin | The planted trust cases (HLD §9.5) with their last results |
 | `POST /api/v1/admin/planted-cases/{case_id}/run` | admin | Runs one planted case against the live components and returns the outcome with the claim, verdict and consequence |
-| `GET /api/v1/admin/answers/{answer_id}/trace` | admin | The stored retrieval trace of one answer (CR-01, LLD-5 §10) |
+| `GET /api/v1/admin/answers/{answer_id}/trace` | admin | The stored retrieval trace of one answer (CHG-01, LLD-5 §10) |
 | `GET /api/v1/admin/runs/{run_id}/trace` | admin | Link to the tracing provider for the run, when configured |
 
 ---
@@ -293,7 +293,7 @@ entity:     { merge_threshold: 0.92, candidate_threshold: 0.85 }
 badge:      { stale_years: 5, stale_years_people: 2, small_sample: 300 }
 confidence: { recent_years: 5 }
 analytics:  { enabled: false }
-retrieval:                                   # CR-01 (LLD-5 §14)
+retrieval:                                   # CHG-01 (LLD-5 §14)
   rrf_k: 60
   r2_top: 20
   r2_trigram_min: 0.4
@@ -319,7 +319,7 @@ The application refuses to start, with a message naming the problem, when:
 | Placeholders | Any value `"<confirm day 1>"` or a `0` budget in `deployed` |
 | Reference data | `ref_slot` does not hold exactly S01–S16; `ref_source` contains placeholder indicator codes |
 | Access | `ACCESS_CODE` shorter than 12 characters; `ADMIN_CODE` equal to `ACCESS_CODE` |
-| Multilingual embeddings | The local Sentence Transformers model must be on the configured multilingual list (R-100, CR-01) |
+| Multilingual embeddings | The local Sentence Transformers model must be on the configured multilingual list (R-100, CHG-01) |
 
 ### 5.3 `.env.example`
 
@@ -550,8 +550,8 @@ Relational access uses repository classes per aggregate (`RunRepo`, `ClaimRepo`,
 | AT-35 | `tests/contract/` | Automated |
 | AT-36 | `tests/acceptance/test_config_validation.py` | Automated |
 | AT-38 | `tests/acceptance/test_run_summary.py` | Automated |
-| AT-39 to AT-46 | `tests/acceptance/test_retrieval.py` | Automated (CR-01) |
-| AT-47 | `tests/acceptance/test_retrieval_eval.py` | Automated (CR-01) |
+| AT-39 to AT-46 | `tests/acceptance/test_retrieval.py` | Automated (CHG-01) |
+| AT-47 | `tests/acceptance/test_retrieval_eval.py` | Automated (CHG-01) |
 | R-14 exploration, DS-1 to DS-7 | `docs/REHEARSAL.md` checklist | Demo rehearsal |
 
 Tests that would call paid providers use recorded responses in CI; `scripts/eval_prompts.py` and the deployed smoke test are the only live runs.

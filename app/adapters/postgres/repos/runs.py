@@ -138,6 +138,14 @@ class PostgresRunRepo:
                     )
                 ).scalar_one()
             )
+            # Under the run's row lock: an event already stored is returned, not repeated
+            existing = (
+                await conn.execute(
+                    text("SELECT seq FROM run_event WHERE event_id = :e"), {"e": event_id}
+                )
+            ).scalar_one_or_none()
+            if existing is not None:
+                return int(existing)
             await conn.execute(
                 text(
                     "INSERT INTO run_event (run_id, seq, event_id, type, payload)"
@@ -168,3 +176,60 @@ class PostgresRunRepo:
                 {"r": run_id, "s": after_seq, "l": limit},
             )
             return [{"seq": r.seq, "type": r.type, "payload": r.payload} for r in rows]
+
+    # --- coverage and resume (D2-5, LLD-2 §11, BD-14) ----------------------------------
+
+    async def save_slot_result(self, run_id: str, result: dict[str, Any]) -> None:
+        """One row per slot per run; a re-plan round replaces the earlier round's row."""
+        async with self._engine.begin() as conn:
+            await conn.execute(
+                text(
+                    "INSERT INTO slot_result (run_id, slot_id, status, flags, replans_used,"
+                    " queries_tried, sources_checked, best_claim_ids, gap_note)"
+                    " VALUES (:r, :slot_id, :status, :flags, :replans_used, :queries_tried,"
+                    " :sources_checked, :best_claim_ids, :gap_note)"
+                    " ON CONFLICT (run_id, slot_id) DO UPDATE SET status = EXCLUDED.status,"
+                    " flags = EXCLUDED.flags, replans_used = EXCLUDED.replans_used,"
+                    " queries_tried = EXCLUDED.queries_tried,"
+                    " sources_checked = EXCLUDED.sources_checked,"
+                    " best_claim_ids = EXCLUDED.best_claim_ids, gap_note = EXCLUDED.gap_note"
+                ),
+                {"r": run_id, **result},
+            )
+
+    async def slot_results(self, run_id: str) -> list[dict[str, Any]]:
+        async with self._engine.connect() as conn:
+            rows = await conn.execute(
+                text("SELECT * FROM slot_result WHERE run_id = :r ORDER BY slot_id"),
+                {"r": run_id},
+            )
+            return [dict(r) for r in rows.mappings()]
+
+    async def save_budget_used(self, run_id: str, used: dict[str, Any]) -> None:
+        """The ledger's counters, kept with the run's limits so a resume can restore them."""
+        async with self._engine.begin() as conn:
+            await conn.execute(
+                text(
+                    "UPDATE run SET budget = budget"
+                    " || jsonb_build_object('used', CAST(:u AS jsonb)) WHERE run_id = :r"
+                ),
+                {"u": json.dumps(used, default=str), "r": run_id},
+            )
+
+    async def stranded_runs(self) -> list[dict[str, Any]]:
+        """Runs left `running` (or `queued`) by a process that stopped."""
+        async with self._engine.connect() as conn:
+            rows = await conn.execute(
+                text(
+                    "SELECT run_id, city_id, status, resume_attempts, budget FROM run"
+                    " WHERE status IN ('queued', 'running') ORDER BY run_id"
+                )
+            )
+            return [dict(r) for r in rows.mappings()]
+
+    async def note_resume(self, run_id: str) -> None:
+        async with self._engine.begin() as conn:
+            await conn.execute(
+                text("UPDATE run SET resume_attempts = resume_attempts + 1 WHERE run_id = :r"),
+                {"r": run_id},
+            )

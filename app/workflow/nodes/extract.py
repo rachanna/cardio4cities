@@ -13,7 +13,7 @@ from app.prompts.extractor import context
 from app.prompts.extractor.schema import ExtractorOutput, keep_claim, repair_problems
 from app.prompts.loader import load_prompt
 from app.workflow.budget import BudgetExhaustedError
-from app.workflow.ids import new_id
+from app.workflow.ids import stable_id
 from app.workflow.llm import call_role
 from app.workflow.nodes._deps import deps
 from app.workflow.rules.chunking import windows
@@ -81,7 +81,7 @@ async def extract(state: SlotState, config: RunnableConfig) -> dict[str, Any]:
                     continue  # invalid, or the same quote from an overlapping window
                 seen_quotes.add(key)
                 draft = Draft(
-                    claim_id=new_id("clm"),
+                    claim_id=stable_id("clm", state["run_id"], source_id, slot.slot_id, key),
                     source_id=source_id,
                     window_start=start,
                     window_end=end,

@@ -7,7 +7,7 @@ from langchain_core.runnables import RunnableConfig
 from app.domain.vocab import EventType
 from app.ports.errors import PortError
 from app.workflow.budget import BudgetExhaustedError
-from app.workflow.ids import new_id
+from app.workflow.ids import stable_id
 from app.workflow.nodes._deps import deps
 from app.workflow.state import Candidate, SlotState
 
@@ -29,7 +29,7 @@ async def search(state: SlotState, config: RunnableConfig) -> dict[str, Any]:
         except PortError as exc:
             error = f"search: {exc}"
             hits = []
-        query_id = new_id("sq")
+        query_id = stable_id("sq", run_id, slot_id, str(state.get("round", 0)), q.lang, q.text)
         await d.relational.research.add_search(
             query_id,
             run_id,

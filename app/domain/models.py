@@ -21,6 +21,7 @@ from app.domain.vocab import (
     Method,
     ParseOutcome,
     PeriodType,
+    ProgrammeStatus,
     PublisherClass,
     RelationType,
     Representativeness,
@@ -260,6 +261,7 @@ class Relation(BaseModel):
     valid_from: date | None
     valid_to: date | None
     valid_from_is_proxy: bool = False
+    programme_status: ProgrammeStatus | None = None  # as stated by the source (T-06)
 
 
 # --- 2.6 Verdict, consistency, source, crawl decision ---------------------------

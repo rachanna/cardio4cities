@@ -56,7 +56,17 @@ class SourceRepo(Protocol):
     ) -> None: ...
 
     async def fetched_urls(self, run_id: str) -> set[str]:
-        """Canonical URLs already fetched in the run: the fetch cache (HD-01)."""
+        """Canonical URLs already fetched in the run (HD-01)."""
+        ...
+
+    async def fetched_sources(self, run_id: str) -> dict[str, str | None]:
+        """URL -> source ID of the run's stored pages, None when unreadable (BD-14)."""
+        ...
+
+    async def crawl_outcomes(self, decision_ids: list[str]) -> list[str]: ...
+
+    async def outcome_counts(self, run_id: str) -> dict[str, dict[str, int]]:
+        """`crawl`: decisions by outcome (per URL); `parse`: pages by parse outcome."""
         ...
 
     async def source_for_extraction(self, source_id: str) -> dict[str, object] | None: ...
@@ -96,6 +106,20 @@ class RunRepo(Protocol):
     async def events_after(
         self, run_id: str, after_seq: int, limit: int = 500
     ) -> list[dict[str, Any]]: ...
+
+    # --- coverage and resume (D2-5, BD-14) ---------------------------------------------
+
+    async def save_slot_result(self, run_id: str, result: dict[str, Any]) -> None: ...
+
+    async def slot_results(self, run_id: str) -> list[dict[str, Any]]: ...
+
+    async def save_budget_used(self, run_id: str, used: dict[str, Any]) -> None: ...
+
+    async def stranded_runs(self) -> list[dict[str, Any]]:
+        """Runs left `queued` or `running` when the process stopped."""
+        ...
+
+    async def note_resume(self, run_id: str) -> None: ...
 
 
 class ResearchRepo(Protocol):
@@ -159,6 +183,18 @@ class ResearchRepo(Protocol):
         """Fields for the claim-index point: text parts and the LLD-5 §4.2 payload."""
         ...
 
+    # --- coverage (D2-5, LLD-2 §11) ----------------------------------------------------
+
+    async def slot_claims(self, run_id: str, slot_id: str) -> list[tuple[Claim, str]]:
+        """Every claim of the slot in the run, with its source's publisher class."""
+        ...
+
+    async def contested_claim_ids(self, run_id: str) -> set[str]: ...
+
+    async def queries(self, query_ids: list[str]) -> list[tuple[str, str]]:
+        """(text, language) of the given searches."""
+        ...
+
 
 class EntityRepo(Protocol):
     """Entities and aliases per city (LLD-1 §4.4, LLD-2 §6)."""
@@ -178,6 +214,10 @@ class EntityRepo(Protocol):
     async def entities(self, city_id: str, entity_type: str) -> list[Entity]: ...
 
     async def get(self, entity_ids: list[str]) -> dict[str, Entity]: ...
+
+    async def merge_attributes(self, entity_id: str, attributes: dict[str, Any]) -> None:
+        """Shallow-merge into `entity.attributes`, e.g. a programme's status (T-06)."""
+        ...
 
 
 class RelationalPort(Protocol):

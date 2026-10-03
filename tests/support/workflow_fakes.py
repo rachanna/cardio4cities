@@ -9,6 +9,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from app.ports.checkpoint import CheckpointPort
 from app.ports.embeddings import EmbeddingsPort
 from app.ports.errors import ProviderUnavailableError
 from app.ports.fetch import FetchPort
@@ -134,3 +135,4 @@ class Ports:
     snapshots: SnapshotPort | None
     graph: GraphPort | None
     structured: dict[str, StructuredDataPort] = field(default_factory=dict)
+    checkpointer: CheckpointPort | None = None

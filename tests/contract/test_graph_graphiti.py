@@ -177,3 +177,21 @@ async def test_neighbours_export_and_delete(graph: tuple[GraphitiGraph, str]) ->
 
     await g.delete_group(group)
     assert (await g.export_subgraph(group)).entities == []
+
+
+async def test_the_embedding_marker_round_trips_and_is_restored(
+    graph: tuple[GraphitiGraph, str],
+) -> None:
+    """R-82 (BD-14): the graph records the key of the model that made its embeddings.
+    The developer's own marker is put back afterwards."""
+    g, _ = graph
+    held = await g.embedding_marker()
+    try:
+        await g.set_embedding_marker("contract_test_key_v1")
+        assert await g.embedding_marker() == "contract_test_key_v1"
+    finally:
+        if held is None:
+            await g._g.driver.execute_query("MATCH (m:C4CMeta {name: 'embedding'}) DELETE m")
+        else:
+            await g.set_embedding_marker(held)
+    assert await g.embedding_marker() == held

@@ -1,5 +1,7 @@
-"""The core budget ledger (LLD-2 §12, R-50): every external call reserves first, and a
-spent counter refuses further calls. Wind-down rules and AT-19 come with D2-5."""
+"""The budget ledger (LLD-2 §12, R-50, R-61): every external call reserves first, and a
+spent counter refuses further calls. Wind-down (D2-5): past 85 % of the wall clock no new
+search or fetch starts, while model calls go on; each counter warns once; a resumed run
+restores the counters it had used (BD-14). AT-19 is in tests/acceptance/test_breadth.py."""
 
 import pytest
 
@@ -63,3 +65,50 @@ async def test_wall_clock_refuses_every_kind_and_phases_follow_the_worst_counter
         with pytest.raises(BudgetExhaustedError, match="wall_clock"):
             await led.reserve(kind)
     assert led.snapshot()["wall_clock_ms"] == 300_000
+
+
+async def test_winding_down_stops_new_searches_and_fetches_but_not_model_calls() -> None:
+    clock = Clock()
+    led = ledger(clock, searches=10, fetches=10)
+    clock.now = 255  # 85% of 300 s
+    for kind in ("search", "fetch", "robots"):
+        with pytest.raises(BudgetExhaustedError, match="wall_clock"):
+            await led.reserve(kind)
+    await led.reserve("model")  # extraction and checking of what is in hand go on
+    assert (led.searches, led.fetches, led.model_calls) == (0, 0, 1)
+    assert led.refused == {"wall_clock"}
+
+
+async def test_each_counter_warns_once_when_it_passes_the_wind_down_mark() -> None:
+    warned: list[tuple[str, float, float]] = []
+
+    async def hook(counter: str, used: float, limit: float) -> None:
+        warned.append((counter, used, limit))
+
+    led = ledger(searches=4)
+    led.on_warning = hook
+    for _ in range(3):
+        await led.reserve("search")
+    assert warned == []  # 3 of 4 is 75%
+    await led.reserve("search")
+    with pytest.raises(BudgetExhaustedError):
+        await led.reserve("search")
+    assert warned == [("searches", 4.0, 4.0)]
+    assert led.snapshot()["refused"] == ["searches"]
+
+
+async def test_a_resumed_run_carries_on_from_its_saved_counters() -> None:
+    clock = Clock()
+    first = ledger(clock, searches=10)
+    await first.reserve("search")
+    await first.reserve("model")
+    await first.record_model("model-a", 100, 20, 500)
+    clock.now = 120
+    saved = first.snapshot()
+
+    clock.now = 1000  # a new process: its own clock
+    resumed = ledger(clock, searches=10)
+    resumed.restore(saved)
+    assert (resumed.searches, resumed.model_calls, resumed.cost_micro_usd) == (1, 1, 500)
+    assert resumed.by_model == first.by_model
+    assert resumed.snapshot()["wall_clock_ms"] == 120_000  # the clock carries on

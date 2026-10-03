@@ -1,0 +1,183 @@
+"""Pure pieces of D2-5 (BD-14): programme status (T-06), the run's fetch cache, planner
+v2 input and validation, stage timing, the graph's embedding marker (R-82) and the
+purge-graph guard. Fixtures use the fictional Halden Bay, Norvania only."""
+
+import asyncio
+from datetime import date
+from typing import Any
+
+import pytest
+
+from app.domain.vocab import ProgrammeStatus
+from app.main import check_graph_marker
+from app.prompts.planner import context
+from app.prompts.planner.schema import PlannedQuery, PlannerOutput, SlotQueries, validate
+from app.settings import ConfigError
+from app.workflow.fetch_cache import FetchCache
+from app.workflow.limits import StageClock
+from app.workflow.rules.programme_status import programme_status_update
+from app.workflow.rules.selection import government_sites, publisher_table
+from scripts import purge_graph
+
+P = ProgrammeStatus
+
+# --- programme status (T-06) -----------------------------------------------------------
+
+
+def test_a_first_status_is_recorded_with_its_claim_and_date() -> None:
+    assert programme_status_update({}, P.PLANNED, "clm_a", date(2023, 1, 1)) == {
+        "status": "planned",
+        "status_claim_id": "clm_a",
+        "status_as_of": "2023-01-01",
+    }
+
+
+def test_a_newer_claim_replaces_an_older_status_and_an_older_one_does_not() -> None:
+    held = {"status": "planned", "status_claim_id": "clm_a", "status_as_of": "2023-01-01"}
+    newer = programme_status_update(held, P.RUNNING, "clm_b", date(2025, 3, 1))
+    assert newer is not None
+    assert newer["status"] == "running"
+    assert programme_status_update(held, P.ENDED, "clm_c", date(2022, 6, 1)) is None
+    assert programme_status_update(held, P.ENDED, "clm_c", date(2023, 1, 1)) is None  # tie
+
+
+def test_unknown_and_undated_claims_never_replace_a_stated_status() -> None:
+    held = {"status": "running", "status_claim_id": "clm_a", "status_as_of": "2025-03-01"}
+    assert programme_status_update(held, P.UNKNOWN, "clm_b", date(2026, 1, 1)) is None
+    assert programme_status_update(held, P.ENDED, "clm_b", None) is None
+    unknown = {"status": "unknown", "status_claim_id": "clm_a", "status_as_of": None}
+    assert programme_status_update(unknown, P.PILOTING, "clm_b", None) is not None
+    assert programme_status_update(unknown, P.UNKNOWN, "clm_b", None) is None
+
+
+# --- fetch cache (LLD-2 §14 step 1) ----------------------------------------------------
+
+
+async def test_the_first_slot_owns_a_url_and_the_next_waits_for_its_result() -> None:
+    cache = FetchCache()
+    assert cache.claim("http://a.halden-bay.test/x") is None  # the owner
+    waiting = cache.claim("http://a.halden-bay.test/x")
+    assert waiting is not None
+    assert not waiting.done()
+    cache.resolve("http://a.halden-bay.test/x", "src_1")
+    assert await asyncio.wait_for(waiting, 1) == "src_1"
+
+
+async def test_a_resumed_run_seeds_the_cache_from_stored_pages() -> None:
+    cache = FetchCache()
+    cache.seed({"http://a.halden-bay.test/x": "src_1", "http://a.halden-bay.test/y": None})
+    assert cache.seeded
+    assert cache.known("http://a.halden-bay.test/y")
+    seeded = cache.claim("http://a.halden-bay.test/y")
+    assert seeded is not None
+    assert await seeded is None
+
+
+# --- planner v2 (LLD-3 §3) ---------------------------------------------------------------
+
+PUBLISHERS = {
+    "deny": {"domains": []},
+    "classes": {"government": {"suffixes": ["gov"], "second_level": ["gov", "go"]}},
+}
+
+
+def test_government_sites_are_generic_labels_under_the_country_code() -> None:
+    assert government_sites(publisher_table(PUBLISHERS), "XN") == ["site:gov.xn", "site:go.xn"]
+
+
+def output(*texts: str) -> PlannerOutput:
+    queries = [PlannedQuery(text=t, lang="en", purpose="test") for t in texts]
+    return PlannerOutput(slots=[SlotQueries(slot_id="S04", queries=queries)])
+
+
+def test_a_site_filter_must_be_one_the_planner_was_given() -> None:
+    sites = {"site:gov.xn"}
+    fine = output("Halden Bay hypertension programme site:gov.xn", "Halden Bay survey")
+    assert validate(fine, {"S04"}, ["en"], set(), sites) == []
+    made_up = output("Halden Bay hypertension site:health.example", "Halden Bay survey")
+    assert validate(made_up, {"S04"}, ["en"], set(), sites) == [
+        "S04: site:health.example is not in government_sites"
+    ]
+
+
+def test_a_replan_line_names_status_queries_and_note() -> None:
+    line = context.previous_attempt("S04", "answered_negative", ["q one", "q two"], "Searched 2")
+    assert line == "S04: status answered_negative; queries tried: q one | q two; note: Searched 2"
+    assert context.previous_attempt("S12", "blocked", [], None).endswith(
+        "queries tried: none; note: none"
+    )
+
+
+# --- stage timing (AT-38) --------------------------------------------------------------
+
+
+def test_busy_time_adds_up_per_stage_across_branches() -> None:
+    now = [0.0]
+    clock = StageClock(lambda: now[0])
+    a, b = clock.start(), clock.start()  # two slots extracting side by side
+    now[0] = 2.0
+    clock.stop("extract", a)
+    clock.stop("match_quotes", b)
+    clock.stop("slot_done", a)  # bookkeeping: not a stage
+    snapshot = clock.snapshot()
+    assert snapshot["extraction"] == 4000
+    assert snapshot["search"] == 0
+    assert list(snapshot)[:2] == ["wave0", "planning"]
+
+
+# --- graph embedding marker (R-82) -----------------------------------------------------
+
+
+class Graph:
+    def __init__(self, marker: str | None, entities: bool, fail: bool = False) -> None:
+        self.marker, self.entities, self.fail = marker, entities, fail
+
+    async def embedding_marker(self) -> str | None:
+        if self.fail:
+            raise ConnectionError("graph down")
+        return self.marker
+
+    async def set_embedding_marker(self, key: str) -> None:
+        self.marker = key
+
+    async def has_entities(self) -> bool:
+        return self.entities
+
+
+async def test_an_empty_graph_takes_the_configured_marker() -> None:
+    graph = Graph(None, entities=False)
+    await check_graph_marker(graph, "st_test_v1")  # type: ignore[arg-type]
+    assert graph.marker == "st_test_v1"
+    await check_graph_marker(graph, "st_test_v1")  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    ("graph", "says"),
+    [
+        (Graph("openai_test_v1", entities=True), "made with 'openai_test_v1'"),
+        (Graph(None, entities=True), "no embedding marker"),
+    ],
+)
+async def test_start_up_refuses_a_graph_from_another_embedding_model(
+    graph: Graph, says: str
+) -> None:
+    with pytest.raises(ConfigError) as refused:
+        await check_graph_marker(graph, "st_test_v1")  # type: ignore[arg-type]
+    message = str(refused.value)
+    assert says in message
+    assert "poe purge-graph" in message
+
+
+async def test_an_unreachable_graph_is_left_to_the_health_check() -> None:
+    await check_graph_marker(Graph(None, entities=False, fail=True), "st_test_v1")  # type: ignore[arg-type]
+
+
+def test_purge_graph_refuses_the_deployed_environment(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("APP_ENV", "deployed")
+    called: list[Any] = []
+    monkeypatch.setattr(purge_graph, "purge", lambda: called.append(1))
+    assert purge_graph.main() == 2
+    assert called == []
+    assert "refuses" in capsys.readouterr().err

@@ -14,6 +14,7 @@ from app.domain.vocab import (
     ConsistencyOutcome,
     CrawlOutcome,
     DatePrecision,
+    EntityType,
     GeographyLevel,
     GeographyRelation,
     MeasureType,
@@ -149,6 +150,20 @@ class GeographyFit(BaseModel):
 
 
 LabelKind = Literal["period", "population", "geography"]
+
+
+class Entity(BaseModel):
+    """One real-world entity per city across sources and runs (LLD-1 §4.4, LLD-2 §6, R-43)."""
+
+    model_config = _FROZEN
+
+    entity_id: str  # ent_…
+    city_id: str
+    entity_type: EntityType
+    canonical_name: str
+    normalized_key: str
+    graph_uuid: str  # uuid5(NAMESPACE, entity_id)
+    attributes: dict[str, Any] = Field(default_factory=dict)
 
 
 class Claim(BaseModel):

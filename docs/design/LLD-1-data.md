@@ -561,6 +561,10 @@ CREATE TABLE claim (
 CREATE INDEX claim_city_slot_idx ON claim (city_id, slot_id, status);
 CREATE INDEX claim_run_idx ON claim (run_id);
 
+-- CR-01: keyword route (LLD-5 §4.1). Maintained by the write node.
+ALTER TABLE claim ADD COLUMN search_tsv tsvector;
+CREATE INDEX claim_search_tsv_idx ON claim USING gin (search_tsv);
+
 CREATE TABLE statistic (
   claim_id text PRIMARY KEY REFERENCES claim,
   indicator_code text NOT NULL REFERENCES ref_indicator,
@@ -638,8 +642,12 @@ CREATE TABLE answer (
   body jsonb NOT NULL,                           -- sentences with cited claim ids, badges, abstentions
   cited_claim_ids text[] NOT NULL DEFAULT '{}',
   graph_used boolean NOT NULL, models jsonb NOT NULL,
+  conversation_id text,                          -- CR-01: follow-up questions (LLD-5 §3.2)
+  turn int NOT NULL DEFAULT 1,
+  trace jsonb NOT NULL DEFAULT '{}',             -- CR-01: retrieval trace (LLD-5 §10)
   created_at timestamptz NOT NULL DEFAULT now()
 );
+CREATE INDEX answer_conversation_idx ON answer (conversation_id, turn);
 
 CREATE TABLE report (
   report_id text PRIMARY KEY, city_id text NOT NULL REFERENCES city,
@@ -713,6 +721,19 @@ Contested claims appear in `v_city_facts` with the "Sources disagree" badge; ref
 | PDF pages | Page boundaries kept in offsets so the evidence panel can show the page number |
 
 Qdrant never holds verdicts or anything shown as a fact. A chunk reaches the user only as "mentioned in a source but not confirmed" (R-63).
+
+### 5.4 Claim index
+
+Added by CR-01 (LLD-5 §4.2). `source_chunks__{embedding_key}` is now used only to find unconfirmed mentions; confirmed claims are found through this collection.
+
+| Setting | Value |
+|---|---|
+| Name | `claim_index__{embedding_key}` |
+| Point ID | `uuid5(NAMESPACE, claim_id)` |
+| Embedded text | `statement` (always English) + `" | "` + `quote_translation` when present, otherwise `quote` |
+| Payload | `claim_id`, `city_id`, `run_id`, `slot_id`, `kind`, `status`, `geography_level`, `indicator_code`, `reference_end` (keyword or date; indexed) |
+| Written by | The write node, for every claim that becomes `supported` or `contested` |
+| Updated by | Any status change: payload updated; points for `refuted`, `insufficient`, `superseded` are deleted |
 
 ---
 
@@ -853,6 +874,9 @@ ORDER BY sr.slot_id;
 | R-84 run summary | `run_summary` |
 | R-87 numbers owned by Postgres | `statistic`; `MEASURED_IN` carries no value |
 | AT-12, AT-20, AT-21, AT-26, AT-32 | §7.1, §6.3, §3.3, `entity_alias`, `slot_result` |
+| R-92 confirmed claims searchable by meaning | §5.4 claim index |
+| R-93 keyword route | `claim.search_tsv` (§4.4), `entity_alias` |
+| R-97 retrieval trace | `answer.trace` (§4.5) |
 
 ---
 

@@ -83,6 +83,7 @@ uv run poe spike NAME  # run a day-1 spike
 uv run poe eval        # prompt golden set against real models (costs money: ask first)
 uv run poe smoke URL   # smoke tests against a deployed URL
 uv run poe purge CITY  # remove a city from all stores
+uv run poe purge-graph # empty the local Neo4j graph and its embedding marker (local only)
 ```
 
 Tasks live in `pyproject.toml` under `[tool.poe.tasks]` (BD-01); each is added by the build task that makes it work. `uv run poe` lists what exists.

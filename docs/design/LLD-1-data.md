@@ -401,9 +401,11 @@ CREATE TABLE ref_place (
   alternate_names text[] NOT NULL DEFAULT '{}',
   country_iso2 char(2) NOT NULL REFERENCES ref_country,
   admin1_code text, admin2_code text, population bigint,
-  lat double precision NOT NULL, lon double precision NOT NULL, timezone text
+  lat double precision NOT NULL, lon double precision NOT NULL, timezone text,
+  name_keys text[] NOT NULL DEFAULT '{}'   -- place_key of name, ASCII and alternate names (BD-17)
 );
 CREATE INDEX ref_place_name_trgm ON ref_place USING gin (ascii_name gin_trgm_ops);
+CREATE INDEX ref_place_name_keys_gin ON ref_place USING gin (name_keys);
 CREATE INDEX ref_place_alt_gin ON ref_place USING gin (alternate_names);
 
 CREATE TABLE ref_slot (

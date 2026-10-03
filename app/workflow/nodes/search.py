@@ -1,17 +1,33 @@
 """search (LLD-2 §3.3): links only (R-58); each query reserves budget first."""
 
+import asyncio
 from typing import Any
 
 from langchain_core.runnables import RunnableConfig
 
 from app.domain.vocab import EventType
 from app.ports.errors import PortError
+from app.ports.search import SearchHit
 from app.workflow.budget import BudgetExhaustedError
+from app.workflow.collection import NETWORK_RETRY_DELAY_S
+from app.workflow.deps import RunDeps
 from app.workflow.ids import stable_id
 from app.workflow.nodes._deps import deps
+from app.workflow.problems import step_failed
 from app.workflow.state import Candidate, SlotState
 
 RESULTS_PER_QUERY = 10
+
+
+async def _search(d: RunDeps, text: str, lang: str) -> list[SearchHit]:
+    """One retry after 1 s (LLD-2 §17); each attempt is reserved first."""
+    await d.ledger.reserve("search")
+    try:
+        return await d.search.search(text, lang, RESULTS_PER_QUERY)
+    except PortError:
+        await asyncio.sleep(NETWORK_RETRY_DELAY_S)
+    await d.ledger.reserve("search")
+    return await d.search.search(text, lang, RESULTS_PER_QUERY)
 
 
 async def search(state: SlotState, config: RunnableConfig) -> dict[str, Any]:
@@ -22,13 +38,14 @@ async def search(state: SlotState, config: RunnableConfig) -> dict[str, Any]:
     error = None
     for q in state["plan"].queries:
         try:
-            await d.ledger.reserve("search")
-            hits = await d.search.search(q.text, q.lang, RESULTS_PER_QUERY)
+            hits = await _search(d, q.text, q.lang)
         except BudgetExhaustedError:
             break
         except PortError as exc:
+            # Not stored as a query tried: a re-plan may try it again (BD-21)
             error = f"search: {exc}"
-            hits = []
+            await step_failed(d, state, "search", q.text, exc)
+            continue
         query_id = stable_id("sq", run_id, slot_id, str(state.get("round", 0)), q.lang, q.text)
         await d.relational.research.add_search(
             query_id,

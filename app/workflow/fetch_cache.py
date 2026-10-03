@@ -34,6 +34,11 @@ class FetchCache:
         self._entries[url] = asyncio.get_running_loop().create_future()
         return None
 
+    def remember(self, url: str, source_id: str | None) -> None:
+        """A URL another one redirected to: a later candidate for it reuses the source."""
+        if url not in self._entries:
+            self._entries[url] = self._done(source_id)
+
     def resolve(self, url: str, source_id: str | None) -> None:
         future = self._entries.get(url)
         if future is not None and not future.done():

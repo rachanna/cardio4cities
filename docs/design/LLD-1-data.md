@@ -71,7 +71,7 @@ All in `app/domain/vocab.py` as `StrEnum`s. The database `CHECK` constraints use
 | `RunStatus` | `queued`, `running`, `completed`, `stopped_by_budget`, `failed` |
 | `SlotStatus` | `answered`, `answered_wider_geo`, `answered_negative`, `blocked`, `unreachable` |
 | `SlotFlag` | `conflicting`, `stale` |
-| `EventType` | `run_started`, `identity_confirmed`, `wave0_finding`, `slot_planned`, `search_done`, `crawl_decision`, `source_fetched`, `source_unreadable`, `claim_extracted`, `claim_dropped`, `claim_verdict`, `conflict_found`, `fact_written`, `slot_status`, `budget_warning`, `run_finished` |
+| `EventType` | `run_started`, `identity_confirmed`, `wave0_finding`, `slot_planned`, `search_done`, `crawl_decision`, `source_fetched`, `source_unreadable`, `claim_extracted`, `claim_dropped`, `claim_verdict`, `conflict_found`, `fact_written`, `slot_status`, `budget_warning`, `step_failed` (BD-21), `run_finished` |
 
 ### 1.4 Presentation (computed, never stored)
 

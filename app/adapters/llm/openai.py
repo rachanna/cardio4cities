@@ -54,6 +54,10 @@ class OpenAILLM:
             ) from exc
         except (openai.APIConnectionError, openai.InternalServerError) as exc:
             raise ProviderUnavailableError(f"openai: {type(exc).__name__}") from exc
+        except openai.APIStatusError as exc:  # 400 and the rest (BD-21)
+            raise ProviderUnavailableError(f"openai: HTTP {exc.status_code}") from exc
+        except openai.APIError as exc:
+            raise ProviderUnavailableError(f"openai: {type(exc).__name__}") from exc
         parsed = response.output_parsed
         raw = response.output_text or ""
         if parsed is None:

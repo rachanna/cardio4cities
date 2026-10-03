@@ -18,7 +18,12 @@ class ParsedDocument(BaseModel):
 
 
 class ParserPort(Protocol):
-    def parse_html(self, content: bytes, url: str) -> ParsedDocument: ...
+    """A document the parser cannot read gives empty text (so it is unreadable), never an
+    exception (BD-21)."""
+
+    def parse_html(self, content: bytes, url: str, charset: str | None = None) -> ParsedDocument:
+        """`charset`: the one the server declared, if any (`domain.charset`)."""
+        ...
 
     def parse_pdf(self, content: bytes, table_keywords: list[str]) -> ParsedDocument:
         """Tables are extracted only on pages whose text contains a keyword."""

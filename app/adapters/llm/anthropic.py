@@ -53,10 +53,10 @@ class AnthropicLLM:
             anthropic.InternalServerError,
         ) as exc:
             raise ProviderUnavailableError(f"anthropic: {type(exc).__name__}") from exc
-        except anthropic.APIStatusError as exc:
-            if exc.status_code in (402, 529):
-                raise ProviderUnavailableError(f"anthropic: HTTP {exc.status_code}") from exc
-            raise
+        except anthropic.APIStatusError as exc:  # 400, 402, 529 and the rest (BD-21)
+            raise ProviderUnavailableError(f"anthropic: HTTP {exc.status_code}") from exc
+        except anthropic.APIError as exc:
+            raise ProviderUnavailableError(f"anthropic: {type(exc).__name__}") from exc
         raw = "".join(b.text for b in response.content if b.type == "text")
         if response.stop_reason == "refusal":
             raise ProviderUnavailableError(f"anthropic: {role} request declined")

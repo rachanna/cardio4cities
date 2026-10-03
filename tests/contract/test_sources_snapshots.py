@@ -76,15 +76,20 @@ async def test_decision_and_source_rows_and_fetch_cache(relational: PostgresRela
     }
 
 
-async def test_same_canonical_url_twice_in_a_run_is_refused(relational: PostgresRelational) -> None:
-    """One fetch per URL per run (HD-01): the table enforces it."""
+async def test_same_canonical_url_twice_in_a_run_keeps_one_source(
+    relational: PostgresRelational,
+) -> None:
+    """One source per URL per run (HD-01): the table enforces it, and a second page that
+    redirected to the same URL finds the stored one instead of failing (BD-21)."""
     await _seed_run(relational)
-    await relational.sources.add_source(_source(), None, None)
+    await relational.sources.add_source(_source(), "Parsed text.", None)
 
-    with pytest.raises(Exception, match=r"url_canonical|unique|duplicate"):
-        await relational.sources.add_source(
-            _source().model_copy(update={"source_id": "src_2"}), None, None
-        )
+    await relational.sources.add_source(
+        _source().model_copy(update={"source_id": "src_2"}), None, None
+    )
+
+    held = await relational.sources.source_at(_source().run_id, _source().url_canonical)
+    assert held == ("src_1", True)
 
 
 async def test_snapshot_round_trip_is_byte_exact(

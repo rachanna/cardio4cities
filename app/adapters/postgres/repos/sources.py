@@ -47,10 +47,24 @@ class PostgresSourceRepo:
                     " :publisher_class, :title, :language, :published_date, :published_precision,"
                     " :retrieved_at, :http_status, :content_type, :content_sha256, :size_bytes,"
                     " :parse_outcome, :parsed_text, :found_via, :crawl_decision_id)"
-                    " ON CONFLICT (source_id) DO NOTHING"
+                    # the source ID, or the run's canonical URL (a converging redirect)
+                    " ON CONFLICT DO NOTHING"
                 ),
                 values,
             )
+
+    async def source_at(self, run_id: str, url_canonical: str) -> tuple[str, bool] | None:
+        async with self._engine.connect() as conn:
+            row = (
+                await conn.execute(
+                    text(
+                        "SELECT source_id, parsed_text IS NOT NULL AS parsed FROM source"
+                        " WHERE run_id = :r AND url_canonical = :u"
+                    ),
+                    {"r": run_id, "u": url_canonical},
+                )
+            ).first()
+            return (row.source_id, bool(row.parsed)) if row else None
 
     async def fetched_urls(self, run_id: str) -> set[str]:
         async with self._engine.connect() as conn:
@@ -90,12 +104,17 @@ class PostgresSourceRepo:
         async with self._engine.connect() as conn:
             rows = await conn.execute(
                 text(
-                    "SELECT url, source_id, parse_outcome FROM source"
+                    "SELECT url, url_canonical, source_id, parse_outcome FROM source"
                     " WHERE run_id = :r AND kind <> 'structured_api'"
                 ),
                 {"r": run_id},
             )
-            return {r.url: r.source_id if r.parse_outcome == "parsed" else None for r in rows}
+            found: dict[str, str | None] = {}
+            for r in rows:
+                held = r.source_id if r.parse_outcome == "parsed" else None
+                found.setdefault(r.url_canonical, held)
+                found[r.url] = held
+            return found
 
     async def crawl_outcomes(self, decision_ids: list[str]) -> list[str]:
         if not decision_ids:

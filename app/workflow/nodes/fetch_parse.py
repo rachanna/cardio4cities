@@ -20,6 +20,7 @@ from app.workflow.deps import RunDeps
 from app.workflow.ids import stable_id
 from app.workflow.nodes._deps import deps
 from app.workflow.nodes.crawl_gate import record_decision
+from app.workflow.problems import step_failed
 from app.workflow.rules.chunking import chunk_text
 from app.workflow.state import Candidate, SlotState
 
@@ -123,15 +124,29 @@ async def _one(d: RunDeps, state: SlotState, candidate: Candidate) -> tuple[str 
     if collected.raw:
         source = source.model_copy(update={"content_sha256": sha256(collected.raw).hexdigest()})
     await d.relational.sources.add_source(source, doc.text if parsed and doc else None, None)
+    held = await d.relational.sources.source_at(run_id, collected.final_url)
+    if held is not None and held[0] != source.source_id:
+        # Another candidate redirected to the same page and stored it: that source is
+        # this one (BD-21). Nothing is stored twice.
+        held_id = held[0] if held[1] else None
+        d.fetch_cache.remember(collected.final_url, held_id)
+        return held_id, decision_ids
     # The snapshot row references the source row, so it is written after it.
     if collected.raw:
         await d.snapshots.put(
             source.source_id, collected.raw, collected.content_type or "application/octet-stream"
         )
+    ready = source.source_id if parsed else None
+    d.fetch_cache.resolve(candidate.url, ready)  # stored: a waiting slot can use it now
+    d.fetch_cache.remember(collected.final_url, ready)
     if parsed and doc is not None:
-        await _index(
-            d, run_id, state["city"].city_id, state["slot_id"], source, doc.text, list(doc.tables)
-        )
+        try:
+            await _index(d, run_id, state["city"].city_id, state["slot_id"], source, doc.text,
+                         list(doc.tables))  # fmt: skip
+        except BudgetExhaustedError:
+            raise
+        except Exception as exc:  # the text is in Postgres: extraction still works (BD-21)
+            await step_failed(d, state, "index_chunks", source.source_id, exc)
         await d.events.emit(
             run_id,
             EventType.SOURCE_FETCHED,
@@ -181,7 +196,10 @@ async def fetch_parse(state: SlotState, config: RunnableConfig) -> dict[str, Any
             source_id, ids = await _owned(d, state, candidate)
         except BudgetExhaustedError:
             break
+        except Exception as exc:  # one page never costs the slot its round (BD-21)
+            await step_failed(d, state, "fetch_parse", candidate.url, exc)
+            continue
         decision_ids += ids
-        if source_id:
+        if source_id and source_id not in source_ids:  # two URLs, one page (BD-21)
             source_ids.append(source_id)
     return {"source_ids": source_ids, "crawl_decision_ids": decision_ids}

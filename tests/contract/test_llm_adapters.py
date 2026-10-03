@@ -175,3 +175,18 @@ async def test_openai_output_outside_the_schema_is_a_validation_error(stub: Stub
     stub.body = openai_response("not json at all")
     with pytest.raises(LLMOutputValidationError):
         await gpt(stub).complete("checker", "s", "u", Verdict, LUNA)
+
+
+@pytest.mark.parametrize("status", [400, 404, 422])
+async def test_any_other_http_error_is_a_port_error_from_both_adapters(
+    stub: Stub, status: int
+) -> None:
+    """BD-21 (code review RV-011): an unmapped vendor error used to escape the port and
+    abort the whole node; now it is ProviderUnavailableError, so the checker falls back."""
+    stub.status = status
+    stub.body = {"type": "error", "error": {"type": "invalid_request_error", "message": "bad"}}
+    with pytest.raises(ProviderUnavailableError, match=f"HTTP {status}"):
+        await claude(stub).complete("checker", "s", "u", Verdict, HAIKU)
+    stub.body = {"error": {"type": "invalid_request_error", "code": None, "message": "bad"}}
+    with pytest.raises(ProviderUnavailableError, match=f"HTTP {status}"):
+        await gpt(stub).complete("checker", "s", "u", Verdict, LUNA)

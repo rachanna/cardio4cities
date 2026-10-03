@@ -54,6 +54,7 @@ def summarise(
     budget: dict[str, Any],
     busy_ms: dict[str, int],
     graph_retry: dict[str, int],
+    failed_steps: dict[str, int] | None = None,
 ) -> dict[str, Any]:
     """The run summary (AT-38). `claims` counts claim rows by status plus the dropped
     claims, which have no row (BD-09)."""
@@ -76,8 +77,17 @@ def summarise(
         "cost_usd": round(sum(m["cost_micro_usd"] for m in by_model.values()) / 1_000_000, 4),
         "time": {"wall_clock_ms": budget.get("wall_clock_ms", 0), "busy_ms": busy_ms},
         "graph_retry": graph_retry,
+        "failed_steps": failed_steps or {},
         "budget": budget,
     }
+
+
+def failure_counts(events: list[dict[str, Any]]) -> dict[str, int]:
+    """`step_failed` events by stage (BD-21): what the run lost, and where."""
+    stages = Counter(
+        str(e["payload"].get("stage")) for e in events if e["type"] == EventType.STEP_FAILED
+    )
+    return dict(sorted(stages.items()))
 
 
 async def _all_events(d: RunDeps, run_id: str) -> list[dict[str, Any]]:
@@ -119,14 +129,16 @@ async def brief_ready(state: RunState, config: RunnableConfig) -> dict[str, Any]
     run_id = state["run_id"]
     graph_retry = await _retry_graph(d, run_id)
     budget = d.ledger.snapshot()
+    events = await _all_events(d, run_id)
     summary = summarise(
         await d.relational.research.claim_statuses(run_id),
-        drop_counts(await _all_events(d, run_id)),
+        drop_counts(events),
         source_counts(await d.relational.sources.outcome_counts(run_id)),
         await d.relational.runs.slot_results(run_id),
         budget,
         d.stages.snapshot(),
         graph_retry,
+        failure_counts(events),
     )
     await d.relational.runs.save_budget_used(run_id, budget)
     # A run is stopped by its budget when the budget refused a call it wanted to make

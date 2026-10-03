@@ -37,7 +37,12 @@ class AnthropicLLM:
         if params.temperature is not None:
             kwargs["extra_body"] = {"temperature": params.temperature}
         try:
-            response = await self._client.messages.parse(**kwargs)
+            client = (
+                self._client.with_options(timeout=params.timeout_s)
+                if params.timeout_s is not None
+                else self._client
+            )
+            response = await client.messages.parse(**kwargs)
         except ValidationError as exc:
             raise LLMOutputValidationError(
                 f"{role}: output did not fit the schema", str(exc)

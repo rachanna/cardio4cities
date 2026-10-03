@@ -29,6 +29,7 @@ from app.workflow.events import EventEmitter
 from app.workflow.fetch_cache import FetchCache
 from app.workflow.limits import StageClock
 from app.workflow.rules.chunking import ChunkParams
+from app.workflow.rules.other_places import PlaceMatcher
 from app.workflow.rules.selection import PublisherTable
 from app.workflow.rules.thresholds import ThresholdRule
 
@@ -88,9 +89,12 @@ class RunDeps:
     max_new_urls: int  # select.max_new_urls_per_slot_round [tunable]
     max_reused_urls: int  # select.max_reused_per_slot_round [tunable] (BD-14)
     replan: ReplanParams
+    queries_per_slot: int  # plan.queries_per_slot [tunable] (BD-15)
+    other_place_min_population: int  # select.other_place_min_population [tunable] (BD-15)
     today: Callable[[], date] = date.today
     fetch_cache: FetchCache = field(default_factory=FetchCache)  # one fetch per URL per run
     stages: StageClock = field(default_factory=StageClock)  # busy time per stage (AT-38)
+    places: PlaceMatcher | None = None  # the other-place rule, built once per run (BD-15)
 
     @property
     def collection(self) -> str:

@@ -17,10 +17,10 @@ import re
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal, Self, cast
+from typing import Annotated, Any, Literal, Self, cast
 
 import yaml
-from pydantic import BaseModel, ConfigDict, SecretStr, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError, model_validator
 
 from app.ports.llm import Effort
 
@@ -203,11 +203,18 @@ class SelectSection(_Section):
     max_new_urls_per_slot_round: int
     # sources another slot already fetched this run, read again for this slot (BD-14)
     max_reused_per_slot_round: int
+    other_place_min_population: int  # places that rank a candidate later (BD-15)
 
 
 class ReplanSection(_Section):
     max_rounds: int
     max_rounds_wider_geo: int
+    # slots re-planned first when searches run short; the rest follow in catalogue order
+    priority: list[Annotated[str, Field(pattern=r"^S(0[1-9]|1[0-6])$")]] = []  # BD-15
+
+
+class PlanSection(_Section):
+    queries_per_slot: int = Field(ge=1, le=3)  # every round, re-plans included (BD-15)
 
 
 class ExtractSection(_Section):
@@ -290,6 +297,7 @@ class Config(_Section):
     verify: VerifySection
     select: SelectSection
     replan: ReplanSection
+    plan: PlanSection
     extract: ExtractSection
     quote: QuoteSection
     chunk: ChunkSection

@@ -35,6 +35,7 @@ class ConfidenceParams:
 class ReplanParams:
     max_rounds: int  # replan.max_rounds
     max_rounds_wider_geo: int  # replan.max_rounds_wider_geo
+    priority: tuple[str, ...] = ()  # replan.priority: first in line when searches run short
 
 
 @dataclass(frozen=True)

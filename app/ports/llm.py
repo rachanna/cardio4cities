@@ -22,6 +22,7 @@ class LLMParams(BaseModel):
     max_output_tokens: int
     temperature: float | None = None
     effort: Effort | None = None
+    timeout_s: float | None = None  # the run's time left (BD-15); None: the SDK default
 
 
 class LLMResult(BaseModel):

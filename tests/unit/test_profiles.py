@@ -81,10 +81,11 @@ def test_deployed_checker_is_sol_on_low_effort_with_opus_fallback() -> None:
     assert checker["fallback"]["model"] == "claude-opus-5-5"
 
 
-def test_cost_caps_follow_the_profile() -> None:
-    caps = {p: _raw(p)["budget"]["cost_micro_usd"] for p in PROFILES}
-
-    assert caps["local"] < caps["local-quality"] < caps["deployed"] <= 6_000_000
+def test_every_profile_caps_a_run_at_the_owners_limits() -> None:
+    """BD-15: $3 and 1.5M tokens a run, set from the S-6 measurements."""
+    for p in PROFILES:
+        budget = _raw(p)["budget"]
+        assert (budget["cost_micro_usd"], budget["tokens"]) == (3_000_000, 1_500_000), p
 
 
 def _ollama_checker(raw: dict[str, Any]) -> None:

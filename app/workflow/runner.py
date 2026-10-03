@@ -338,7 +338,13 @@ class RunManager:
             window=WindowParams(**cfg.extract.model_dump()),
             max_new_urls=cfg.select.max_new_urls_per_slot_round,
             max_reused_urls=cfg.select.max_reused_per_slot_round,
-            replan=ReplanParams(**cfg.replan.model_dump()),
+            replan=ReplanParams(
+                max_rounds=cfg.replan.max_rounds,
+                max_rounds_wider_geo=cfg.replan.max_rounds_wider_geo,
+                priority=tuple(cfg.replan.priority),
+            ),
+            queries_per_slot=cfg.plan.queries_per_slot,
+            other_place_min_population=cfg.select.other_place_min_population,
             today=date.today,
         )
 

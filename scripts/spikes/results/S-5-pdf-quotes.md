@@ -1,4 +1,4 @@
-# Spike S-5: PDF quote matching — status: open (2026-10-03)
+# Spike S-5: PDF quote matching — status: passed with BD-08 window-scoped uniqueness (2026-10-03)
 
 Pass bar (BUILD_PLAN §2): on two real PDF tables, extraction plus LLD-2 §4.1 matching drops
 under about 20% of claims; if not, improve normalisation and table parsing, never loosen matching.
@@ -73,3 +73,18 @@ copy errors (`quote_not_found`, `value_not_in_quote`).
 **Status: still failing the bar (62% dropped, scoped).** Next: scope uniqueness to the
 extraction window in D2-3, and measure with the production extractor (Claude Haiku 4.5;
 about $0.15 for this spike) once its key is set and the spend is approved.
+
+## Third measurement: production extractor, Claude Haiku 4.5 (owner approved the spend)
+
+Same cached PDFs, segments and prompt; temperature 0 via `extra_body` (SDK 1.x dropped the
+keyword; Haiku 4.5 still honours it). Spend: 11,648 input + 5,862 output tokens, **$0.041**.
+
+| Document | Quotes | Matched (whole-document uniqueness) | Matched (uniqueness within shown text) |
+|---|---|---|---|
+| who_ncd_progress_monitor_2022 | 45 | 45 | 45 |
+| who_global_hypertension_report_2023 | 79 | 43 (21 `quote_not_unique`, 13 `quote_length`, 2 `quote_not_found`) | 63 (1 `quote_not_unique`, 13 `quote_length`, 2 `quote_not_found`) |
+
+**Drop rate: 29.0% with whole-document uniqueness; 12.9% with uniqueness within the text
+the model was shown — under the ~20% bar.** BD-08 scopes uniqueness to the extraction
+window (D2-3), so S-5 passes on the design as it will be built. Remaining drops are quotes
+under three words (bare numbers) and two copy errors: both correctly refused.

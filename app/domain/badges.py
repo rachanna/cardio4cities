@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import date
 
 from app.domain.dates import years_before
+from app.domain.geography import effective_level
 from app.domain.models import Claim
 from app.domain.params import BadgeParams
 from app.domain.vocab import (
@@ -30,7 +31,7 @@ class Badges:
 
 def _is_not_city_level(claim: Claim, accepted: Sequence[GeographyLevel]) -> bool:
     labels = claim.labels
-    if labels.geography_level not in accepted:
+    if effective_level(claim) not in accepted:
         return True
     group = (labels.population_group or "").strip().casefold()
     if group and group not in GENERAL_POPULATIONS:

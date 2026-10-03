@@ -200,10 +200,19 @@ Ambiguous separators (`1,234` could be 1.234 or 1234) are resolved as thousands 
 
 | Pattern (on normalised, lower-cased text) | Code |
 |---|---|
-| systolic `>= ?140` or `≥ ?140` or `140/90` | `bp_140_90` |
+| systolic `>= ?140` or `≥ ?140` or `140/90`, or `< 140 … < 90` (control definition, BD-10) | `bp_140_90` |
 | systolic `>= ?130` or `≥ ?130` or `130/80` | `bp_130_80` |
 | fasting glucose `>= ?7.0 mmol` or `>= ?126 mg` | `fpg_7_0` |
 | none matched | `None` |
+
+### 4.1a Label evidence and geography fit (BD-10)
+
+After the quote is located, `match_quotes` applies two more code steps before writing the claim:
+
+1. **Label quotes.** The extractor may copy the words that state the period, area or population when they lie outside the quote (`label_quotes`). Each is located in the same window with the §4.1 rules; a period quote must also contain each year of the labelled period. Located spans are stored on the claim (`label_spans`) and shown to the checker. An unlocated period or population label is cleared (the period then falls back to the publication-date proxy and is flagged); geography is required and never cleared.
+2. **Geography fit.** `rules/geography_fit.py` relates the labelled area to the city using the gazetteer: `city` (the city, or a part of it), `contains_city` (its metro region, state, country, the world), `nearby` (a gazetteer place within `geography.nearby_km` `[tunable]`, 75), `elsewhere` (farther, or another state or country) or `unresolved` (the name cannot be placed). A distinct gazetteer place decides before any name match, so a satellite town named after the city is that town. `elsewhere` and `unresolved` claims are dropped (`claim_dropped`, reason `geography_<relation>`) before verification. The fit is stored on the claim (`geography_fit`).
+
+`effective_level(claim)` (`domain/geography.py`) is the level a claim counts as for the city: its labelled level, except that a `nearby` figure counts as at least `district`. Ranking (§5.3), badges (§8), confidence (§7) and slot status (§11) use it, so a nearby town's own city-wide figure is never shown as the city's.
 
 ### 4.4 Comparability key (R-35)
 
@@ -449,7 +458,7 @@ For slot `s` after a round, using all claims for `s` in this run:
 
 ```python
 supported = [c for c in claims if c.status in ("supported", "contested")]
-if any(c.geography_level in s.accepted_levels for c in supported):
+if any(effective_level(c) in s.accepted_levels for c in supported):   # BD-10
     status = "answered"
 elif supported:
     status = "answered_wider_geo"

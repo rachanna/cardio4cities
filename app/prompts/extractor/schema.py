@@ -69,6 +69,14 @@ class RelationOut(BaseModel):
     programme_status: ProgrammeStatus | None
 
 
+class LabelQuotesOut(BaseModel):
+    """Words copied from the source that state a label outside the quote (v2, BD-10)."""
+
+    period: str | None
+    geography: str | None
+    population: str | None
+
+
 class ClaimOut(BaseModel):
     slot_id: str
     kind: ClaimKind
@@ -79,6 +87,7 @@ class ClaimOut(BaseModel):
     labels: LabelsOut
     statistic: StatisticOut | None
     relation: RelationOut | None
+    label_quotes: LabelQuotesOut | None
 
 
 class ExtractorOutput(BaseModel):

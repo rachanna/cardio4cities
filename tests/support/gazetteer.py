@@ -30,3 +30,10 @@ async def sync_gazetteer(
     g = build_gazetteer(COUNTRIES, ADMIN1, places)
     results = await store.reference.sync_gazetteer(g.countries, g.admin1, g.places)
     return [(r.table, r.inserted, r.updated, r.deleted, r.total) for r in results]
+
+
+# About 25 km from Halden Bay: within geography.nearby_km (Port Ostra is about 110 km away)
+NEAR_TOWN = _line(
+    "9000005", "Kestrel Point", "Kestrel Point", "", "60.3", "5.5", "P", "PPL", "XN", "",
+    "01", "", "", "", "21000", "", "5", "Europe/Oslo", "2026-01-01",
+)  # fmt: skip

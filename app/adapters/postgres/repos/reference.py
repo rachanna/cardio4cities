@@ -159,6 +159,19 @@ class PostgresReferenceRepo:
             row = (await conn.execute(sql, {"g": gazetteer_id})).mappings().one_or_none()
         return dict(row) if row else None
 
+    async def places_named(self, names: list[str], country_iso2: str) -> list[dict[str, Any]]:
+        if not names:
+            return []
+        sql = text(
+            "SELECT gazetteer_id, name, lat, lon FROM ref_place WHERE country_iso2 = :c"
+            " AND (lower(name) = ANY(:n) OR lower(ascii_name) = ANY(:n)"
+            "   OR EXISTS (SELECT 1 FROM unnest(alternate_names) a WHERE lower(a) = ANY(:n)))"
+            " ORDER BY population DESC NULLS LAST LIMIT 20"
+        )
+        async with self._engine.connect() as conn:
+            rows = (await conn.execute(sql, {"c": country_iso2, "n": names})).mappings()
+            return [dict(r) for r in rows]
+
     # --- syncs (loaders only) ---------------------------------------------
 
     async def sync_slots(self, slots: Sequence[SlotDef]) -> SyncResult:

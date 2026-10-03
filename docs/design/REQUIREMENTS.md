@@ -126,7 +126,7 @@ CR-05 (opportunities, risks and gaps) is derived from slot results. CR-06 (evide
 | Status | Meaning |
 |---|---|
 | `answered` | At least one confirmed claim at the requested geography |
-| `answered_wider_geo` | Only national, state, district or metro evidence; shown flagged |
+| `answered_wider_geo` | Only national, state, district or metro evidence, or evidence from a place within `geography.nearby_km` of the city (BD-10: surrounding populations depend on the city's services); shown flagged. Figures from farther places, or whose area cannot be placed, never answer |
 | `answered_negative` | Searched; nothing acceptable found; queries and sources recorded |
 | `blocked` | Every candidate source refused by the crawl gate |
 | `unreachable` | Candidate sources could not be reached (network, geo-restriction, server error) |

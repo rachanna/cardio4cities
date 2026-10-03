@@ -19,7 +19,7 @@ from scripts.reference.geonames import GEONAMES_DIR, large_place_names, read_cit
 
 ROOT = Path(__file__).resolve().parents[2]
 MIN_POPULATION = 300_000
-SCAN_DIRS = ("app/prompts", "config", "tests/fixtures", "scripts/reference")
+SCAN_DIRS = ("app/prompts", "config", "tests/fixtures", "tests/prompts", "scripts/reference")
 SCAN_GLOBS = ("reference/*.yaml",)  # never reference/geonames/: that is the gazetteer itself
 TEXT_SUFFIXES = {".py", ".md", ".yaml", ".yml", ".json", ".txt", ".j2", ".html", ".csv", ".toml"}
 ALLOWLIST = Path(__file__).with_name("no_seeding_allowlist.yaml")

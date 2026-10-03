@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import date
 
 from app.domain.dates import years_before
+from app.domain.geography import effective_level
 from app.domain.models import Claim, Verdict
 from app.domain.params import ConfidenceParams
 from app.domain.vocab import (
@@ -63,7 +64,7 @@ def confidence(
     if claim.status not in SHOWABLE_STATUSES:
         raise ValueError(f"confidence applies to supported or contested claims, not {claim.status}")
     labels = claim.labels
-    in_area = labels.geography_level in accepted
+    in_area = effective_level(claim) in accepted
     recent = labels.reference_end is not None and labels.reference_end >= years_before(
         today, params.recent_years
     )

@@ -90,7 +90,7 @@ cardio4cities/
 │       ├── embeddings/           # openai.py, sentence_transformers.py
 │       ├── search/               # brave.py, searxng.py, tavily.py
 │       ├── fetch/                # httpx_pinned.py (IP-pinned, httpx: BD-07), robots_protego.py
-│       ├── parse/                # documents.py: trafilatura (HTML), pdfplumber (PDF) (BD-07)
+│       ├── parse/                # documents.py: trafilatura (HTML, table spans expanded with lxml), pdfplumber (PDF) (BD-07, BD-10)
 │       ├── structured/           # who_gho.py, dhs.py, world_bank.py
 │       ├── vector/               # qdrant.py, qdrant_probe.py
 │       ├── graph/                # graphiti_neo4j.py
@@ -111,6 +111,7 @@ cardio4cities/
 │   ├── spikes/                   # graphiti_triplets.py, who_endpoint.py, reachability.py,
 │   │                             # search_links_only.py, pdf_quotes.py, run_timing.py,
 │   │                             # thin_slice.py (D2-3 live check; city typed at run time);
+│   │                             # replay_source.py (BD-10: re-run a stored source, no web);
 │   │                             # results/ holds each spike's written outcome
 │   ├── purge_city.py             # LLD-1 §8
 │   ├── eval_prompts.py           # LLD-3 §9
@@ -123,7 +124,7 @@ cardio4cities/
 │   ├── architecture/             # import-lint (AT-34), purity of domain and rules
 │   ├── support/                  # webworld.py: local fictional web for gate and fetch tests
 │   ├── smoke/                    # deployed URL (AT-17, AT-29)
-│   ├── prompts/golden/           # fictional snippets and expected outputs
+│   ├── prompts/golden/           # fictional snippets and expected outputs; results/ per profile (BD-10)
 │   └── fixtures/                 # fictional city "Halden Bay, Norvania"; recorded provider responses
 │
 ├── docs/
@@ -171,7 +172,7 @@ container, main → everything                 (composition root)
 
 The fetch adapter uses `httpx`, chosen over `httpx2` for the security-critical path (BD-07); `httpx2` is a test-only dependency.
 
-**Vendor packages allowed only under `app/adapters/`:** `anthropic`, `openai`, `ollama`, `sentence_transformers`, `qdrant_client`, `graphiti_core`, `neo4j`, `httpx`, `httpx2`, `httpcore`, `httpcore2`, `protego`, `trafilatura`, `pdfplumber`, `weasyprint`, `langsmith`, `opentelemetry`, `asyncpg`, `sqlalchemy`, `alembic`.
+**Vendor packages allowed only under `app/adapters/`:** `anthropic`, `openai`, `ollama`, `sentence_transformers`, `qdrant_client`, `graphiti_core`, `neo4j`, `httpx`, `httpx2`, `httpcore`, `httpcore2`, `protego`, `trafilatura`, `lxml`, `pdfplumber`, `weasyprint`, `langsmith`, `opentelemetry`, `asyncpg`, `sqlalchemy`, `alembic`.
 
 Expressed as import-linter `layers` and `forbidden` contracts. The architecture test fails the build on any violation.
 

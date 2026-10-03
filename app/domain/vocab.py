@@ -27,6 +27,22 @@ class GeographyLevel(StrEnum):
 GEOGRAPHY_ORDER: tuple[GeographyLevel, ...] = tuple(GeographyLevel)
 
 
+class GeographyRelation(StrEnum):
+    """How the area a figure describes relates to the researched city (BD-10)."""
+
+    CITY = "city"  # the city itself, or an area inside it
+    CONTAINS_CITY = "contains_city"  # the city's metro region, state, country, the world
+    NEARBY = "nearby"  # another place within geography.nearby_km of the city
+    ELSEWHERE = "elsewhere"  # a place farther away, or another state or country
+    UNRESOLVED = "unresolved"  # the name could not be placed; never shown
+
+
+# Areas whose figures may answer for a city, with the Not city-level badge unless CITY
+USABLE_RELATIONS: frozenset[GeographyRelation] = frozenset(
+    {GeographyRelation.CITY, GeographyRelation.CONTAINS_CITY, GeographyRelation.NEARBY}
+)
+
+
 class Representativeness(StrEnum):
     REPRESENTATIVE_SAMPLE = "representative_sample"
     CENSUS = "census"

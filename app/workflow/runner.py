@@ -17,7 +17,13 @@ from typing import Any, Protocol
 import yaml
 
 from app.domain.models import CityIdentity
-from app.domain.params import BadgeParams, ConsistencyParams, QuoteParams, VerifyParams
+from app.domain.params import (
+    BadgeParams,
+    ConsistencyParams,
+    GeographyParams,
+    QuoteParams,
+    VerifyParams,
+)
 from app.domain.vocab import EventType
 from app.ports.embeddings import EmbeddingsPort
 from app.ports.fetch import FetchPort
@@ -255,6 +261,7 @@ class RunManager:
                 agree_rel=Decimal(str(cfg.consistency.agree_rel)),
             ),
             badge=BadgeParams(**cfg.badge.model_dump()),
+            geography=GeographyParams(nearby_km=cfg.geography.nearby_km),
             chunk=ChunkParams(**cfg.chunk.model_dump()),
             window=WindowParams(**cfg.extract.model_dump()),
             max_new_urls=cfg.select.max_new_urls_per_slot_round,

@@ -2,6 +2,7 @@
 once when configured, else skip the window. Drafts wait in the slot state until their
 quotes are located (BD-09)."""
 
+import logging
 from typing import Any
 
 from langchain_core.runnables import RunnableConfig
@@ -19,6 +20,8 @@ from app.workflow.rules.chunking import windows
 from app.workflow.rules.quotes import normalise_text
 from app.workflow.state import Draft, SlotState
 
+log = logging.getLogger(__name__)
+
 
 async def extract(state: SlotState, config: RunnableConfig) -> dict[str, Any]:
     d = deps(config)
@@ -27,6 +30,7 @@ async def extract(state: SlotState, config: RunnableConfig) -> dict[str, Any]:
     prompt = load_prompt("extractor")
     roles = d.roles["extractor"]
     drafts: list[Draft] = []
+    skipped: list[str] = []
     seen_quotes: set[str] = set()
     for source_id in state.get("source_ids", []):
         source = await d.relational.sources.source_for_extraction(source_id)
@@ -53,9 +57,10 @@ async def extract(state: SlotState, config: RunnableConfig) -> dict[str, Any]:
                     d, "extractor", prompt.system, user, ExtractorOutput, problems=repair_problems
                 )
             except BudgetExhaustedError:
-                return {"drafts": drafts}
-            except PortError:
+                return {"drafts": drafts, **_skipped(skipped)}
+            except PortError as exc:
                 if roles.escalate_to is None:
+                    skipped.append(_skip(source_id, n, exc))
                     continue  # skip the window (LLD-2 §17)
                 try:
                     out = await call_role(
@@ -67,7 +72,8 @@ async def extract(state: SlotState, config: RunnableConfig) -> dict[str, Any]:
                         problems=repair_problems,
                         binding=roles.escalate_to,
                     )
-                except (PortError, BudgetExhaustedError):
+                except (PortError, BudgetExhaustedError) as exc:
+                    skipped.append(_skip(source_id, n, exc))
                     continue
             for claim in out.parsed.claims:
                 key = normalise_text(claim.quote)
@@ -94,4 +100,18 @@ async def extract(state: SlotState, config: RunnableConfig) -> dict[str, Any]:
                         "statement": claim.statement,
                     },
                 )
-    return {"drafts": drafts}
+    return {"drafts": drafts, **_skipped(skipped)}
+
+
+def _skip(source_id: str, window: int, exc: Exception) -> str:
+    """The error type only: messages can carry fetched text, which is never logged."""
+    log.warning("extract: skipped %s window %d (%s)", source_id, window, type(exc).__name__)
+    return type(exc).__name__
+
+
+def _skipped(skipped: list[str]) -> dict[str, Any]:
+    return (
+        {"error": f"extract: {len(skipped)} window(s) skipped ({', '.join(sorted(set(skipped)))})"}
+        if skipped
+        else {}
+    )

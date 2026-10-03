@@ -276,7 +276,10 @@ limits:     { runs_per_day: 20, ask_per_min: 20, resolve_per_min: 30 }
 fetch:      { concurrency: 6, min_interval_s: 1, max_bytes: 10485760, connect_timeout_s: 5, read_timeout_s: 20,
               allowed_ports: [80, 443], robots_timeout_s: 15 }   # BD-07
 chunk:      { prose_tokens: 400, overlap_tokens: 60, table_max_tokens: 1200 }   # BD-07
-verify:     { max_claims_per_slot: 5 }
+verify:     { max_claims_per_slot: 5, label_margin_chars: 200 }   # BD-10
+geography:  { nearby_km: 75 }   # BD-10
+eval:       { checker_agreement_min: 0.9 }   # LLD-3 §9
+stream:     { poll_interval_s: 0.5, heartbeat_s: 15 }   # BD-09
 select:     { max_new_urls_per_slot_round: 4 }
 replan:     { max_rounds: 2, max_rounds_wider_geo: 1 }
 extract:    { window_tokens: 12000, overlap_tokens: 500 }

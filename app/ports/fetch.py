@@ -35,7 +35,16 @@ class FetchPort(Protocol):
         """Every address the host resolves to; empty when it does not resolve."""
         ...
 
-    async def fetch(self, url: str, pinned_ip: str, limits: FetchLimits) -> FetchResult:
+    async def fetch(
+        self,
+        url: str,
+        pinned_ip: str,
+        limits: FetchLimits,
+        intermediates: tuple[bytes, ...] = (),
+    ) -> FetchResult:
         """One request, dialled to `pinned_ip`; the hostname is kept for Host, SNI and
-        certificate checks. Raises FetchError on network failure or timeout."""
+        certificate checks. `intermediates`: issuer certificates the server did not send
+        (fetched by the collector from the certificate's AIA URLs), used only to build the
+        chain to a trusted root (BD-15). Raises FetchError on network failure or timeout,
+        TLSCertificateError when the certificate fails verification."""
         ...

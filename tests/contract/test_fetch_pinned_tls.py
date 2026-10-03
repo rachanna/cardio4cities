@@ -48,11 +48,14 @@ def tls_server(ca: trustme.CA) -> Iterator[int]:
 
 
 def _fetcher(ca: trustme.CA, port: int) -> PinnedFetcher:
-    client_context = ssl.create_default_context()
-    ca.configure_trust(client_context)
+    def trusting() -> ssl.SSLContext:
+        client_context = ssl.create_default_context()
+        ca.configure_trust(client_context)
+        return client_context
+
     return PinnedFetcher(
         dial=lambda ip, p: ("127.0.0.1", port) if ip == PUBLIC_IP else (ip, p),
-        ssl_context=client_context,
+        context_factory=trusting,
     )
 
 

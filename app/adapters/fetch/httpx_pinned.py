@@ -4,9 +4,17 @@ The connection is dialled to the address the crawl gate checked, never to a fres
 answer, so DNS rebinding cannot redirect a request to a private address. The hostname
 is still used for the Host header, TLS SNI and certificate verification. One request,
 no redirects: the collector re-gates every hop.
+
+Certificates (BD-15): verification is always on. A failure is reported with its cause
+(expired, self-signed, host name mismatch, issuer missing). When the issuer is missing,
+the certificate is read on a separate connection that sends no request, and its issuer
+(AIA) URLs are reported so the collector can fetch the missing intermediate through the
+gate. The intermediate is then used only to build the chain: it is never a trust anchor
+(partial chains are refused), so the chain must still end at a trusted root.
 """
 
 import asyncio
+import contextlib
 import socket
 import ssl
 from collections.abc import Callable, Iterable
@@ -14,13 +22,28 @@ from typing import Any
 
 import httpcore
 import httpx
+from cryptography import x509
+from cryptography.hazmat.primitives.serialization import Encoding, pkcs7
+from cryptography.x509.oid import AuthorityInformationAccessOID
 
-from app.ports.errors import FetchError
+from app.ports.errors import FetchError, TLSCertificateError
 from app.ports.fetch import FetchLimits, FetchResult
 from app.settings import Settings
 
 Dial = Callable[[str, int], tuple[str, int]]
 Resolver = Callable[[str], "asyncio.Future[list[str]] | Any"]
+ContextFactory = Callable[[], ssl.SSLContext]
+
+# OpenSSL verify codes -> cause (TLSCertificateError)
+VERIFY_CAUSES = {
+    2: "issuer_missing",  # unable to get issuer certificate
+    10: "expired",
+    18: "self_signed",  # the server's own certificate is self-signed
+    19: "self_signed",  # a self-signed certificate in the chain
+    20: "issuer_missing",  # unable to get local issuer certificate
+    21: "issuer_missing",  # unable to verify the first certificate
+    62: "hostname_mismatch",
+}
 
 
 class _PinnedBackend(httpcore.AsyncNetworkBackend):
@@ -115,16 +138,75 @@ class PinnedFetcher:
         self,
         resolver: Callable[[str], Any] | None = None,
         dial: Dial | None = None,
-        ssl_context: ssl.SSLContext | None = None,
+        context_factory: ContextFactory = ssl.create_default_context,
     ) -> None:
         self._resolver = resolver or _getaddrinfo
         self._dial = dial
-        self._ssl = ssl_context or ssl.create_default_context()
+        self._contexts = context_factory
+        self._ssl = context_factory()
+
+    def _context(self, intermediates: tuple[bytes, ...]) -> ssl.SSLContext:
+        """The default context, or a fresh one that also knows the given intermediates,
+        for chain building only: partial chains stay refused."""
+        pems = [pem for raw in intermediates for pem in _pems(raw)]
+        if not pems:
+            return self._ssl
+        context = self._contexts()
+        context.load_verify_locations(cadata="".join(pems))
+        context.verify_flags &= ~ssl.VERIFY_X509_PARTIAL_CHAIN
+        return context
 
     async def resolve(self, host: str) -> list[str]:
         return list(await self._resolver(host))
 
-    async def fetch(self, url: str, pinned_ip: str, limits: FetchLimits) -> FetchResult:
+    async def fetch(
+        self,
+        url: str,
+        pinned_ip: str,
+        limits: FetchLimits,
+        intermediates: tuple[bytes, ...] = (),
+    ) -> FetchResult:
+        try:
+            return await self._fetch(url, pinned_ip, limits, intermediates)
+        except FetchError as exc:
+            verify = _verify_error(exc)
+            if verify is None:
+                raise
+            cause = VERIFY_CAUSES.get(verify.verify_code, "untrusted")
+            urls: tuple[str, ...] = ()
+            if cause == "issuer_missing" and not intermediates:
+                urls = await self._issuer_urls(url, pinned_ip, limits)
+            raise TLSCertificateError(cause, urls) from exc
+
+    async def _issuer_urls(self, url: str, pinned_ip: str, limits: FetchLimits) -> tuple[str, ...]:
+        """Read the server's certificate without verifying it, on a connection that sends
+        nothing, and return its CA Issuers (AIA) URLs. Nothing read here is trusted."""
+        parsed = httpx.URL(url)
+        port = parsed.port or 443
+        target, target_port = self._dial(pinned_ip, port) if self._dial else (pinned_ip, port)
+        context = ssl.create_default_context()
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+        try:
+            _, writer = await asyncio.wait_for(
+                asyncio.open_connection(
+                    target, target_port, ssl=context, server_hostname=parsed.host
+                ),
+                limits.connect_timeout_s,
+            )
+        except (OSError, TimeoutError, ssl.SSLError):
+            return ()
+        try:
+            der = writer.get_extra_info("ssl_object").getpeercert(binary_form=True)
+        finally:
+            writer.close()
+            with contextlib.suppress(OSError, ssl.SSLError):
+                await writer.wait_closed()
+        return _aia_urls(der) if der else ()
+
+    async def _fetch(
+        self, url: str, pinned_ip: str, limits: FetchLimits, intermediates: tuple[bytes, ...]
+    ) -> FetchResult:
         timeout = httpx.Timeout(
             limits.read_timeout_s, connect=limits.connect_timeout_s, pool=limits.connect_timeout_s
         )
@@ -132,7 +214,7 @@ class PinnedFetcher:
             "user-agent": limits.user_agent,
             "accept": "text/html,application/xhtml+xml,application/pdf,text/plain;q=0.9,*/*;q=0.1",
         }
-        transport = _PinnedTransport(pinned_ip, self._ssl, self._dial)
+        transport = _PinnedTransport(pinned_ip, self._context(intermediates), self._dial)
         try:
             async with (
                 httpx.AsyncClient(
@@ -169,6 +251,53 @@ class PinnedFetcher:
             ssl.SSLError,
         ) as exc:
             raise FetchError(f"network error: {type(exc).__name__}") from exc
+
+
+def _verify_error(exc: BaseException) -> ssl.SSLCertVerificationError | None:
+    """The certificate verification error behind a fetch failure, if that was the cause."""
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, ssl.SSLCertVerificationError):
+            return current
+        for arg in getattr(current, "args", ()):
+            if isinstance(arg, ssl.SSLCertVerificationError):
+                return arg
+        current = current.__cause__ or current.__context__
+    return None
+
+
+def _aia_urls(der: bytes) -> tuple[str, ...]:
+    try:
+        cert = x509.load_der_x509_certificate(der)
+        aia = cert.extensions.get_extension_for_class(x509.AuthorityInformationAccess).value
+    except (ValueError, x509.ExtensionNotFound):
+        return ()
+    return tuple(
+        str(d.access_location.value)
+        for d in aia
+        if d.access_method == AuthorityInformationAccessOID.CA_ISSUERS
+        and isinstance(d.access_location, x509.UniformResourceIdentifier)
+    )
+
+
+def _pems(raw: bytes) -> list[str]:
+    """An issuer certificate as served at an AIA URL: DER, PEM or PKCS#7. Anything else
+    gives nothing, and verification then fails as before."""
+    loaders: tuple[Callable[[bytes], list[x509.Certificate]], ...] = (
+        lambda b: [x509.load_der_x509_certificate(b)],
+        x509.load_pem_x509_certificates,
+        pkcs7.load_der_pkcs7_certificates,
+        pkcs7.load_pem_pkcs7_certificates,
+    )
+    for load in loaders:
+        try:
+            certs = load(raw)
+        except ValueError:
+            continue
+        return [c.public_bytes(Encoding.PEM).decode("ascii") for c in certs]
+    return []
 
 
 def _decode(raw: bytes, headers: httpx.Headers) -> bytes:

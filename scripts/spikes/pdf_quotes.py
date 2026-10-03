@@ -18,6 +18,7 @@ import re
 import sys
 import urllib.request
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from itertools import pairwise
 from pathlib import Path
@@ -109,6 +110,49 @@ def ask_ollama(base: str, model: str, prompt: str) -> list[dict[str, str]]:
     return [i for i in items if isinstance(i, dict) and i.get("quote") and i.get("value")]
 
 
+HAIKU_PRICE_PER_MTOK = (1.00, 5.00)  # input, output (USD), Claude Haiku 4.5
+SPEND_CAP_USD = 0.50  # owner approved about $0.15; stop well before anything surprising
+
+
+class ClaudeExtractor:
+    """The production extractor model, called through the official SDK. Tracks spend from
+    each response's usage and stops at SPEND_CAP_USD."""
+
+    def __init__(self, model: str) -> None:
+        import anthropic  # spike only; the app's adapter lives in app/adapters/llm (D2-3)
+        from dotenv import dotenv_values
+
+        key = (dotenv_values(".env").get("ANTHROPIC_API_KEY") or "").strip()
+        self._client = anthropic.Anthropic(api_key=key or None)
+        self.model = model
+        self.tokens_in = self.tokens_out = 0
+
+    @property
+    def cost_usd(self) -> float:
+        price_in, price_out = HAIKU_PRICE_PER_MTOK
+        return (self.tokens_in * price_in + self.tokens_out * price_out) / 1_000_000
+
+    def __call__(self, prompt: str) -> list[dict[str, str]]:
+        if self.cost_usd >= SPEND_CAP_USD:
+            raise SystemExit(f"spend cap reached (${self.cost_usd:.3f}); stopping")
+        response = self._client.messages.create(
+            model=self.model,
+            max_tokens=1024,
+            # SDK 1.x dropped `temperature` from create(); Haiku 4.5 still honours it (BD-05)
+            extra_body={"temperature": 0},
+            messages=[{"role": "user", "content": prompt}],
+        )
+        self.tokens_in += response.usage.input_tokens
+        self.tokens_out += response.usage.output_tokens
+        text = "".join(b.text for b in response.content if b.type == "text").strip()
+        text = text.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+        try:
+            items = json.loads(text).get("items", [])
+        except (json.JSONDecodeError, AttributeError):
+            return []
+        return [i for i in items if isinstance(i, dict) and i.get("quote") and i.get("value")]
+
+
 async def document(
     collector: Collector, name: str, url: str, cache: Path | None
 ) -> tuple[str, list[tuple[int, int]], list[tuple[int, int]]] | None:
@@ -130,8 +174,7 @@ async def document(
 
 
 async def run(
-    base: str,
-    model: str,
+    ask: Callable[[str], list[dict[str, str]]],
     max_tables: int,
     per_table: int,
     robots_timeout: float,
@@ -157,7 +200,7 @@ async def run(
         segments += numeric_blocks(text, pages, max_tables)
         for segment in segments:
             tally.tables += 1
-            for item in ask_ollama(base, model, PROMPT.format(n=per_table, table=segment)):
+            for item in ask(PROMPT.format(n=per_table, table=segment)):
                 tally.quotes += 1
                 outcome = match_quote(item["quote"], text, params, item["value"])
                 tally.reasons[outcome.reason if isinstance(outcome, QuoteDrop) else "matched"] += 1
@@ -178,7 +221,7 @@ def write_summary(tallies: dict[str, Tally], model: str) -> float:
     lines = [
         "# Spike S-5: PDF quote matching",
         "",
-        f"Extractor stand-in: local Ollama `{model}` (pessimistic). Matching: LLD-2 §4.1, exact.",
+        f"Extractor: `{model}`. Matching: LLD-2 §4.1, exact.",
         "",
         "| Document | Segments (tables + numeric text) | Quotes | Matched | Dropped by reason |",
         "|---|---|---|---|---|",
@@ -204,29 +247,48 @@ def write_summary(tallies: dict[str, Tally], model: str) -> float:
     RESULTS.parent.mkdir(parents=True, exist_ok=True)
     RESULTS.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print("\n".join(lines))
-    return drop
+    # The design checks uniqueness within the extraction window (BD-08), so that is the bar.
+    return scoped_drop
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--extractor", choices=["ollama", "anthropic"], default="ollama")
     parser.add_argument("--ollama", default="http://127.0.0.1:11434")
-    parser.add_argument("--model", default="qwen2.5:3b")
+    parser.add_argument("--model", default=None, help="default: qwen2.5:3b / claude-haiku-4-5")
     parser.add_argument("--max-tables", type=int, default=15)
     parser.add_argument("--per-table", type=int, default=3)
     parser.add_argument("--robots-timeout", type=float, default=15.0)  # fetch.robots_timeout_s
     parser.add_argument("--cache-dir", type=Path, default=None, help="reuse downloads (scratch)")
     args = parser.parse_args()
+    claude: ClaudeExtractor | None = None
+    ask: Callable[[str], list[dict[str, str]]]
+    if args.extractor == "anthropic":
+        claude = ClaudeExtractor(args.model or "claude-haiku-4-5-20251001")
+        model, ask = claude.model, claude
+    else:
+        model = args.model or "qwen2.5:3b"
+
+        def ask_local(prompt: str) -> list[dict[str, str]]:
+            return ask_ollama(args.ollama, model, prompt)
+
+        ask = ask_local
+
     tallies = asyncio.run(
         run(
-            args.ollama,
-            args.model,
+            ask,
             args.max_tables,
             args.per_table,
             args.robots_timeout,
             args.cache_dir,
         )
     )
-    drop = write_summary(tallies, args.model)
+    drop = write_summary(tallies, model)
+    if claude is not None:
+        print(
+            f"Spend: {claude.tokens_in} input + {claude.tokens_out} output tokens, "
+            f"${claude.cost_usd:.4f}"
+        )
     return 0 if drop < 0.20 else 1
 
 

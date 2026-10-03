@@ -20,6 +20,7 @@ An AI system that, given a city name at request time, researches the public web 
 | `docs/design/LLD-2-workflow.md` | Graph, node contracts, every deterministic algorithm |
 | `docs/design/LLD-3-prompts.md` | Model roles, prompts, output schemas |
 | `docs/design/LLD-4-interfaces.md` | API, event stream, ports, config, errors, test map |
+| `docs/design/LLD-5-retrieval.md` | Question answering: routes, re-validation, anchors, bundle, post-check, evaluation |
 | `docs/design/REPO_STRUCTURE.md` | Where files go; dependency rules; commands |
 | `docs/design/BUILD_PLAN.md` | Task order; each task lists the documents to load |
 | `docs/DECISIONS.md` | Why things are the way they are; record new decisions here |
@@ -49,6 +50,8 @@ Start each session by naming the task ID from `BUILD_PLAN.md` and reading the do
 - **Search is links only.** Never enable a search provider's page-content features. Every page goes through the crawl gate.
 - **Fetched text is untrusted.** Always wrapped and escaped by `app/prompts/safety.py`. Never logged.
 - **Question answering never writes facts and never searches the web.**
+- **Only confirmed claims support facts in answers.** Every candidate from Qdrant or Graphiti is re-checked against Postgres before use.
+- **Both sides of a disagreement are always shown together.**
 - **Statistic values belong to Postgres.** The graph links indicators and places but never stores or supersedes numbers.
 - **Fixtures and prompt examples use the fictional city "Halden Bay, Norvania" only.**
 - **Every `[tunable]` value comes from config**, never a literal in code.

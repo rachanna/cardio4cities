@@ -92,6 +92,40 @@ def test_html_tables_keep_their_header_row() -> None:
     assert "| Raised blood pressure | 29.0% | 33.5% |" in table
 
 
+SPANNED = """<html><head><title>Districts of Norvania</title></head><body><main><article>
+<h1>Hypertension care cascade by district</h1>
+<p>The survey covered three districts of Norvania in 2024 and reports counts, then
+percentages, for each district on two rows.</p>
+<table><thead><tr><th rowspan="2">District</th><th colspan="2">Under control</th></tr>
+<tr><th>n</th><th>%</th></tr></thead>
+<tbody><tr><td rowspan="2">Halden Bay</td><td>412</td><td></td></tr>
+<tr><td></td><td>31.5</td></tr>
+<tr><td>Port Ostra</td><td>98</td><td>22.0</td></tr></tbody></table>
+</article></main></body></html>"""
+
+
+def _table(markup: str) -> list[str]:
+    doc = DocumentParser().parse_html(markup.encode(), BASE + "/districts")
+    (start, end) = doc.tables[0]
+    return doc.text[start:end].splitlines()
+
+
+def test_row_spanning_label_cell_is_kept_on_every_row_it_spans() -> None:
+    """Spike D2-3: the percentage row must carry its district, as the source shows (BD-10)."""
+    lines = _table(SPANNED)
+
+    assert lines[0] == "| District | Under control |  |"
+    assert lines[2] == "| District | n | % |"
+    assert "| Halden Bay | 412 |  |" in lines
+    assert "| Halden Bay |  | 31.5 |" in lines
+    assert "| Port Ostra | 98 | 22.0 |" in lines
+
+
+def test_spans_are_capped_so_markup_cannot_inflate_a_page() -> None:
+    markup = SPANNED.replace('colspan="2"', 'colspan="100000"')
+    assert len(_table(markup)[0].split("|")) < 60
+
+
 # --- pdfplumber ------------------------------------------------------------------------
 
 

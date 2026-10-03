@@ -1,16 +1,20 @@
 """ParserPort: HTML with trafilatura, PDF with pdfplumber (LLD-2 §9.4, BD-07).
 
-HTML: main content only, tables kept as pipe tables with their header row.
+HTML: main content only, tables kept as pipe tables with their header row. Spanning
+cells are expanded first, so every row carries its own label cells (BD-10).
 PDF: page text with `[page N]` markers; tables extracted only on pages whose text
 contains a slot keyword, rendered as pipe tables after the page text.
 """
 
+import copy
 import io
 import re
 from datetime import date
 
 import pdfplumber
 import trafilatura
+from lxml import etree
+from lxml import html as lxml_html
 
 from app.ports.parse import ParsedDocument
 from app.settings import Settings
@@ -65,6 +69,72 @@ def _pipe_table(rows: list[list[str | None]]) -> str:
     return "\n".join(lines)
 
 
+# Spike D2-3: a label cell spanning two rows (rowspan) was kept on the first row only, so
+# the second row's values lost their label and no verbatim quote could hold both. The
+# cell belongs to every row it spans, so it is copied into each; a column span is padded
+# with empty cells to keep columns aligned. Spans are capped so markup cannot inflate a
+# page (HTML allows rowspan up to 65534).
+MAX_SPAN = 50
+
+
+def _span(cell: etree._Element, name: str) -> int:
+    try:
+        value = int(str(cell.get(name, "1")).strip() or "1")
+    except ValueError:
+        return 1
+    return max(1, min(value, MAX_SPAN))
+
+
+def _rows(table: etree._Element) -> list[etree._Element]:
+    return table.xpath("./tr | ./thead/tr | ./tbody/tr | ./tfoot/tr")  # type: ignore[no-any-return]
+
+
+Pending = dict[int, tuple[etree._Element, int]]  # column -> (cell to copy, rows left)
+
+
+def _fill(pending: Pending, out: list[etree._Element], col: int) -> int:
+    """Place copies of row-spanning cells from `col` onwards; return the next column."""
+    while col in pending:
+        cell, left = pending.pop(col)
+        out.append(copy.deepcopy(cell))
+        if left > 1:
+            pending[col] = (cell, left - 1)
+        col += 1
+    return col
+
+
+def expand_spans(markup: str) -> str:
+    """Copy each row-spanning cell into the rows it covers; pad column spans."""
+    if "rowspan" not in markup.lower() and "colspan" not in markup.lower():
+        return markup
+    root = lxml_html.document_fromstring(markup)
+    for table in root.iter("table"):
+        pending: Pending = {}
+        for tr in _rows(table):
+            cells = [c for c in tr if c.tag in ("td", "th")]
+            out: list[etree._Element] = []
+            col = 0
+            for cell in cells:
+                col = _fill(pending, out, col)
+                rows, cols = _span(cell, "rowspan"), _span(cell, "colspan")
+                for name in ("rowspan", "colspan"):
+                    cell.attrib.pop(name, None)
+                pads = [etree.Element(cell.tag) for _ in range(cols - 1)]
+                out += [cell, *pads]
+                if rows > 1:
+                    for offset, source in enumerate([cell, *pads]):
+                        pending[col + offset] = (copy.deepcopy(source), rows - 1)
+                col += cols
+            while any(c >= col for c in pending):
+                nxt = min(c for c in pending if c >= col)
+                out.extend(etree.Element("td") for _ in range(nxt - col))  # keep alignment
+                col = _fill(pending, out, nxt)
+            for cell in cells:
+                tr.remove(cell)
+            tr.extend(out)
+    return str(lxml_html.tostring(root, encoding="unicode"))
+
+
 def _date(value: str | None) -> date | None:
     try:
         return date.fromisoformat(value[:10]) if value else None
@@ -74,7 +144,7 @@ def _date(value: str | None) -> date | None:
 
 class DocumentParser:
     def parse_html(self, content: bytes, url: str) -> ParsedDocument:
-        html = content.decode("utf-8", errors="replace")
+        html = expand_spans(content.decode("utf-8", errors="replace"))
         text = trafilatura.extract(
             html,
             url=url,

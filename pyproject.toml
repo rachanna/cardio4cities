@@ -22,6 +22,7 @@ dependencies = [
     "python-ulid>=4.0.1",
     "anthropic>=1.11.0",
     "langgraph>=1.2.12",
+    "lxml>=6.1.3",
 ]
 
 [dependency-groups]
@@ -65,6 +66,7 @@ smoke = { cmd = "pytest tests/smoke -p no:cacheprovider --smoke-url ${url}", arg
 spike = { cmd = "python -m scripts.spikes.${name}", args = [
     { name = "name", positional = true, required = true, help = "Spike script in scripts/spikes/" },
 ], help = "Run one day-1 spike (may make live calls: ask the owner first)" }
+eval = { cmd = "python -m scripts.eval_prompts", help = "Prompt golden set against real models (costs money: ask first)" }
 migrate = { cmd = "alembic upgrade head", help = "Run database migrations (needs DATABASE_URL only)" }
 geonames = { cmd = "python -m scripts.reference.load_geonames --download-only", help = "Download GeoNames dumps if missing" }
 reference = { sequence = [
@@ -117,6 +119,11 @@ strict = true
 
 [[tool.mypy.overrides]]
 module = ["asyncpg", "asyncpg.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# no type stubs ship with lxml (parser adapter, BD-10)
+module = ["lxml", "lxml.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
@@ -205,6 +212,7 @@ forbidden_modules = [
     "httpcore2",
     "protego",
     "trafilatura",
+    "lxml",
     "pdfplumber",
     "weasyprint",
     "langsmith",

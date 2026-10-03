@@ -70,7 +70,7 @@ def test_local_profile_is_low_cost() -> None:
     assert "escalate_to" not in roles["extractor"]
     assert (roles["checker"]["model"], roles["checker"]["effort"]) == ("gpt-6-luna", "low")
     assert raw["embeddings"]["provider"] == "sentence_transformers"
-    assert raw["verify"]["max_claims_per_slot"] == 3
+    assert raw["verify"]["max_claims_per_slot"] == 5  # owner, BD-10: a Luna check costs ~$0.0002
     assert raw["search"]["provider"] == "searxng"
 
 

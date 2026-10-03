@@ -6,10 +6,12 @@
   patterns:
     - '(>=|≥) ?140\b'
     - '\b140 ?/ ?90\b'
+    - '< ?140\b\D{0,40}< ?90\b'   # control: systolic below 140 and diastolic below 90 (BD-10)
 - code: bp_130_80
   patterns:
     - '(>=|≥) ?130\b'
     - '\b130 ?/ ?80\b'
+    - '< ?130\b\D{0,40}< ?80\b'
 - code: fpg_7_0
   patterns:
     - '(>=|≥) ?7[.,]0 ?mmol'

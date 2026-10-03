@@ -2,7 +2,7 @@
 
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -15,6 +15,7 @@ from app.domain.vocab import (
     CrawlOutcome,
     DatePrecision,
     GeographyLevel,
+    GeographyRelation,
     MeasureType,
     Method,
     ParseOutcome,
@@ -137,6 +138,19 @@ class Labels(BaseModel):
         return self
 
 
+class GeographyFit(BaseModel):
+    """Set by code from the gazetteer (BD-10); shown in the evidence panel."""
+
+    model_config = _FROZEN
+
+    relation: GeographyRelation
+    place_name: str | None = None  # the gazetteer place or area the name resolved to
+    distance_km: int | None = None  # from the city, for places resolved to a point
+
+
+LabelKind = Literal["period", "population", "geography"]
+
+
 class Claim(BaseModel):
     model_config = _FROZEN
 
@@ -157,6 +171,9 @@ class Claim(BaseModel):
     status: ClaimStatus
     extractor_model: str
     prompt_version: str
+    # Where a label is stated outside the quote, located by code (BD-10)
+    label_spans: dict[LabelKind, tuple[int, int]] = Field(default_factory=dict)
+    geography_fit: GeographyFit | None = None
 
     @model_validator(mode="after")
     def _span(self) -> "Claim":

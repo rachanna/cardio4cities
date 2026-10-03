@@ -18,8 +18,13 @@ class Prompt:
     prompt_version: str
 
 
+# The version each role runs now; earlier files stay for the record (R-62).
+CURRENT = {"planner": 1, "extractor": 2, "checker": 2}
+
+
 @cache
-def load_prompt(role: str, version: int = 1) -> Prompt:
+def load_prompt(role: str, version: int | None = None) -> Prompt:
+    version = version if version is not None else CURRENT[role]
     folder = PROMPTS_DIR / role
     text = (folder / f"v{version}.md").read_bytes()
     schema = (folder / "schema.py").read_bytes()

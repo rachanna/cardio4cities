@@ -69,12 +69,14 @@ class PostgresResearchRepo:
                     " statement, quote, quote_lang, quote_translation, span_start, span_end,"
                     " geography_level, geography_name, measure_type, reference_start,"
                     " reference_end, reference_precision, period_type, representativeness,"
-                    " optional_labels, flags, status, extractor_model, prompt_version) VALUES"
+                    " optional_labels, flags, status, extractor_model, prompt_version,"
+                    " label_spans, geography_fit) VALUES"
                     " (:claim_id, :run_id, :city_id, :slot_id, :source_id, :kind, :statement,"
                     " :quote, :quote_lang, :quote_translation, :span_start, :span_end,"
                     " :geography_level, :geography_name, :measure_type, :reference_start,"
                     " :reference_end, :reference_precision, :period_type, :representativeness,"
-                    " :optional_labels, :flags, :status, :extractor_model, :prompt_version)"
+                    " :optional_labels, :flags, :status, :extractor_model, :prompt_version,"
+                    " :label_spans, :geography_fit)"
                 ),
                 {
                     "claim_id": claim.claim_id,
@@ -104,6 +106,10 @@ class PostgresResearchRepo:
                     "status": claim.status.value,
                     "extractor_model": claim.extractor_model,
                     "prompt_version": claim.prompt_version,
+                    "label_spans": json.dumps({k: list(v) for k, v in claim.label_spans.items()}),
+                    "geography_fit": claim.geography_fit.model_dump_json()
+                    if claim.geography_fit
+                    else None,
                 },
             )
             if statistic is not None:
@@ -225,6 +231,8 @@ class PostgresResearchRepo:
                 },
                 "labels": labels,
                 "flags": frozenset(row["flags"]),
+                "label_spans": {k: tuple(v) for k, v in row["label_spans"].items()},
+                "geography_fit": row["geography_fit"],
             }
         )
         statistic = None

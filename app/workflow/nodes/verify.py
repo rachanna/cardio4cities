@@ -17,6 +17,7 @@ from app.workflow.llm import call_checker
 from app.workflow.nodes._deps import deps
 from app.workflow.state import SlotState
 
+LABEL_ORDER = ("period", "geography", "population")
 STATUS_FOR = {
     VerdictLabel.SUPPORTED: ClaimStatus.SUPPORTED,
     VerdictLabel.REFUTED: ClaimStatus.REFUTED,
@@ -40,6 +41,11 @@ async def verify(state: SlotState, config: RunnableConfig) -> dict[str, Any]:
             str(source.get("publisher_class")),
             source.get("published_date"),  # type: ignore[arg-type]
             context.passage(text, claim.span_start, claim.span_end),
+            [
+                (kind, context.passage(text, *claim.label_spans[kind], d.verify.label_margin_chars))
+                for kind in LABEL_ORDER
+                if kind in claim.label_spans
+            ],
         )
         try:
             out = await call_checker(d, prompt.system, user, CheckerOutput)

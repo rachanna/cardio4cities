@@ -1,14 +1,18 @@
 """match_quotes (LLD-2 §4.1, AT-09): locate each quote exactly in the window the model
 read (uniqueness scoped to that window, BD-08), map it to document offsets, then apply
-the label rules. A miss is dropped and recorded; no fuzzy matching."""
+the label rules. Label quotes are located the same way; an unlocated period or
+population label is cleared (BD-10). A claim about an area that is neither the city, an
+area containing it, nor a place near it is dropped (BD-10). Every drop is recorded with
+its reason; no fuzzy matching."""
 
 from typing import Any
 
 from langchain_core.runnables import RunnableConfig
 
-from app.domain.models import Claim, Statistic
+from app.domain.models import CityIdentity, Claim, GeographyFit, LabelKind, Labels, Statistic
 from app.domain.ranking import Candidate, ranked
 from app.domain.vocab import (
+    USABLE_RELATIONS,
     ClaimFlag,
     ClaimKind,
     ClaimStatus,
@@ -17,12 +21,29 @@ from app.domain.vocab import (
     PublisherClass,
 )
 from app.prompts.extractor.schema import ClaimOut, to_labels
+from app.workflow.deps import RunDeps
 from app.workflow.nodes._deps import deps
+from app.workflow.rules.geography_fit import PlaceCandidate, geography_fit, lookup_names
+from app.workflow.rules.label_evidence import clear_labels, locate_label_quotes
 from app.workflow.rules.labels import apply_reference_period_rule, derive_flags
 from app.workflow.rules.numbers import parse_value
 from app.workflow.rules.quotes import QuoteDrop, match_quote
 from app.workflow.rules.thresholds import threshold_code
 from app.workflow.state import SlotState
+
+
+async def fit_for(d: RunDeps, city: CityIdentity, labels: Labels) -> GeographyFit:
+    rows = await d.relational.reference.places_named(
+        lookup_names(labels.geography_name), city.country_iso2
+    )
+    candidates = [
+        PlaceCandidate(str(r["gazetteer_id"]), str(r["name"]), float(r["lat"]), float(r["lon"]))
+        for r in rows
+    ]
+    return geography_fit(
+        labels.geography_level, labels.geography_name, city, candidates,
+        d.geography.nearby_km,
+    )  # fmt: skip
 
 
 async def match_quotes(state: SlotState, config: RunnableConfig) -> dict[str, Any]:
@@ -57,6 +78,26 @@ async def match_quotes(state: SlotState, config: RunnableConfig) -> dict[str, An
         labels, period_unparsed = to_labels(
             out.labels, threshold_code(out.labels.case_definition, d.thresholds)
         )
+        label_quotes: dict[LabelKind, str | None] = (
+            out.label_quotes.model_dump() if out.label_quotes else {}  # type: ignore[assignment]
+        )
+        evidence = locate_label_quotes(label_quotes, window, draft.window_start, labels, d.quote)
+        labels = clear_labels(labels, evidence.cleared)
+        fit = await fit_for(d, state["city"], labels)
+        if fit.relation not in USABLE_RELATIONS:
+            await d.events.emit(
+                state["run_id"],
+                EventType.CLAIM_DROPPED,
+                {
+                    "claim_id": draft.claim_id,
+                    "reason": f"geography_{fit.relation.value}",
+                    "statement": out.statement,
+                    "geography_name": labels.geography_name,
+                    "place": fit.place_name,
+                    "distance_km": fit.distance_km,
+                },
+            )
+            continue
         precision = source.get("published_precision")
         labels = apply_reference_period_rule(
             labels,
@@ -85,6 +126,8 @@ async def match_quotes(state: SlotState, config: RunnableConfig) -> dict[str, An
             status=ClaimStatus.EXTRACTED,
             extractor_model=draft.extractor_model,
             prompt_version=draft.prompt_version,
+            label_spans=evidence.spans,
+            geography_fit=fit,
         )
         statistic = None
         if out.kind is ClaimKind.STATISTIC and out.statistic is not None and parsed is not None:

@@ -33,6 +33,11 @@ class ReferenceRepo(Protocol):
 
     async def place_identity(self, gazetteer_id: str) -> dict[str, Any] | None: ...
 
+    async def places_named(self, names: list[str], country_iso2: str) -> list[dict[str, Any]]:
+        """Places in the country whose name, ASCII name or an alternate name equals one of
+        `names` (lower case): gazetteer_id, name, lat, lon (BD-10)."""
+        ...
+
 
 class SourceRepo(Protocol):
     """Crawl decisions and fetched sources of a run (LLD-1 §4.3)."""

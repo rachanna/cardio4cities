@@ -1,30 +1,87 @@
 """Checker input: the restricted slice (LLD-3 §5.1, R-38, AT-07). Binding: the checker
-receives the claim, its labels, its value and the code-located passage, and nothing
-else: never the extractor's prompt or output, other claims, other sources, or the
-slot question. `build_user_message` takes exactly these inputs, so nothing else can
-reach it."""
+receives the claim, its labels, its value and the code-located passages (around the
+quote, and around any label quote, BD-10), and nothing else: never the extractor's
+prompt or output, other claims, other sources, or the slot question.
+`build_user_message` takes exactly these inputs, so nothing else can reach it."""
 
+from collections.abc import Sequence
 from datetime import date
 
 from app.domain.models import Labels
+from app.domain.vocab import DatePrecision, GeographyLevel
 from app.prompts.safety import wrap_source
 
 PASSAGE_MARGIN_CHARS = 600  # LLD-3 §5.1: the quote plus up to 600 characters either side
 
 
-def passage(parsed_text: str, span_start: int, span_end: int) -> str:
-    start = max(0, span_start - PASSAGE_MARGIN_CHARS)
-    end = min(len(parsed_text), span_end + PASSAGE_MARGIN_CHARS)
+def passage(
+    parsed_text: str, span_start: int, span_end: int, margin: int = PASSAGE_MARGIN_CHARS
+) -> str:
+    start = max(0, span_start - margin)
+    end = min(len(parsed_text), span_end + margin)
     return parsed_text[start:end]
 
 
+def _at(day: date, precision: DatePrecision | None) -> str:
+    if precision is DatePrecision.YEAR:
+        return str(day.year)
+    if precision is DatePrecision.MONTH:
+        return day.strftime("%Y-%m")
+    return day.isoformat()
+
+
 def _period(labels: Labels) -> str:
+    """At the precision the source stated: a year stays "2024", never "2024-01-01 to
+    2024-12-31", which no passage states (golden set, BD-10)."""
     start, end = labels.reference_start, labels.reference_end
     if labels.period_type.value == "publication_date_proxy" or not (start or end):
         return "not stated"
-    if start and end and start != end:
-        return f"{start.isoformat()} to {end.isoformat()}"
-    return (end or start).isoformat()  # type: ignore[union-attr]
+    precision = labels.reference_precision
+    first = _at(start, precision) if start else None
+    last = _at(end, precision) if end else None
+    if first and last and first != last:
+        return f"{first} to {last}"
+    return first or last or "not stated"
+
+
+def ages(low: int | None, high: int | None) -> str:
+    if low is not None and high is not None:
+        return f"aged {low}-{high}"
+    if low is not None:
+        return f"aged {low} and over"
+    if high is not None:
+        return f"aged up to {high}"
+    return "age not stated"
+
+
+def population(labels: Labels) -> str:
+    """Unstated parts read "not stated", never a default that asserts something."""
+    sex = labels.population_sex.value.replace("_", " ")
+    return (
+        f"{ages(labels.population_age_min, labels.population_age_max)}; sex {sex}; "
+        f"group {labels.population_group or 'not stated'}; "
+        f"setting {labels.setting or 'not stated'}"
+    )
+
+
+# Plain words for the level (golden set: the bare code "city_wide" read as a mismatch for
+# a place the passage calls a town)
+LEVEL_WORDS = {
+    GeographyLevel.CITY_WIDE: "the whole city or town",
+    GeographyLevel.SUB_CITY_AREA: "part of a city",
+    GeographyLevel.SUB_CITY_POPULATION: "a population group within a city",
+    GeographyLevel.METRO_REGION: "a metropolitan region",
+    GeographyLevel.DISTRICT: "a district",
+    GeographyLevel.STATE_PROVINCE: "a state or province",
+    GeographyLevel.NATIONAL: "a whole country",
+    GeographyLevel.GLOBAL: "the world",
+}
+
+LABEL_PASSAGE_TITLES = {
+    "period": "passage stating the period",
+    "geography": "passage stating the area",
+    "population": "passage stating the population",
+}
 
 
 def build_user_message(
@@ -35,27 +92,27 @@ def build_user_message(
     publisher_class: str,
     published: date | None,
     passage_text: str,
+    label_passages: Sequence[tuple[str, str]] = (),
 ) -> str:
-    ages = (
-        f"{labels.population_age_min}-{labels.population_age_max}"
-        if labels.population_age_min is not None or labels.population_age_max is not None
-        else "age not stated"
-    )
+    """`label_passages`: (label kind, text) for labels stated outside the quote, each
+    located by code (BD-10)."""
     lines = [
-        "<task>Decide whether the passage supports the claim exactly as labelled.</task>",
+        "<task>Decide whether the passages support the claim exactly as labelled.</task>",
         "<context>",
         f"claim: {statement}",
         f"value as written: {value_as_written or 'n/a'}",
         "labels:",
-        f"  describes: {labels.geography_level.value} — {labels.geography_name}",
-        f"  population: {ages}, {labels.population_sex.value}, "
-        f"{labels.population_group or 'general'}; setting: {labels.setting or 'not stated'}",
+        f"  describes: {labels.geography_name} ({LEVEL_WORDS[labels.geography_level]})",
+        f"  population: {population(labels)}",
         f"  measure: {labels.measure_type.value}",
         f"  period: {_period(labels)}",
         f"  denominator: {labels.denominator_text or 'not stated'}",
         f"source: publisher {publisher_class}; "
         f"published {published.isoformat() if published else 'unknown'}",
         "</context>",
+        "passage around the quote:",
         wrap_source(source_id, passage_text),
     ]
+    for kind, text in label_passages:
+        lines += [f"{LABEL_PASSAGE_TITLES[kind]}:", wrap_source(source_id, text)]
     return "\n".join(lines)

@@ -57,4 +57,5 @@ def test_shipped_tunables_match_lld2() -> None:
     assert confidence_params().recent_years == 5
     assert (replan_params().max_rounds, replan_params().max_rounds_wider_geo) == (2, 1)
     assert verify_params("deployed").max_claims_per_slot == 5
-    assert verify_params("local").max_claims_per_slot == 3
+    assert verify_params("local").max_claims_per_slot == 5  # BD-10
+    assert verify_params("local").label_margin_chars == 200

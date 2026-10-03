@@ -8,6 +8,7 @@ from app.domain.models import IndicatorDef, SlotDef
 from app.domain.params import (
     BadgeParams,
     ConsistencyParams,
+    GeographyParams,
     QuoteParams,
     VerifyParams,
 )
@@ -71,6 +72,7 @@ class RunDeps:
     verify: VerifyParams
     consistency: ConsistencyParams
     badge: BadgeParams
+    geography: GeographyParams
     chunk: ChunkParams
     window: WindowParams
     max_new_urls: int  # select.max_new_urls_per_slot_round [tunable]

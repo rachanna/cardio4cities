@@ -40,3 +40,9 @@ class ReplanParams:
 @dataclass(frozen=True)
 class VerifyParams:
     max_claims_per_slot: int  # verify.max_claims_per_slot (LLD-2 §5.3)
+    label_margin_chars: int  # verify.label_margin_chars: context per label passage (BD-10)
+
+
+@dataclass(frozen=True)
+class GeographyParams:
+    nearby_km: float  # geography.nearby_km: farther places never answer for the city (BD-10)

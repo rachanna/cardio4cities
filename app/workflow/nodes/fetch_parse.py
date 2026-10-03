@@ -80,6 +80,18 @@ async def _one(d: RunDeps, state: SlotState, candidate: Candidate) -> tuple[str 
     decision_ids = [await record_decision(d, run_id, x) for x in extra]
     if first.outcome.value != "allowed" and not extra:
         decision_ids.append(await record_decision(d, run_id, first))
+    if collected.outcome == "http_error":
+        # No source row (LLD-2 §9.3), but the stream shows why the page gave nothing
+        await d.events.emit(
+            run_id,
+            EventType.SOURCE_UNREADABLE,
+            {
+                "source_id": None,
+                "url": candidate.url,
+                "parse_outcome": None,
+                "http_status": collected.http_status,
+            },
+        )
     if collected.outcome != "fetched" or collected.final_url is None:
         return None, decision_ids
     doc = collected.document

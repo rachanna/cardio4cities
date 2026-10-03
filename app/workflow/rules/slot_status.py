@@ -5,6 +5,7 @@ Every slot always gets a status, including after a budget stop.
 
 from collections.abc import Iterable, Sequence
 
+from app.domain.geography import effective_level
 from app.domain.models import Claim, SlotDef
 from app.domain.params import ReplanParams
 from app.domain.vocab import (
@@ -27,7 +28,7 @@ def slot_status(
 ) -> SlotStatus:
     """`claims`: every claim for the slot in this run; `crawl_outcomes`: its crawl decisions."""
     supported = [c for c in claims if c.status in SHOWABLE_STATUSES]
-    if any(c.labels.geography_level in slot.accepted_levels for c in supported):
+    if any(effective_level(c) in slot.accepted_levels for c in supported):
         return SlotStatus.ANSWERED
     if supported:
         return SlotStatus.ANSWERED_WIDER_GEO

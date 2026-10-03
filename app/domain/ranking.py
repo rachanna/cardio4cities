@@ -4,6 +4,7 @@ per-slot verification cap (§5.3)."""
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
+from app.domain.geography import effective_level
 from app.domain.models import Claim
 from app.domain.params import VerifyParams
 from app.domain.vocab import GEOGRAPHY_ORDER, GeographyLevel, PublisherClass, Representativeness
@@ -52,7 +53,7 @@ def rank_key(
     return (
         SOURCE_TIER[candidate.publisher_class],
         REPRESENTATIVENESS_RANK[labels.representativeness],
-        geography_distance(labels.geography_level, accepted),
+        geography_distance(effective_level(candidate.claim), accepted),
         0 if end is not None else 1,  # NULL last
         -end.toordinal() if end is not None else 0,  # newer first
         candidate.claim.claim_id,  # determinism

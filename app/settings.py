@@ -195,6 +195,7 @@ class FetchSection(_Section):
 
 class VerifySection(_Section):
     max_claims_per_slot: int
+    label_margin_chars: int  # context around each label passage the checker sees (BD-10)
 
 
 class SelectSection(_Section):
@@ -247,6 +248,14 @@ class AnalyticsSection(_Section):
     enabled: bool
 
 
+class GeographySection(_Section):
+    nearby_km: float  # figures from places this close may answer for the city (BD-10)
+
+
+class EvalSection(_Section):
+    checker_agreement_min: float  # LLD-3 §9 pass bar for the golden set [tunable]
+
+
 class StreamSection(_Section):
     poll_interval_s: float  # LLD-4 §4: live following polls run_event [tunable]
     heartbeat_s: float  # LLD-4 §4: comment line that keeps proxies from closing
@@ -279,6 +288,8 @@ class Config(_Section):
     confidence: ConfidenceSection
     analytics: AnalyticsSection
     stream: StreamSection
+    geography: GeographySection
+    eval: EvalSection
 
 
 # --- Loaded settings -------------------------------------------------------

@@ -260,6 +260,10 @@ class ExtractorOutput(BaseModel):
     claims: list[ClaimOut] = Field(max_length=12)
 ```
 
+### 4.3a Extractor v2 (BD-10)
+
+`app/prompts/extractor/v2.md` replaces v1 for new runs. Changes: the quote is one continuous piece of the source (never "…", never joined cells or sentences; a table value is quoted from its row's first cell to the value); `geography_name` names one area as the source does; a new optional `label_quotes {period, geography, population}` holds 6 to 40 words that state a label outside the quote (LLD-2 §4.1a); a worked table-row example. Schema: `ClaimOut.label_quotes: LabelQuotesOut | None`.
+
 ### 4.4 Code validation
 
 | Check | On failure |
@@ -289,17 +293,24 @@ Escalation to the stronger model happens when the whole output fails validation 
 claim: {statement}
 value as written: {value_as_written or "n/a"}
 labels:
-  describes: {geography_level} — {geography_name}
-  population: {age band}, {sex}, {group or "general"}; setting: {setting or "not stated"}
+  describes: {geography_name} ({level in plain words, e.g. "the whole city or town"})
+  population: {age band, e.g. "aged 18 and over"}; sex {sex}; group {group or "not stated"}; setting {setting or "not stated"}
   measure: {measure_type}
-  period: {reference period or "not stated"}
+  period: {reference period at its stated precision, e.g. "2024", or "not stated"}
   denominator: {denominator_text or "not stated"}
 source: publisher {publisher_class}; published {published_date or "unknown"}
 </context>
+passage around the quote:
 <source id="{source_id}">
 {passage}                       # the code-located quote plus up to 600 characters either side
 </source>
+passage stating the period:     # v2 (BD-10): one block per located label quote, if any
+<source id="{source_id}">
+{label passage}                 # the located label quote plus verify.label_margin_chars either side
+</source>
 ```
+
+v2 changes (BD-10, measured on the golden set): unstated labels read "not stated", never a default such as "general" that asserts something; the period is shown at the precision the source stated ("2024", not "2024-01-01 to 2024-12-31", which made the checker report a period mismatch); levels are plain words; v2 rules add that a "not stated" label is not a mismatch, that a label passage must refer to the same figure, that passages are read together, and that a planned programme described as running is refuted.
 
 The checker never receives the extractor's prompt, output reasoning, other claims, the run's other sources or the slot question. Code asserts this slice structure in a test.
 
@@ -551,7 +562,7 @@ Pass bar before the demo: no golden trap mislabelled by the extractor in a way t
 | PD-03 | Checker returns issues; `supported` with any issue is downgraded by code | Trust the label | An inconsistent verdict must not create a fact |
 | PD-04 | Abstention wording comes from stored gap records, not the model | Model writes abstentions | The gap shown is exactly what was searched |
 | PD-05 | Extraction runs once per source for all slots that selected it | Once per source per slot | Halves extraction calls; claims carry their slot |
-| PD-06 | Checker sees ±600 characters around the quote, not the whole source | Whole source | Keeps the judgment on the passage; cheaper; independence is clearer |
+| PD-06 | Checker sees ±600 characters around the quote, not the whole source; since BD-10 also ±`verify.label_margin_chars` around each code-located label quote | Whole source | Keeps the judgment on the passage; cheaper; independence is clearer; a period stated in the methods no longer makes a true figure insufficient |
 
 ## 11. Open items
 

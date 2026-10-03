@@ -96,7 +96,8 @@ async def report(relational: object, run_id: str, elapsed: float) -> int:
                 print(f"  query  [{q['lang']}] {q['text']}")
     async with engine.connect() as conn:
         facts_sql = text(
-            "SELECT statement, quote, value_as_written, geography_level, url, verdict, rationale"
+            "SELECT statement, quote, value_as_written, geography_level, geography_fit,"
+            " label_spans, flags, url, verdict, rationale"
             " FROM v_fact_evidence WHERE run_id = :r ORDER BY status"
         )
         facts = (await conn.execute(facts_sql, {"r": run_id})).mappings().all()
@@ -106,7 +107,9 @@ async def report(relational: object, run_id: str, elapsed: float) -> int:
     for f in facts:
         print(f"  [{f['verdict'] or 'unchecked'}] {f['statement']}\n"
               f"     quote: \"{f['quote']}\"\n     value: {f['value_as_written']}"
-              f"  level: {f['geography_level']}\n     source: {f['url']}\n"
+              f"  level: {f['geography_level']}  fit: {f['geography_fit']}\n"
+              f"     label passages: {sorted(f['label_spans'])}  flags: {f['flags']}\n"
+              f"     source: {f['url']}\n"
               f"     checker: {f['rationale']}")  # fmt: skip
     budget = finished["summary"]["budget"] if "summary" in finished else {}
     cost = budget.get("cost_micro_usd", 0) / 1e6

@@ -552,6 +552,8 @@ CREATE TABLE claim (
   optional_labels jsonb NOT NULL DEFAULT '{}',   -- population_*, setting, sample_size, case_definition,
                                                  -- threshold_code, method, denominator_text, denominator_stated
   flags text[] NOT NULL DEFAULT '{}',
+  label_spans jsonb NOT NULL DEFAULT '{}',       -- BD-10: {"period": [start, end], ...} located label quotes
+  geography_fit jsonb,                           -- BD-10: {relation, place_name, distance_km}
   status text NOT NULL CHECK (status IN ('extracted','dropped','supported','refuted','insufficient','contested','superseded')),
   extractor_model text NOT NULL, prompt_version text NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now()

@@ -67,6 +67,14 @@ class FetchBudget(Protocol):
         """Called before every request; raises when the budget is spent (LLD-2 §12)."""
         ...
 
+    def time_left_s(self) -> float:
+        """Seconds left on the run's wall clock: no spacing wait may go past it."""
+        ...
+
+
+class RateLimitedError(FetchError):
+    """The wait a site's spacing needs would run past the run's time left (BD-20)."""
+
 
 @dataclass(frozen=True)
 class CollectionParams:
@@ -78,6 +86,7 @@ class CollectionParams:
     connect_timeout_s: float
     read_timeout_s: float
     robots_timeout_s: float  # fetch.robots_timeout_s
+    crawl_delay_cap_s: float  # fetch.crawl_delay_cap_s (BD-20)
 
 
 @dataclass(frozen=True)
@@ -188,12 +197,13 @@ class Collector:
             canonical, domain, CrawlOutcome.ALLOWED, "", None, robots.status, pinned
         )
         if robots.availability == "unreachable_server_error":
+            answer = (
+                "asked us to slow down (429)" if robots.status == 429 else "returned a server error"
+            )
             return replace(
                 base,
                 outcome=CrawlOutcome.UNREACHABLE_SERVER_ERROR,
-                reason=(
-                    "robots.txt returned a server error: the whole site is treated as disallowed"
-                ),
+                reason=f"robots.txt {answer}: the whole site is treated as disallowed",
             )
         if robots.availability == "unreachable_network":
             cause = f" ({robots.detail})" if robots.detail else ""
@@ -223,10 +233,19 @@ class Collector:
                 reason="robots.txt opts this content out of use by AI systems",
                 usage_preferences=usage.preferences,
             )
+        delay = rules.crawl_delay(ua)
+        if delay is not None and delay > self._params.crawl_delay_cap_s:
+            return replace(
+                base,
+                outcome=CrawlOutcome.RATE_LIMITED,
+                rule=f"Crawl-delay: {delay:g}",
+                reason=f"robots.txt asks for {delay:g} s between requests, longer than the"
+                f" {self._params.crawl_delay_cap_s:g} s a run can wait",
+            )
         return replace(
             base,
             reason="allowed by robots.txt",
-            crawl_delay=rules.crawl_delay(ua),
+            crawl_delay=delay,
             rule=usage.rule,
             usage_preferences=usage.preferences,
         )
@@ -245,6 +264,7 @@ class Collector:
             connect_timeout_s=self._params.robots_timeout_s,
             read_timeout_s=self._params.robots_timeout_s,
             user_agent=self._params.user_agent,
+            keep_partial=True,
         )
         url, ip = f"{origin}/robots.txt", pinned
         for _ in range(ROBOTS_MAX_REDIRECTS + 1):
@@ -256,7 +276,12 @@ class Collector:
             if 300 <= result.status < 400 and location:
                 target = canonicalise(urljoin(url, location))
                 if target is None or check_scheme_and_port(target, self._params.allowed_ports):
-                    return _Robots("unavailable", result.status)
+                    # Not "no robots.txt": a file we cannot read is unreachable (BD-20)
+                    return _Robots(
+                        "unreachable_network",
+                        result.status,
+                        detail="it redirects where we never dial",
+                    )
                 literal = literal_address(host_of(target))
                 addresses = [literal] if literal else await self._fetcher.resolve(host_of(target))
                 if check_addresses(addresses):  # never follow robots.txt to a private address
@@ -265,7 +290,8 @@ class Collector:
                 continue
             availability = robots_availability(result.status)
             # Only the first 500 KiB is parsed (RFC 9309 §2.5): a cut-off file is still used.
-            text = result.content.decode("utf-8", errors="replace") if result.content else ""
+            # A byte order mark is dropped, or it would hide the first group (BD-20).
+            text = result.content.decode("utf-8-sig", errors="replace") if result.content else ""
             return _Robots(availability, result.status, text)
         return _Robots("unavailable", None)  # too many redirects: treated as unavailable
 
@@ -363,17 +389,26 @@ class Collector:
         intermediates: tuple[bytes, ...] = (),
     ) -> FetchResult:
         """One request, spaced per domain at max(crawl-delay, min interval), one at a
-        time per domain, within the global concurrency limit."""
+        time per domain, within the global concurrency limit (BD-20): the budget is
+        reserved before any wait, a wait past the run's time left is refused, and only
+        the domain lock is held while waiting, so one slow site never holds the global
+        permits other sites need."""
         domain = host_of(url)
         spacing = max(crawl_delay or 0.0, self._params.min_interval_s)
-        async with self._global, self._domain_locks[domain]:
+        async with self._domain_locks[domain]:
+            wait = 0.0
             if domain in self._last_request:
-                wait = self._last_request[domain] + spacing - self._clock()
-                if wait > 0:
-                    await self._sleep(wait)
+                wait = max(self._last_request[domain] + spacing - self._clock(), 0.0)
+            if wait > self._budget.time_left_s():
+                raise RateLimitedError(
+                    f"the site's spacing needs {wait:.0f} s more, past the run's time left"
+                )
             await self._budget.reserve(kind)
+            if wait > 0:
+                await self._sleep(wait)
             try:
-                return await self._fetcher.fetch(url, ip, limits, intermediates)
+                async with self._global:
+                    return await self._fetcher.fetch(url, ip, limits, intermediates)
             finally:
                 self._last_request[domain] = self._clock()
 
@@ -413,9 +448,7 @@ class Collector:
             try:
                 result = await self._fetch_with_retry(decision)
             except FetchError as exc:
-                decisions[-1] = replace(
-                    decision, outcome=CrawlOutcome.UNREACHABLE_NETWORK, reason=str(exc)
-                )
+                decisions[-1] = _failed(decision, exc)
                 return ApiFetched(tuple(decisions), None)
             if result is None:
                 decisions[-1] = replace(
@@ -461,9 +494,7 @@ class Collector:
             try:
                 result = await self._fetch_with_retry(decision)
             except FetchError as exc:
-                decisions[-1] = replace(
-                    decision, outcome=CrawlOutcome.UNREACHABLE_NETWORK, reason=str(exc)
-                )
+                decisions[-1] = _failed(decision, exc)
                 return Collected(url, tuple(decisions), "not_fetched")
             if result is None:
                 decisions[-1] = replace(
@@ -568,6 +599,17 @@ def _retry_after(value: str | None) -> float | None:
         return max(0.0, float(value.strip()))
     except ValueError:
         return None  # HTTP-date forms are treated as too long to wait
+
+
+def _failed(decision: GateDecision, exc: FetchError) -> GateDecision:
+    """A request that was not made, or failed: rate limited when the site's spacing would
+    outlast the run (BD-20), otherwise unreachable."""
+    outcome = (
+        CrawlOutcome.RATE_LIMITED
+        if isinstance(exc, RateLimitedError)
+        else CrawlOutcome.UNREACHABLE_NETWORK
+    )
+    return replace(decision, outcome=outcome, reason=str(exc))
 
 
 def _disallow_line(text: str, user_agent: str, url: str) -> str | None:

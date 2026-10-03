@@ -41,7 +41,7 @@ tracing:    { providers: [events] }
 # Estimate ~$3.70 a run (BD-05)
 budget:     { wall_clock_s: 420, searches: 64, fetches: 60, tokens: 1500000, cost_micro_usd: 3000000, wind_down_at: 0.85 }   # BD-15
 limits:     { runs_per_day: 20, ask_per_min: 20, resolve_per_min: 30 }
-fetch:      { concurrency: 6, min_interval_s: 1, max_bytes: 10485760, connect_timeout_s: 5, read_timeout_s: 20, allowed_ports: [80, 443], robots_timeout_s: 15 }
+fetch:      { concurrency: 6, min_interval_s: 1, max_bytes: 10485760, connect_timeout_s: 5, read_timeout_s: 20, allowed_ports: [80, 443], robots_timeout_s: 15, crawl_delay_cap_s: 30 }
 verify:     { max_claims_per_slot: 5, label_margin_chars: 200 }   # BD-05, BD-10
 select:     { max_new_urls_per_slot_round: 3, max_reused_per_slot_round: 2, other_place_min_population: 15000 }   # BD-14, BD-15
 replan:     { max_rounds: 2, max_rounds_wider_geo: 1, priority: [S04, S03, S05, S06] }   # priority: BD-15

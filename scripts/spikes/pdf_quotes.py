@@ -79,6 +79,9 @@ class Unlimited:
     async def reserve(self, kind: FetchKind) -> None:
         pass
 
+    def time_left_s(self) -> float:
+        return float("inf")
+
 
 @dataclass
 class Tally:
@@ -185,7 +188,7 @@ async def run(
         ProtegoRobotsParser(),
         DocumentParser(),
         Unlimited(),
-        CollectionParams(UA, (80, 443), 1.0, 2, 30_000_000, 10.0, 120.0, robots_timeout),
+        CollectionParams(UA, (80, 443), 1.0, 2, 30_000_000, 10.0, 120.0, robots_timeout, 30.0),
     )
     quote_config = yaml.safe_load((CONFIG_DIR / "local.yaml").read_text("utf-8"))["quote"]
     params = QuoteParams(**quote_config)  # the shipped tunables, not literals

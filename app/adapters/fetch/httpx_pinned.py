@@ -22,6 +22,7 @@ import contextlib
 import ipaddress
 import socket
 import ssl
+import zlib
 from collections.abc import Callable, Iterable
 from typing import Any
 
@@ -264,6 +265,8 @@ class PinnedFetcher:
         headers = {
             "user-agent": limits.user_agent,
             "accept": "text/html,application/xhtml+xml,application/pdf,text/plain;q=0.9,*/*;q=0.1",
+            # Only encodings decoded here under the size cap (BD-20)
+            "accept-encoding": "gzip, deflate",
         }
         transport = _PinnedTransport(pinned_ip, self._context(intermediates), self._dial)
         try:
@@ -273,14 +276,10 @@ class PinnedFetcher:
                 ) as client,
                 client.stream("GET", url) as response,
             ):
-                body = bytearray()
-                truncated = False
-                async for part in response.aiter_raw():
-                    body += part
-                    if len(body) > limits.max_bytes:
-                        truncated = True
-                        break
-                content = b"" if truncated else _decode(bytes(body), response.headers)
+                body, truncated = await _read_capped(response, limits.max_bytes)
+                if truncated:
+                    body = body[: limits.max_bytes] if limits.keep_partial else b""
+                content = body
                 return FetchResult(
                     url=url,
                     status=response.status_code,
@@ -368,16 +367,59 @@ def _certificates(raw: bytes) -> list[x509.Certificate]:
     return []
 
 
-def _decode(raw: bytes, headers: httpx.Headers) -> bytes:
-    """Undo Content-Encoding (gzip, deflate, br) after the size check on the raw bytes."""
-    encoding = headers.get("content-encoding", "").lower()
-    if not encoding or encoding == "identity" or not raw:
-        return raw
-    try:
-        response = httpx.Response(200, headers={"content-encoding": encoding}, content=raw)
-        return response.content
-    except httpx.DecodingError as exc:
-        raise FetchError("could not decode the response body") from exc
+async def _read_capped(response: httpx.Response, max_bytes: int) -> tuple[bytes, bool]:
+    """The body with its Content-Encoding undone while it streams in, and whether it went
+    past `max_bytes`, counted on the decoded bytes and on the bytes received. A
+    compressed body can never inflate past the cap (BD-20)."""
+    inflater = _Inflater(response.headers.get("content-encoding", ""))
+    body = bytearray()
+    received = 0
+    async for part in response.aiter_raw():
+        received += len(part)
+        body += inflater.feed(part, max_bytes - len(body) + 1)
+        if len(body) > max_bytes or received > max_bytes:
+            return bytes(body), True
+    body += inflater.flush()
+    return bytes(body), len(body) > max_bytes
+
+
+class _Inflater:
+    """gzip or deflate, inflated a bounded amount at a time; identity passes through."""
+
+    def __init__(self, header: str) -> None:
+        codings = [c.strip().lower() for c in header.split(",") if c.strip()]
+        codings = [c for c in codings if c != "identity"]
+        if len(codings) > 1 or (codings and codings[0] not in ("gzip", "x-gzip", "deflate")):
+            raise FetchError(f"unsupported content encoding: {header}")
+        self._coding = codings[0] if codings else None
+        self._inflate: Any = None
+        if self._coding in ("gzip", "x-gzip"):
+            self._inflate = zlib.decompressobj(zlib.MAX_WBITS | 16)
+        self._first = True
+
+    def feed(self, data: bytes, max_out: int) -> bytes:
+        """At most `max_out` bytes from `data`: reaching it means the cap was passed."""
+        if self._coding is None:
+            return data
+        try:
+            if self._coding == "deflate" and self._first:  # zlib-wrapped, or raw as sent
+                self._first = False
+                try:
+                    self._inflate = zlib.decompressobj()
+                    return bytes(self._inflate.decompress(data, max_out))
+                except zlib.error:
+                    self._inflate = zlib.decompressobj(-zlib.MAX_WBITS)
+            return bytes(self._inflate.decompress(data, max_out))
+        except zlib.error as exc:
+            raise FetchError("could not decode the response body") from exc
+
+    def flush(self) -> bytes:
+        if self._inflate is None:
+            return b""
+        try:
+            return bytes(self._inflate.flush())
+        except zlib.error as exc:
+            raise FetchError("could not decode the response body") from exc
 
 
 def make(settings: Settings) -> PinnedFetcher:

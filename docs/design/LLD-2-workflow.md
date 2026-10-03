@@ -146,10 +146,10 @@ These conditional edges make the three required routing points visible in the re
 | `match_quotes` | code | claim drafts in slot state (BD-09) | `claim` rows for located quotes only; a miss is recorded as a `claim_dropped` event with its reason and quote, never as a row (BD-09) | `claim_dropped` | — | — |
 | `verify` | model | top claims (§5.3) + located passages | `verdict`, `claim.status` | `claim_verdict` | Checker (LLD-3 §5) | Retry, then labelled fallback model (§17) |
 | `record_unsupported` | code | verdicts | — | — | — | — |
-| `consistency` | code | supported claims, prior claims | `consistency`, `contested_pair`, `claim.status`; claim-index payload status for contested claims | `conflict_found` | — | — |
+| `consistency` | code | this slot's supported relation claims, the run's supported and contested relation claims | `consistency`, `contested_pair`, `relation.superseded_on`, `claim.status`; claim-index payload status for contested claims | `conflict_found` | — | — |
 | `write` | code | supported claims | `entity`, `entity_alias`, `relation`, Graphiti edges, `graph_link`; `claim.search_tsv`; Qdrant claim-index point (LLD-5 §4.2) | `fact_written` | Embeddings (entity merge) | Graph write failure: claim stays supported in Postgres, `graph_link` absent, event payload notes it; retried once at `brief_ready` |
 | `slot_done` | code | subgraph state | returns `SlotReport` | — | — | — |
-| `coverage` | code agent | all slot reports, claims | `slot_result` (one row per slot, replaced each round), `run.budget.used` | `slot_status` per slot worked this round | — | — |
+| `coverage` | code agent | all slot reports, claims | first the run-wide statistics sweep (§5.4: `consistency`, `contested_pair`, `claim.status`); then `slot_result` (one row per slot, replaced each round), `run.budget.used` | `conflict_found`; `slot_status` per slot worked this round | — | — |
 | `analytics` | code | Graphiti subgraph | `entity.attributes.centrality` | — | — | Skip silently |
 | `brief_ready` | code | everything | `run_summary`, `run.status`, `city.latest_run_id` | `run_finished` | — | — |
 
@@ -289,7 +289,9 @@ Per slot per round, matched claims are ranked by §5.2 and the top `verify.max_c
 
 ### 5.4 Consistency for statistics
 
-For each newly supported statistic `c` with key `k`:
+**Where it runs (BD-19).** Statistics are compared across the whole run, at the start of every `coverage` round, not inside a slot: each supported or contested statistic of the run (every slot, every round, Wave 0) is checked against all the others, and its outcome is stored in `consistency` (upserted, so a later round can change it). Slots run side by side, so a per-slot check would miss a figure another slot confirmed in the same round. A pair already contested is not contested again, and its `conflict_found` event is emitted once. A figure dated only by its publication date (`period_type = publication_date_proxy`) has no known period, so it counts as overlapping (BD-06(5)): two reports published in different years can still disagree.
+
+For each supported statistic `c` with key `k`:
 
 1. `k is None` → outcome `not_comparable` against same-indicator claims, reason lists which key parts differ or are unknown.
 2. Find other `supported` or `contested` claims in the same run and city with key `k`.
@@ -515,7 +517,7 @@ A slot is re-planned when all hold:
 
 ```python
 class BudgetLedger:
-    async def reserve(self, kind: Literal["search", "fetch", "model"], est_tokens: int = 0) -> None: ...
+    async def reserve(self, kind: Literal["search", "fetch", "robots", "certificate", "model", "indexing"], est_tokens: int = 0) -> None: ...
     async def record_model(self, model: str, tokens_in: int, tokens_out: int, cost_micro: int) -> None: ...
     def phase(self) -> Literal["normal", "winding_down", "exhausted"]: ...
 ```
@@ -530,6 +532,8 @@ class BudgetLedger:
 
 Every external call goes through `reserve` first. Nodes catch `BudgetExhausted`, stop new work for their slot, and return what they have. `coverage`, `analytics` and `brief_ready` call no external service, so they always run, and the run ends as `stopped_by_budget` with every slot carrying a status. A run ends `stopped_by_budget` when the ledger refused at least one reservation; a run that used its whole budget without a refusal is `completed` (BD-14).
 
+`reserve("indexing")` covers the embedding calls that put a confirmed claim into the claim index and the graph (the claim-index point, the edge, a programme node's new status). It is counted but never refused, so a claim the checker confirmed just before a limit still reaches every store (BD-19); it costs only local or embedding calls, never a chat model.
+
 At 85 % of the wall clock, `reserve("search")`, `reserve("robots")` and `reserve("fetch")` raise; model calls go on until a limit is reached, so claims in hand are still extracted and checked. Each counter emits one `budget_warning` the first time it passes `wind_down_at`.
 
 Global concurrency limits, shared by every slot branch: model calls `llm.concurrency = 4`, embeddings `embeddings.concurrency = 4` `[tunable]` (`workflow/limits.py`); fetches `fetch.concurrency` with per-domain spacing (the collector); the search adapter releases about `search.rate_per_s` requests per second (Δ9). Slots themselves all run side by side.
@@ -541,7 +545,7 @@ Global concurrency limits, shared by every slot branch: model calls `llm.concurr
 1. Look up `ref_source` providers. For each provider and indicator: call the structured-data adapter with the country code (and the city's first-level region for providers that support sub-national data).
 2. For each indicator, take the most recent record for both sexes and the registry's age band.
 3. Store the raw response as a `structured_api` source and snapshot. `parsed_text` is a canonical one-line rendering of the record used, for example `HTN_CONTROL | GHA | 2019 | both sexes | 30-79 | 12.3`.
-4. Create a statistic claim whose `quote` is that rendering, `value_as_written` is the record's value as text, and labels come from the registry (`geography_level`, `representativeness`, age band, `method`).
+4. Create a statistic claim whose `quote` is that rendering, `value_as_written` is the record's value as text, and labels come from the registry (`geography_level`, `representativeness`, age band, `method`). Code reads the value (`rules/wave0.record_value`): a bare decimal from the API is a number, and the registry unit is named as the parser names it (`%` is `percent`), so Wave 0 figures get a comparability key and meet web figures in §5.4 (BD-19). Any other form stays flagged unparsed.
 5. **Code verification:** the record is re-read from the snapshot, and the claim's indicator, area, period and value must equal it exactly. Pass → `verdict(label = supported, verifier_model = "code:record_match", verifier_family = "code")`. Fail → `insufficient`.
 6. Emit `wave0_finding`.
 
@@ -620,7 +624,7 @@ With the admin parameter `graph=off`, retrieval for `relationship` and `change_o
 | Checker fails twice on the primary model | Exactly two calls on the primary (a failed attempt is not repaired; it counts), then the same-family fallback model, verdict marked `fallback_used = true` (R-82, BD-18). With no checker available the claim stays `extracted` and never becomes a fact |
 | Exception inside a slot subgraph | Caught in `slot_done`; `SlotReport.error` set; the slot still gets a status from data so far |
 | Postgres unavailable | Run `failed`; the only fatal condition |
-| Graphiti write fails | Claim stays supported in Postgres; retried once at `brief_ready`; if still failing, the graph-only demo question will show it, and the run summary records the count |
+| Graphiti write fails | Claim stays supported in Postgres; retried once at `brief_ready`; if still failing, the graph-only demo question will show it, and the run summary records the count. The retry brings the graph in line with Postgres (BD-19): missing edges for supported, contested and superseded claims (a superseded claim's edge is written already ended on its stored `relation.superseded_on`, never current), edges of superseded claims still current, and contested marks that did not reach the graph |
 | TLS certificate fails verification (BD-15) | Verification is never relaxed. The cause is named in the crawl decision (expired, self-signed, host name mismatch, issuer missing). When the server left out its intermediate, the certificate's own issuer (AIA) URLs are gated like any request (public address, pinned IP, budget kind `certificate`, spacing) and the issuer certificate is fetched once per run; the chain is then verified in code against the trusted roots with fetched certificates as untrusted intermediates, and only that verified chain's intermediates are used for the request (BD-16). Self-issued and non-CA certificates are never added; partial chains stay refused |
 | Resume after crash | LangGraph checkpoint (Postgres, schema `lg`, thread ID = run ID) resumes the run once at start-up; all writes are idempotent: IDs are content-derived (`workflow/ids.stable_id`) or checked, Qdrant point IDs and graph edge UUIDs are derived from our IDs, inserts use `ON CONFLICT (<primary key>) DO NOTHING`, an event already stored is not appended again, and `verify` applies a verdict already stored instead of asking the checker again (BD-18). A run with no checkpoint, or already resumed once, is marked `failed` (BD-14) |
 

@@ -1,0 +1,99 @@
+{
+  "type": "search",
+  "query": {
+    "original": "Halden Bay hypertension control survey",
+    "more_results_available": true
+  },
+  "mixed": {
+    "type": "mixed",
+    "main": [
+      {
+        "type": "web",
+        "index": 0,
+        "all": false
+      }
+    ],
+    "top": [],
+    "side": []
+  },
+  "web": {
+    "type": "search",
+    "family_friendly": true,
+    "results": [
+      {
+        "type": "search_result",
+        "subtype": "generic",
+        "is_live": false,
+        "is_source_local": false,
+        "is_source_both": false,
+        "family_friendly": true,
+        "language": "en",
+        "content_type": "html",
+        "title": "Halden Bay Heart Survey 2024",
+        "url": "https://health.halden-bay.test/heart-survey",
+        "description": "Adults with hypertension in Halden Bay: the <strong>survey</strong> report.",
+        "page_age": "2025-06-01T00:00:00",
+        "age": "June 1, 2025",
+        "profile": {
+          "name": "Halden Bay Health Office",
+          "long_name": "health.halden-bay.test",
+          "url": "https://health.halden-bay.test/heart-survey",
+          "img": "https://imgs.search.test/p.png"
+        },
+        "meta_url": {
+          "scheme": "https",
+          "netloc": "health.halden-bay.test",
+          "hostname": "health.halden-bay.test",
+          "favicon": "https://imgs.search.test/f.png",
+          "path": "› heart-survey"
+        },
+        "article": {
+          "author": [
+            {
+              "type": "person",
+              "name": "Survey team"
+            }
+          ],
+          "date": "2025-06-01",
+          "publisher": {
+            "type": "organization",
+            "name": "Halden Bay Health Office"
+          }
+        },
+        "thumbnail": {
+          "src": "https://imgs.search.test/t.jpg",
+          "original": "https://health.halden-bay.test/t.jpg",
+          "logo": false
+        }
+      },
+      {
+        "type": "search_result",
+        "subtype": "generic",
+        "is_live": false,
+        "is_source_local": false,
+        "is_source_both": false,
+        "family_friendly": true,
+        "language": "en",
+        "content_type": "html",
+        "title": "Public health in Halden Bay",
+        "url": "https://health.halden-bay.test/public-health",
+        "description": "Who runs public health services in the city.",
+        "page_age": "2025-06-01T00:00:00",
+        "age": "June 1, 2025",
+        "profile": {
+          "name": "Halden Bay Health Office",
+          "long_name": "health.halden-bay.test",
+          "url": "https://health.halden-bay.test/public-health",
+          "img": "https://imgs.search.test/p.png"
+        },
+        "meta_url": {
+          "scheme": "https",
+          "netloc": "health.halden-bay.test",
+          "hostname": "health.halden-bay.test",
+          "favicon": "https://imgs.search.test/f.png",
+          "path": "› public-health"
+        }
+      }
+    ]
+  }
+}

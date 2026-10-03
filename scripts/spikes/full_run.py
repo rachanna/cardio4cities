@@ -34,7 +34,7 @@ from app.workflow.runner import RunManager
 ROOT = Path(__file__).resolve().parents[2]
 RAW_DIR = ROOT / "spike_results"
 RESULTS = Path(__file__).parent / "results"
-TARGET_S = 300  # the 5-minute target (budget.wall_clock_s)
+TARGET_S = 420  # the 7-minute target (budget.wall_clock_s, BD-15)
 
 
 def configured(max_usd: float) -> Settings:

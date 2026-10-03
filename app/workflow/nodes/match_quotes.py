@@ -99,6 +99,7 @@ async def relation_for(
         valid_from=published if proxy else valid_from,
         valid_to=valid_to,
         valid_from_is_proxy=proxy,
+        programme_status=rel.programme_status,
     )
 
 

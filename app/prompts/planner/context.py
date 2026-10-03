@@ -1,4 +1,5 @@
-"""Planner input (LLD-3 §3.1), assembled by code."""
+"""Planner input (LLD-3 §3.1), assembled by code. v2 (BD-14) adds the country's generic
+government `site:` filters; a re-plan round lists each slot's earlier attempt."""
 
 from collections.abc import Sequence
 
@@ -11,6 +12,7 @@ def build_user_message(
     indicators: dict[str, IndicatorDef],
     round_no: int = 0,
     previous: Sequence[str] = (),
+    government_sites: Sequence[str] = (),
 ) -> str:
     place = ", ".join(p for p in (city.name, city.admin1_name, city.country_name) if p)
     lines = [
@@ -19,6 +21,7 @@ def build_user_message(
         f"city: {place}",
         f"languages: {', '.join(city.languages) or 'en'}",
         f"round: {round_no}",
+        f"government_sites: {', '.join(government_sites) or 'none'}",
         "slots:",
     ]
     for slot in slots:
@@ -33,6 +36,12 @@ def build_user_message(
         lines += [f"- {p}" for p in previous]
     lines.append("</context>")
     return "\n".join(lines)
+
+
+def previous_attempt(slot_id: str, status: str, queries: Sequence[str], note: str | None) -> str:
+    """One `previous_attempts` line (LLD-3 §3.1)."""
+    tried = " | ".join(queries) or "none"
+    return f"{slot_id}: status {status}; queries tried: {tried}; note: {note or 'none'}"
 
 
 def fallback_queries(city: CityIdentity, slot: SlotDef) -> list[tuple[str, str]]:

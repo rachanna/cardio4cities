@@ -127,6 +127,7 @@ class EmbeddingsSection(_Section):
     model: str
     dimension: int
     key: str
+    concurrency: int  # embedding calls in flight at once, across slots (LLD-2 §12)
 
 
 class SearchSection(_Section):
@@ -200,6 +201,8 @@ class VerifySection(_Section):
 
 class SelectSection(_Section):
     max_new_urls_per_slot_round: int
+    # sources another slot already fetched this run, read again for this slot (BD-14)
+    max_reused_per_slot_round: int
 
 
 class ReplanSection(_Section):

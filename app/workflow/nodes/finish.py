@@ -12,9 +12,9 @@ from langchain_core.runnables import RunnableConfig
 
 from app.domain.vocab import ClaimStatus, EventType
 from app.workflow.claim_index import sync
-from app.workflow.graph_writes import write_graph
+from app.workflow.graph_writes import apply_programme_status, write_graph
 from app.workflow.nodes._deps import deps
-from app.workflow.state import SlotReport, SlotState
+from app.workflow.state import SlotReport, SlotState, report_key
 
 IN_GRAPH = frozenset({ClaimStatus.SUPPORTED, ClaimStatus.CONTESTED, ClaimStatus.SUPERSEDED})
 FACTS = frozenset({ClaimStatus.SUPPORTED, ClaimStatus.CONTESTED})
@@ -35,6 +35,7 @@ async def write(state: SlotState, config: RunnableConfig) -> dict[str, Any]:
         written = await write_graph(d, claim_id, at)
         await sync(d, claim_id)
         if claim.status in FACTS:
+            await apply_programme_status(d, claim)
             await d.events.emit(
                 state["run_id"],
                 EventType.FACT_WRITTEN,
@@ -64,4 +65,4 @@ def slot_done(state: SlotState) -> dict[str, Any]:
         supported_claim_ids=state.get("supported_claim_ids", []),
         error=state.get("error"),
     )
-    return {"slot_reports": {state["slot_id"]: report}}
+    return {"slot_reports": {report_key(state["slot_id"], report.round): report}}

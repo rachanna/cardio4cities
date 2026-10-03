@@ -7,24 +7,34 @@ stated in the methods, far from the quote (a label quote); a statement whose quo
 real but whose claim overreaches (the checker refutes it); a quote that is not on the
 page (dropped); a figure for a nearby town (kept, Not city-level) whose period label
 quote does not hold the labelled year (period cleared); and a figure for a town beyond
-`geography.nearby_km` (dropped). All content is about the fictional Halden Bay, Norvania."""
+`geography.nearby_km` (dropped).
 
+Slot S01 reads a second page with two GOVERNS claims (D2-4): the Coastal District Office
+until March 2024, and the Halden Bay Health Office, named by its acronym, from April 2024.
+The newer edge supersedes the older one in the graph (real Neo4j through the Graphiti
+adapter). All content is about the fictional Halden Bay, Norvania."""
+
+import os
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Any
 
 import pytest
+from dotenv import dotenv_values
 from sqlalchemy import text
 
 from app.adapters.fetch.robots_protego import ProtegoRobotsParser
+from app.adapters.graph.graphiti import GraphitiGraph
 from app.adapters.parse.documents import DocumentParser
 from app.adapters.postgres.relational import PostgresRelational
 from app.adapters.snapshots.postgres import PostgresSnapshots
 from app.domain.vocab import (
     ClaimKind,
+    EntityType,
     GeographyLevel,
     MeasureType,
     Method,
+    RelationType,
     Representativeness,
     Sex,
     VerdictLabel,
@@ -37,6 +47,7 @@ from app.prompts.extractor.schema import (
     LabelsOut,
     PeriodOut,
     PopulationOut,
+    RelationOut,
     StatisticOut,
 )
 from app.prompts.planner.schema import PlannedQuery, PlannerOutput, SlotQueries
@@ -53,6 +64,10 @@ from tests.support.workflow_fakes import (
     ScriptedLLM,
 )
 
+NEO4J_URI = os.environ.get("TEST_NEO4J_URI", "bolt://127.0.0.1:7687")
+NEO4J_PASSWORD = os.environ.get("TEST_NEO4J_PASSWORD") or dotenv_values(".env").get(
+    "NEO4J_PASSWORD", ""
+)
 HOST = "health.halden-bay.test"
 URL = f"http://{HOST}/heart-survey"  # the local test server speaks plain HTTP
 TRUE_SENTENCE = (
@@ -82,6 +97,25 @@ PERIOD_QUOTE = (
 )
 EN_QUERY = "Halden Bay hypertension control survey"
 NV_QUERY = "Halden Bay blodtrykk kontroll"
+GOV_URL = f"http://{HOST}/public-health"
+EN_GOV_QUERY = "Halden Bay public health authority"
+NV_GOV_QUERY = "Halden Bay helsemyndighet"
+OLD_GOV_SENTENCE = (
+    "Until March 2024, public health in Halden Bay was run by the Coastal District Office."
+)
+NEW_GOV_SENTENCE = (
+    "Since April 2024 the Halden Bay Health Office (HBHO) has run public health services "
+    "in Halden Bay."
+)
+OLD_GOV_STATEMENT = "The Coastal District Office ran public health in Halden Bay until March 2024."
+NEW_GOV_STATEMENT = (
+    "The Halden Bay Health Office (HBHO) has run public health in Halden Bay since April 2024."
+)
+OLD_GOV_QUOTE = "public health in Halden Bay was run by the Coastal District Office"
+NEW_GOV_QUOTE = (
+    "Since April 2024 the Halden Bay Health Office (HBHO) has run public health services "
+    "in Halden Bay"
+)
 
 
 def page() -> bytes:
@@ -96,16 +130,43 @@ def page() -> bytes:
     ).encode()
 
 
+def governance_page() -> bytes:
+    body = f"<p>{OLD_GOV_SENTENCE}</p><p>{NEW_GOV_SENTENCE}</p><p>{FILLER * 5}</p>"
+    return (
+        "<html><head><title>Public health in Halden Bay</title>"
+        '<meta name="date" content="2025-06-01"></head><body><main><article>'
+        f"<h1>Who runs public health in Halden Bay</h1>{body}</article></main></body></html>"
+    ).encode()
+
+
+def governs(subject: str, valid_from: str | None, valid_to: str | None) -> RelationOut:
+    return RelationOut(
+        subject_name=subject,
+        subject_type=EntityType.ORGANIZATION,
+        relation_type=RelationType.GOVERNS,
+        object_name="Halden Bay",
+        object_type=EntityType.PLACE,
+        valid_from=valid_from,
+        valid_to=valid_to,
+        programme_status=None,
+    )
+
+
 def labels(measure: MeasureType, period: str | None, place: str = "Halden Bay") -> LabelsOut:
     return LabelsOut(
-        geography_level=GeographyLevel.CITY_WIDE, geography_name=place,
+        geography_level=GeographyLevel.CITY_WIDE,
+        geography_name=place,
         measure_type=measure,
         reference_period=PeriodOut(start=period, end=period) if period else None,
         population=PopulationOut(age_min=18, age_max=None, sex=Sex.ALL, group=None),
-        setting=None, sample_size=None, case_definition=None, method=Method.MEASURED,
+        setting=None,
+        sample_size=None,
+        case_definition=None,
+        method=Method.MEASURED,
         representativeness=Representativeness.REPRESENTATIVE_SAMPLE,
-        denominator_text="adults with hypertension", denominator_stated=True,
-    )  # fmt: skip
+        denominator_text="adults with hypertension",
+        denominator_stated=True,
+    )
 
 
 def statistic(value: str) -> StatisticOut:
@@ -114,15 +175,41 @@ def statistic(value: str) -> StatisticOut:
 
 def claim(statement: str, quote: str, **fields: Any) -> ClaimOut:
     values: dict[str, Any] = {
-        "slot_id": "S04", "kind": ClaimKind.STATEMENT, "statement": statement, "quote": quote,
-        "quote_lang": "en", "quote_translation": None, "statistic": None, "relation": None,
-        "label_quotes": None, "labels": labels(MeasureType.QUALITATIVE, None),
-    }  # fmt: skip
+        "slot_id": "S04",
+        "kind": ClaimKind.STATEMENT,
+        "statement": statement,
+        "quote": quote,
+        "quote_lang": "en",
+        "quote_translation": None,
+        "statistic": None,
+        "relation": None,
+        "label_quotes": None,
+        "labels": labels(MeasureType.QUALITATIVE, None),
+    }
     values.update(fields)
     return ClaimOut(**values)
 
 
-def extractor(_: str) -> ExtractorOutput:
+def extractor(user: str) -> ExtractorOutput:
+    if "- S01:" in user:  # the governance page: an older and a newer GOVERNS claim
+        return ExtractorOutput(
+            claims=[
+                claim(
+                    OLD_GOV_STATEMENT,
+                    OLD_GOV_QUOTE,
+                    slot_id="S01",
+                    kind=ClaimKind.RELATION,
+                    relation=governs("Coastal District Office", None, "2024-03"),
+                ),
+                claim(
+                    NEW_GOV_STATEMENT,
+                    NEW_GOV_QUOTE,
+                    slot_id="S01",
+                    kind=ClaimKind.RELATION,
+                    relation=governs("HBHO", "2024-04", None),
+                ),
+            ]
+        )
     control = MeasureType.CASCADE_CONTROL
     period_quote = LabelQuotesOut(period=PERIOD_QUOTE, geography=None, population=None)
     return ExtractorOutput(
@@ -130,8 +217,10 @@ def extractor(_: str) -> ExtractorOutput:
             claim(  # true; its period is stated in the methods, far from the quote
                 TRUE_STATEMENT,
                 "31.5% of adults with hypertension had their blood pressure under control",
-                kind=ClaimKind.STATISTIC, labels=labels(control, "2024"),
-                statistic=statistic("31.5%"), label_quotes=period_quote,
+                kind=ClaimKind.STATISTIC,
+                labels=labels(control, "2024"),
+                statistic=statistic("31.5%"),
+                label_quotes=period_quote,
             ),
             claim(  # planted: the quote is real, the statement overreaches (AT-08)
                 PLANTED_STATEMENT,
@@ -143,17 +232,20 @@ def extractor(_: str) -> ExtractorOutput:
             claim(  # a nearby town: kept; its period quote lacks 2023, so the period is cleared
                 NEARBY_STATEMENT,
                 "Kestrel Point, 27.0% of adults with hypertension had it controlled",
-                kind=ClaimKind.STATISTIC, labels=labels(control, "2023", "Kestrel Point"),
-                statistic=statistic("27.0%"), label_quotes=period_quote,
+                kind=ClaimKind.STATISTIC,
+                labels=labels(control, "2023", "Kestrel Point"),
+                statistic=statistic("27.0%"),
+                label_quotes=period_quote,
             ),
             claim(  # a town beyond geography.nearby_km: dropped, never checked
                 ELSEWHERE_STATEMENT,
                 "Port Ostra, 19.0% of adults with hypertension had it controlled",
-                kind=ClaimKind.STATISTIC, labels=labels(control, None, "Port Ostra"),
+                kind=ClaimKind.STATISTIC,
+                labels=labels(control, None, "Port Ostra"),
                 statistic=statistic("19.0%"),
             ),
         ]
-    )  # fmt: skip
+    )
 
 
 def checker(user: str) -> CheckerOutput:
@@ -161,12 +253,17 @@ def checker(user: str) -> CheckerOutput:
         return CheckerOutput(
             label=VerdictLabel.REFUTED,
             rationale="The passage says 40 clinics were visited, not that the city runs them.",
-            scope_verified=False, period_verified=False, issues=[CheckIssue.CONTRADICTED],
-        )  # fmt: skip
+            scope_verified=False,
+            period_verified=False,
+            issues=[CheckIssue.CONTRADICTED],
+        )
     return CheckerOutput(
-        label=VerdictLabel.SUPPORTED, rationale="The passages state the figure and its period.",
-        scope_verified=True, period_verified=True, issues=[],
-    )  # fmt: skip
+        label=VerdictLabel.SUPPORTED,
+        rationale="The passages state the figure and its period.",
+        scope_verified=True,
+        period_verified=True,
+        issues=[],
+    )
 
 
 def planner(_: str) -> PlannerOutput:
@@ -178,7 +275,14 @@ def planner(_: str) -> PlannerOutput:
                     PlannedQuery(text=EN_QUERY, lang="en", purpose="city survey"),
                     PlannedQuery(text=NV_QUERY, lang="nv", purpose="primary language"),
                 ],
-            )
+            ),
+            SlotQueries(
+                slot_id="S01",
+                queries=[
+                    PlannedQuery(text=EN_GOV_QUERY, lang="en", purpose="authority"),
+                    PlannedQuery(text=NV_GOV_QUERY, lang="nv", purpose="primary language"),
+                ],
+            ),
         ]
     )
 
@@ -191,6 +295,8 @@ class Slice:
     anthropic: ScriptedLLM
     openai: ScriptedLLM
     search: ListSearch
+    graph: GraphitiGraph
+    vector: MemoryVector
 
 
 @pytest.fixture
@@ -203,24 +309,56 @@ async def thin_slice(
     await sync_gazetteer(relational, PLACE + TOWN + NEAR_TOWN)
     anthropic = ScriptedLLM("anthropic", {"planner": planner, "extractor": extractor})
     openai = ScriptedLLM("openai", {"checker": checker})
-    search = ListSearch([URL])
+    search = ListSearch([URL], by_query={EN_GOV_QUERY: [GOV_URL], NV_GOV_QUERY: [GOV_URL]})
+    vector = MemoryVector()
+    graph = await reachable_graph()
     snapshots = PostgresSnapshots(migrated, settings.config.snapshots.max_bytes)
     world = WebWorld()
     world.site(
-        HOST, "93.184.216.34", {"/robots.txt": ALLOW_ALL, "/heart-survey": Reply(200, page())}
+        HOST,
+        "93.184.216.34",
+        {
+            "/robots.txt": ALLOW_ALL,
+            "/heart-survey": Reply(200, page()),
+            "/public-health": Reply(200, governance_page()),
+        },
     )
     with world.running():
         ports = Ports(
-            relational=relational, llm={"anthropic": anthropic, "openai": openai},
-            search=search, fetch=world.fetcher(), robots=ProtegoRobotsParser(),
-            parser=DocumentParser(), embeddings=HashEmbeddings(), vector=MemoryVector(),
+            relational=relational,
+            llm={"anthropic": anthropic, "openai": openai},
+            search=search,
+            fetch=world.fetcher(),
+            robots=ProtegoRobotsParser(),
+            parser=DocumentParser(),
+            embeddings=HashEmbeddings(),
+            vector=vector,
             snapshots=snapshots,
-        )  # fmt: skip
+            graph=graph,
+        )
         manager = RunManager(ports, settings)
-        started = await manager.start("9000001", slots=["S04"])
+        started = await manager.start("9000001", slots=["S04", "S01"])
         await manager.wait(started.run_id)
-    yield Slice(relational, started.run_id, started.city_id, anthropic, openai, search)
+    yield Slice(
+        relational, started.run_id, started.city_id, anthropic, openai, search, graph, vector
+    )
+    await graph.delete_group(started.city_id)
+    await graph.close()
     await snapshots.close()
+
+
+async def reachable_graph() -> GraphitiGraph:
+    """Real Neo4j through the Graphiti adapter, with deterministic embeddings."""
+    graph = GraphitiGraph(NEO4J_URI, "neo4j", NEO4J_PASSWORD or "", HashEmbeddings())
+    try:
+        await graph.search_edges("probe", [])
+    except Exception as exc:  # unreachable: skip locally, fail in CI
+        await graph.close()
+        message = f"Neo4j unreachable ({type(exc).__name__})"
+        if os.environ.get("C4C_REQUIRE_DB") == "1":
+            pytest.fail(message)
+        pytest.skip(message + "; start it with `uv run poe up`")
+    return graph
 
 
 async def query_rows(store: PostgresRelational, sql: str, **params: Any) -> list[dict[str, Any]]:

@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from app.ports.embeddings import EmbeddingsPort
 from app.ports.errors import ProviderUnavailableError
 from app.ports.fetch import FetchPort
+from app.ports.graph import GraphPort
 from app.ports.llm import LLMParams, LLMPort, LLMResult
 from app.ports.parse import ParserPort
 from app.ports.repos import RelationalPort
@@ -55,16 +56,18 @@ class ScriptedLLM:
 
 @dataclass
 class ListSearch:
-    """Links only: the same hits for every query."""
+    """Links only: the hits for a query from `by_query`, else `urls`."""
 
     urls: list[str]
     queries: list[str] = field(default_factory=list)
+    by_query: dict[str, list[str]] = field(default_factory=dict)
 
     async def search(self, query: str, lang: str, limit: int = 10) -> list[SearchHit]:
         self.queries.append(query)
+        urls = self.by_query.get(query, self.urls)
         return [
             SearchHit(url=u, title="Result", snippet="SNIPPET-TEXT-NEVER-EVIDENCE", rank=n)
-            for n, u in enumerate(self.urls[:limit], 1)
+            for n, u in enumerate(urls[:limit], 1)
         ]
 
 
@@ -88,7 +91,9 @@ class MemoryVector:
         return self.collections.get(name)
 
     async def upsert(self, name: str, points: list[VectorPoint]) -> None:
-        self.points.setdefault(name, []).extend(points)
+        ids = {p.id for p in points}  # same ID replaces, as in Qdrant
+        kept = [p for p in self.points.get(name, []) if p.id not in ids]
+        self.points[name] = kept + list(points)
 
     async def search(
         self, name: str, vector: list[float], filters: dict[str, Any], limit: int
@@ -96,7 +101,10 @@ class MemoryVector:
         return []
 
     async def delete_by_filter(self, name: str, filters: dict[str, Any]) -> None:
-        self.points.pop(name, None)
+        def matches(point: VectorPoint) -> bool:
+            return all(point.payload.get(k) == v for k, v in filters.items())
+
+        self.points[name] = [p for p in self.points.get(name, []) if not matches(p)]
 
 
 @dataclass
@@ -112,3 +120,4 @@ class Ports:
     embeddings: EmbeddingsPort | None
     vector: VectorPort | None
     snapshots: SnapshotPort | None
+    graph: GraphPort | None

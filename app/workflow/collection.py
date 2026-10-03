@@ -147,7 +147,10 @@ class Collector:
         # Certificates (BD-15): issuer certificates fetched from AIA URLs, and the chain
         # completed for each host, so every later request to it verifies at once.
         self._issuers: dict[str, bytes | str] = {}  # AIA URL -> certificate, or why not
-        self._chains: dict[str, tuple[bytes, ...]] = {}
+        self._issuer_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
+        # host -> intermediates of its verified chain (BD-16), or why it has none
+        self._chains: dict[str, tuple[bytes, ...] | str] = {}
+        self._chain_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
         self._domain_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
         self._last_request: dict[str, float] = {}
         self._global = asyncio.Semaphore(params.concurrency)
@@ -271,30 +274,60 @@ class Collector:
     async def _request(
         self, url: str, ip: str, limits: FetchLimits, kind: FetchKind, crawl_delay: float | None
     ) -> FetchResult:
-        """`_send`, completing a certificate chain the server left incomplete (BD-15): the
-        certificate's own issuer (AIA) URLs are gated like any request (public address,
-        pinned IP, budget, spacing), the issuer certificate is fetched, and the request is
-        sent again with it. Verification itself never relaxes: expired, self-signed and
-        mismatched certificates stay refused, with their cause in the decision."""
+        """`_send`, completing a certificate chain the server left incomplete (BD-15, BD-16):
+        the certificate's own issuer (AIA) URLs are gated like any request (public address,
+        pinned IP, budget, spacing) and the issuer certificates fetched; the fetcher then
+        verifies the whole chain in code against the trusted roots, with the fetched
+        certificates as untrusted intermediates, and only that verified chain is used for
+        the request. Verification itself never relaxes: expired, self-signed and mismatched
+        certificates, and chains that end at no trusted root, stay refused with their cause
+        in the decision."""
         host = host_of(url)
+        chain = self._chains.get(host)
+        if isinstance(chain, str):
+            raise FetchError(chain)  # this host's chain was already found wanting
         try:
-            return await self._send(url, ip, limits, kind, crawl_delay, self._chains.get(host, ()))
+            return await self._send(url, ip, limits, kind, crawl_delay, chain or ())
         except TLSCertificateError as exc:
-            if exc.cause != "issuer_missing" or host in self._chains or not exc.issuer_urls:
+            if exc.cause != "issuer_missing" or chain is not None or not exc.issuer_urls:
                 raise
-            found, why = await self._issuer_certificates(exc.issuer_urls)
-            if not found:
-                raise FetchError(f"{exc}; {why}") from exc
-            self._chains[host] = found
-            return await self._send(url, ip, limits, kind, crawl_delay, found)
+            verified = await self._complete_chain(host, url, ip, exc)
+            return await self._send(url, ip, limits, kind, crawl_delay, verified)
+
+    async def _complete_chain(
+        self, host: str, url: str, ip: str, exc: TLSCertificateError
+    ) -> tuple[bytes, ...]:
+        """The verified intermediates for `host`, worked out once per host per run."""
+        async with self._chain_locks[host]:
+            if host not in self._chains:
+                self._chains[host] = await self._verified_chain(url, ip, exc)
+        chain = self._chains[host]
+        if isinstance(chain, str):
+            raise FetchError(chain) from exc
+        return chain
+
+    async def _verified_chain(
+        self, url: str, ip: str, exc: TLSCertificateError
+    ) -> tuple[bytes, ...] | str:
+        found, why = await self._issuer_certificates(exc.issuer_urls)
+        if not found:
+            return f"{exc}; {why}"
+        await self._budget.reserve("certificate")  # the handshake that reads the chain
+        try:
+            async with self._global:
+                verified = await self._fetcher.complete_chain(url, ip, self._limits(), found)
+        except FetchError as failure:
+            return f"{exc}; {failure}"
+        return verified or f"{exc}; its issuer certificate did not complete the chain"
 
     async def _issuer_certificates(self, urls: tuple[str, ...]) -> tuple[tuple[bytes, ...], str]:
         """The issuer certificates behind `urls`, or why none could be had."""
         found: list[bytes] = []
         why = "its issuer certificate could not be fetched"
         for url in urls[:MAX_ISSUER_URLS]:
-            if url not in self._issuers:
-                self._issuers[url] = await self._issuer(url)
+            async with self._issuer_locks[url]:  # one download per URL, even across slots
+                if url not in self._issuers:
+                    self._issuers[url] = await self._issuer(url)
             got = self._issuers[url]
             if isinstance(got, bytes):
                 found.append(got)

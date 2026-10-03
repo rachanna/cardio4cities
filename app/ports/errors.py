@@ -30,6 +30,7 @@ CERTIFICATE_CAUSES = {
     "self_signed": "is self-signed",
     "hostname_mismatch": "does not match the host name",
     "issuer_missing": "chain is incomplete: the server did not send its issuer certificate",
+    "issuer_untrusted": "chain could not be completed to a trusted root",
     "untrusted": "could not be verified",
 }
 

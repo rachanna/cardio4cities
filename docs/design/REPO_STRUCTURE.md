@@ -186,7 +186,7 @@ container, main → everything                 (composition root)
 
 The fetch adapter uses `httpx`, chosen over `httpx2` for the security-critical path (BD-07); `httpx2` is a test-only dependency.
 
-**Vendor packages allowed only under `app/adapters/`:** `anthropic`, `openai`, `ollama`, `sentence_transformers`, `qdrant_client`, `graphiti_core`, `neo4j`, `httpx`, `httpx2`, `httpcore`, `httpcore2`, `protego`, `trafilatura`, `lxml`, `pdfplumber`, `weasyprint`, `langsmith`, `opentelemetry`, `asyncpg`, `sqlalchemy`, `alembic`, `psycopg`, `psycopg_pool` (the LangGraph checkpointer's driver, BD-14), `cryptography` (reading a certificate's issuer URL, BD-15).
+**Vendor packages allowed only under `app/adapters/`:** `anthropic`, `openai`, `ollama`, `sentence_transformers`, `qdrant_client`, `graphiti_core`, `neo4j`, `httpx`, `httpx2`, `httpcore`, `httpcore2`, `protego`, `trafilatura`, `lxml`, `pdfplumber`, `weasyprint`, `langsmith`, `opentelemetry`, `asyncpg`, `sqlalchemy`, `alembic`, `psycopg`, `psycopg_pool` (the LangGraph checkpointer's driver, BD-14), `cryptography` (reading a certificate's issuer URL, BD-15; verifying a completed chain, BD-16), `certifi` (the trusted roots for that check, BD-16).
 
 Expressed as import-linter `layers` and `forbidden` contracts. The architecture test fails the build on any violation.
 

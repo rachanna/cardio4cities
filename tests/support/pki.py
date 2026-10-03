@@ -44,6 +44,11 @@ def _cert(
         .not_valid_before(NOW + dt.timedelta(days=days[0]))
         .not_valid_after(NOW + dt.timedelta(days=days[1]))
         .add_extension(x509.BasicConstraints(ca=ca, path_length=None), critical=True)
+        # Key identifiers, as real certificates carry them (the chain verifier requires them)
+        .add_extension(x509.SubjectKeyIdentifier.from_public_key(key.public_key()), False)
+        .add_extension(
+            x509.AuthorityKeyIdentifier.from_issuer_public_key(issuer_key.public_key()), False
+        )
     )
     if ca:
         builder = builder.add_extension(
@@ -96,16 +101,22 @@ class Authority:
         expired: bool = False,
         self_signed: bool = False,
         chain: bool = False,
+        by_root: bool = False,
     ) -> ssl.SSLContext:
-        """A server context for `host`, sending only its own certificate unless `chain`."""
+        """A server context for `host`, sending only its own certificate unless `chain`.
+        `by_root`: issued directly by this authority's root, with no intermediate."""
         key = _key()
         if self_signed:
             cert = _cert(host, key, host, key, ca=False, host=host)
         else:
             days = (-30, -1) if expired else (-1, 30)
+            issuer, issuer_key = (
+                (self.root.subject.rfc4514_string()[3:], self.root_key)
+                if by_root
+                else ("Norvania Test Issuing CA", self.intermediate_key)
+            )
             cert = _cert(
-                host, key, "Norvania Test Issuing CA", self.intermediate_key,
-                ca=False, host=host, aia=aia, days=days,
+                host, key, issuer, issuer_key, ca=False, host=host, aia=aia, days=days,
             )  # fmt: skip
         body = pem(cert) + (pem(self.intermediate) if chain else b"")
         cert_file, key_file = folder / f"{host}.pem", folder / f"{host}.key"

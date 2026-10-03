@@ -7,6 +7,7 @@ certificate URL on a private address is refused before any request is made.
 Local servers stand in for fictional Halden Bay hosts; the trust store holds a throwaway
 root only."""
 
+import asyncio
 import http.server
 import ssl
 import threading
@@ -20,6 +21,8 @@ from app.adapters.fetch.httpx_pinned import PinnedFetcher
 from app.adapters.fetch.robots_protego import ProtegoRobotsParser
 from app.adapters.parse.documents import DocumentParser
 from app.domain.vocab import CrawlOutcome
+from app.ports.errors import TLSCertificateError
+from app.ports.fetch import FetchLimits
 from app.workflow.collection import Collector
 from tests.support.pki import Authority, authority, der
 from tests.support.webworld import CountingBudget, article, params
@@ -35,7 +38,9 @@ SITES = {  # host -> fictional public address
     "self.halden-bay.test": "93.184.216.54",
     "mismatch.halden-bay.test": "93.184.216.55",
     "foreign.halden-bay.test": "93.184.216.56",
+    "rogue.halden-bay.test": "93.184.216.57",
 }
+ROGUE_ROOT_URL = f"http://{PKI_HOST}/rogue-root.cer"
 
 
 @dataclass
@@ -61,6 +66,7 @@ class Net:
         return Handler
 
     def serve(self, ip: str, routes: dict[str, bytes], tls: ssl.SSLContext | None) -> None:
+        self.routes[ip] = routes
         server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), self.handler(routes))
         if tls is not None:
             server.socket = tls.wrap_socket(server.socket, server_side=True)
@@ -69,6 +75,7 @@ class Net:
         self.servers.append(server)
 
     servers: list[http.server.ThreadingHTTPServer] = field(default_factory=list)
+    routes: dict[str, dict[str, bytes]] = field(default_factory=dict)  # ip -> path -> body
 
 
 @pytest.fixture
@@ -81,10 +88,20 @@ def net(ca: Authority, tmp_path: Path) -> Iterator[Net]:
     n = Net()
     pages = {"/robots.txt": b"User-agent: *\nAllow: /\n", "/page": article("Heart survey.")}
     foreign = authority()  # its root is not trusted
+    rogue = authority()  # untrusted, with a root named exactly like the trusted one
     n.serve(
         PKI_IP,
-        {"/issuer.cer": der(ca.intermediate), "/foreign.cer": der(foreign.intermediate)},
+        {
+            "/issuer.cer": der(ca.intermediate),
+            "/foreign.cer": der(foreign.intermediate),
+            "/rogue-root.cer": der(rogue.root),
+        },
         None,
+    )
+    n.serve(  # issued straight from an untrusted root, which its AIA URL serves (RV-001)
+        SITES["rogue.halden-bay.test"],
+        pages,
+        rogue.server(tmp_path, "rogue.halden-bay.test", aia=ROGUE_ROOT_URL, by_root=True),
     )
     n.serve(
         SITES["foreign.halden-bay.test"],
@@ -130,6 +147,7 @@ def collector(ca: Authority, net: Net, budget: CountingBudget) -> Collector:
         resolver=resolve,
         dial=lambda ip, port: ("127.0.0.1", net.ports[ip]),
         context_factory=ca.trusting,
+        trusted_roots=lambda: [ca.root],
     )
     return Collector(fetcher, ProtegoRobotsParser(), DocumentParser(), budget, params())
 
@@ -142,7 +160,7 @@ async def test_a_missing_intermediate_is_fetched_from_aia_and_the_page_is_read(
     assert collected.outcome == "fetched"
     assert collected.final_decision.outcome is CrawlOutcome.ALLOWED
     assert net.log.count((PKI_HOST, "/issuer.cer")) == 1  # once per run, then cached
-    assert budget.reserved.count("certificate") == 1
+    assert budget.reserved.count("certificate") == 2  # the download, then the chain check
 
 
 async def test_a_private_address_certificate_url_is_refused_unrequested(
@@ -189,3 +207,58 @@ async def test_a_fetched_intermediate_is_never_a_trust_anchor(ca: Authority, net
     assert decision.outcome is CrawlOutcome.UNREACHABLE_NETWORK
     assert "TLS certificate" in decision.reason
     assert (PKI_HOST, "/foreign.cer") in net.log  # fetched, and still not trusted
+
+
+async def test_a_self_signed_root_served_at_an_aia_url_is_never_trusted(
+    ca: Authority, net: Net
+) -> None:
+    """RV-001 (BD-16): a site certificate issued straight from an untrusted root, whose AIA
+    URL serves that self-signed root (named like the trusted one), stays refused. The
+    fetched certificate is an untrusted intermediate; only the trusted roots anchor."""
+    collected = await collector(ca, net, CountingBudget()).collect(
+        "https://rogue.halden-bay.test/page", []
+    )
+    decision = collected.decisions[0]
+    assert (PKI_HOST, "/rogue-root.cer") in net.log  # fetched, and still not trusted
+    assert collected.outcome == "not_fetched"
+    assert decision.outcome is CrawlOutcome.UNREACHABLE_NETWORK
+    assert "chain could not be completed to a trusted root" in decision.reason
+    assert [path for h, path in net.log if h.startswith("rogue.")] == []  # nothing read
+
+
+async def test_a_self_signed_certificate_handed_to_the_fetcher_is_never_added(
+    ca: Authority, net: Net
+) -> None:
+    """Belt and braces: even if a self-signed root reached `fetch` as an intermediate, it
+    is never loaded into the TLS context, so the connection stays refused."""
+    fetcher = PinnedFetcher(
+        dial=lambda ip, port: ("127.0.0.1", net.ports[ip]),
+        context_factory=ca.trusting,
+        trusted_roots=lambda: [ca.root],
+    )
+    limits = FetchLimits(max_bytes=100_000, connect_timeout_s=3, read_timeout_s=3,
+                         user_agent="test")  # fmt: skip
+    with pytest.raises(TLSCertificateError):
+        await fetcher.fetch(
+            "https://rogue.halden-bay.test/page",
+            SITES["rogue.halden-bay.test"],
+            limits,
+            (net.routes[PKI_IP]["/rogue-root.cer"],),
+        )
+
+
+async def test_two_requests_completing_one_chain_download_and_verify_it_once(
+    ca: Authority, net: Net
+) -> None:
+    """RV-078: the issuer certificate is downloaded, and the chain verified, once per run
+    even when two requests need it at the same moment."""
+    budget = CountingBudget()
+    shared = collector(ca, net, budget)
+    first, second = await asyncio.gather(
+        shared.collect("https://chain.halden-bay.test/page", []),
+        shared.collect("https://chain.halden-bay.test/other", []),
+    )
+    assert first.outcome == "fetched"
+    assert second.final_decision.outcome is CrawlOutcome.ALLOWED
+    assert net.log.count((PKI_HOST, "/issuer.cer")) == 1
+    assert budget.reserved.count("certificate") == 2

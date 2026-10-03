@@ -27,6 +27,8 @@ def robots_availability(status: int | None) -> Availability:
         return "unreachable_network"
     if 200 <= status < 300:
         return "parsed"
+    if status == 429:  # too many requests: like a server error, never "no robots.txt" (BD-20)
+        return "unreachable_server_error"
     if 400 <= status < 500:
         return "unavailable"
     return "unreachable_server_error"

@@ -113,11 +113,15 @@ class WebWorld:
 class CountingBudget:
     """Stands in for the BudgetLedger (D2-5): counts reservations."""
 
-    def __init__(self) -> None:
+    def __init__(self, time_left_s: float = 3600.0) -> None:
         self.reserved: list[FetchKind] = []
+        self.left = time_left_s
 
     async def reserve(self, kind: FetchKind) -> None:
         self.reserved.append(kind)
+
+    def time_left_s(self) -> float:
+        return self.left
 
 
 def params(**overrides: object) -> CollectionParams:
@@ -130,6 +134,7 @@ def params(**overrides: object) -> CollectionParams:
         "connect_timeout_s": 3.0,
         "read_timeout_s": 3.0,
         "robots_timeout_s": 3.0,
+        "crawl_delay_cap_s": 30.0,
     }
     values.update(overrides)
     return CollectionParams(**values)  # type: ignore[arg-type]

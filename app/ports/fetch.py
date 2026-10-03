@@ -13,10 +13,11 @@ from pydantic import BaseModel, ConfigDict
 class FetchLimits(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    max_bytes: int
+    max_bytes: int  # on the decoded body, and on the bytes received (BD-20)
     connect_timeout_s: float
     read_timeout_s: float
     user_agent: str
+    keep_partial: bool = False  # robots.txt: keep the first max_bytes (RFC 9309 §2.5)
 
 
 class FetchResult(BaseModel):
@@ -25,9 +26,9 @@ class FetchResult(BaseModel):
     url: str
     status: int
     headers: dict[str, str]  # lower-cased names
-    content: bytes  # empty when the body was discarded or the size limit was hit
+    content: bytes  # decoded; empty when discarded or the size limit was hit
     content_type: str | None
-    truncated: bool  # the body exceeded max_bytes; nothing was kept
+    truncated: bool  # the body exceeded max_bytes; nothing was kept unless keep_partial
 
 
 class FetchPort(Protocol):

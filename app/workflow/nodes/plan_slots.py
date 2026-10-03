@@ -43,7 +43,9 @@ async def plan_slots(state: RunState, config: RunnableConfig) -> dict[str, Any]:
                 )
     sites = government_sites(d.publishers, city.country_iso2)
     prompt = load_prompt("planner")
-    user = context.build_user_message(city, slots, d.indicators, round_no, previous, sites)
+    user = context.build_user_message(
+        city, slots, d.indicators, round_no, previous, sites, d.queries_per_slot
+    )
     plans: dict[str, SlotPlan] = {}
     try:
         out = await call_role(
@@ -52,7 +54,9 @@ async def plan_slots(state: RunState, config: RunnableConfig) -> dict[str, Any]:
             prompt.system,
             user,
             PlannerOutput,
-            problems=lambda o: validate(o, slot_ids, city.languages, earlier, set(sites)),
+            problems=lambda o: validate(
+                o, slot_ids, city.languages, earlier, set(sites), d.queries_per_slot
+            ),
         )
         for s in out.parsed.slots:
             plans[s.slot_id] = SlotPlan(

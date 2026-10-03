@@ -8,7 +8,6 @@ from pydantic import BaseModel
 SITE_FILTER = re.compile(r"\bsite:(\S+)", re.IGNORECASE)
 MAX_QUERY_CHARS = 120
 MAX_PURPOSE_CHARS = 80
-QUERIES_PER_SLOT = (2, 3)
 
 
 class PlannedQuery(BaseModel):
@@ -36,6 +35,7 @@ def validate(
     languages: list[str],
     earlier_queries: set[str] = frozenset(),  # type: ignore[assignment]
     sites: set[str] = frozenset(),  # type: ignore[assignment]
+    per_slot: int = 2,
 ) -> list[str]:
     """Problems to send back in a repair request; empty when the output is usable.
     Removes queries already tried on an earlier round (§3.4) in place. A `site:` filter
@@ -48,9 +48,8 @@ def validate(
     earlier = {_key(q) for q in earlier_queries}
     for slot in output.slots:
         slot.queries = [q for q in slot.queries if _key(q.text) not in earlier]
-        low, high = QUERIES_PER_SLOT
-        if not low - 1 <= len(slot.queries) <= high:
-            problems.append(f"{slot.slot_id}: give {low} to {high} new queries")
+        if len(slot.queries) != per_slot:  # plan.queries_per_slot (BD-15)
+            problems.append(f"{slot.slot_id}: give exactly {per_slot} new queries")
         for q in slot.queries:
             if q.lang not in allowed_langs:
                 problems.append(

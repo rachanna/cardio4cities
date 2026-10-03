@@ -40,6 +40,10 @@ class ReferenceRepo(Protocol):
         """The Wave 0 registry (LLD-1 §3.4)."""
         ...
 
+    async def country_places(self, country_iso2: str, min_population: int) -> list[dict[str, Any]]:
+        """gazetteer_id, name, ascii_name, alternate_names of the country's places (BD-15)."""
+        ...
+
     async def places_named(self, names: list[str], country_iso2: str) -> list[dict[str, Any]]:
         """Places in the country whose name, ASCII name or an alternate name equals one of
         `names` (lower case): gazetteer_id, name, lat, lon (BD-10)."""

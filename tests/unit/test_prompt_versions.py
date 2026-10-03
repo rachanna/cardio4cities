@@ -27,4 +27,4 @@ def test_crlf_and_lf_checkouts_give_the_same_version(
 def test_current_versions_are_the_bd10_prompts() -> None:
     assert loader.load_prompt("extractor").version == 2
     assert loader.load_prompt("checker").version == 2
-    assert loader.load_prompt("planner").version == 2  # BD-14: survey names, site: filters
+    assert loader.load_prompt("planner").version == 3  # BD-15: queries per slot from config

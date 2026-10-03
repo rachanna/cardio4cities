@@ -182,6 +182,17 @@ class PostgresReferenceRepo:
             rows = (await conn.execute(sql, {"c": country_iso2, "n": names})).mappings()
             return [dict(r) for r in rows]
 
+    async def country_places(self, country_iso2: str, min_population: int) -> list[dict[str, Any]]:
+        """The country's gazetteer places of at least `min_population` people, for the
+        other-place rule of source selection (BD-15)."""
+        sql = text(
+            "SELECT gazetteer_id, name, ascii_name, alternate_names FROM ref_place"
+            " WHERE country_iso2 = :c AND population >= :m"
+        )
+        async with self._engine.connect() as conn:
+            rows = (await conn.execute(sql, {"c": country_iso2, "m": min_population})).mappings()
+            return [dict(r) for r in rows]
+
     # --- syncs (loaders only) ---------------------------------------------
 
     async def sync_slots(self, slots: Sequence[SlotDef]) -> SyncResult:

@@ -19,8 +19,8 @@ from app.adapters.postgres.checkpointer import PostgresCheckpointer
 from app.adapters.postgres.relational import PostgresRelational
 from app.adapters.snapshots.postgres import PostgresSnapshots
 from app.domain.models import CityIdentity
-from app.domain.vocab import EventType
-from app.prompts.checker.schema import CheckerOutput
+from app.domain.vocab import EventType, VerdictLabel
+from app.prompts.checker.schema import CheckerOutput, CheckIssue
 from app.workflow.runner import RunManager
 from app.workflow.state import CHECKPOINT_TYPES
 from tests.support.breadth import load_reference, settings_for
@@ -238,3 +238,110 @@ async def test_a_run_that_cannot_resume_is_marked_failed(
     log = await relational.runs.events_after("run_T", 0, 10_000)
     assert log[-1]["type"] == EventType.RUN_FINISHED
     assert log[-1]["payload"]["status"] == "failed"
+
+
+def refuting(_: str) -> CheckerOutput:
+    return CheckerOutput(
+        label=VerdictLabel.REFUTED,
+        rationale="Not what the passage says.",
+        scope_verified=False,
+        period_verified=False,
+        issues=[CheckIssue.CONTRADICTED],
+    )
+
+
+async def test_a_stop_after_a_verdict_is_stored_keeps_that_verdict(
+    relational: PostgresRelational,
+    migrated: str,
+    valid_env: dict[str, str],
+    checkpointer: PostgresCheckpointer,
+) -> None:
+    """RV-004, RV-063 (BD-18): the process stops after the checker's verdict is stored and
+    before the claim's status is set. The resumed run applies the stored verdict and never
+    asks the checker again, so a refuted claim cannot come back as a fact, even when the
+    checker would now say supported."""
+    await load_reference(relational)
+    settings = settings_for(migrated, valid_env)
+    graph = await reachable_graph()
+    snapshots = PostgresSnapshots(migrated, settings.config.snapshots.max_bytes)
+    search = ListSearch([URL], by_query={EN_GOV_QUERY: [GOV_URL], NV_GOV_QUERY: [GOV_URL]})
+    web = world()
+    research = relational.research
+    original = research.set_claim_status
+    stopped: dict[str, Any] = {}
+
+    def ports(check: Any) -> Ports:
+        return Ports(
+            relational=relational,
+            llm={
+                "anthropic": ScriptedLLM("anthropic", {"planner": planner, "extractor": extractor}),
+                "openai": ScriptedLLM("openai", {"checker": check}),
+            },
+            search=search,
+            fetch=web.fetcher(),
+            robots=ProtegoRobotsParser(),
+            parser=DocumentParser(),
+            embeddings=HashEmbeddings(),
+            vector=MemoryVector(),
+            snapshots=snapshots,
+            graph=graph,
+            checkpointer=checkpointer,
+        )
+
+    async def stop_at_first_status(claim_id: str, status: str) -> None:
+        stopped["claim"] = claim_id  # its verdict is committed; the status is not
+        research.set_claim_status = original  # type: ignore[method-assign]
+        for task in stopped["manager"].tasks.values():
+            task.cancel()
+        await asyncio.sleep(0)
+        await original(claim_id, status)
+
+    city_id = None
+    try:
+        with web.running():
+            first = RunManager(ports(refuting), settings)
+            stopped["manager"] = first
+            research.set_claim_status = stop_at_first_status  # type: ignore[method-assign]
+            started = await first.start("9000001", slots=["S04", "S01"])
+            city_id, run_id = started.city_id, started.run_id
+            with pytest.raises(asyncio.CancelledError):
+                await first.wait(run_id)
+            research.set_claim_status = original  # type: ignore[method-assign]
+            resumed_ports = ports(checker)  # this checker would say supported
+            restarted = RunManager(resumed_ports, settings)
+            assert await restarted.resume_stranded() == [run_id]
+            await restarted.wait(run_id)
+    finally:
+        research.set_claim_status = original  # type: ignore[method-assign]
+        if city_id:
+            await graph.delete_group(city_id)
+        await graph.close()
+        await snapshots.close()
+
+    claim_id = stopped["claim"]
+    (row,) = await query_rows(
+        relational,
+        "SELECT c.status, v.label FROM claim c JOIN verdict v USING (claim_id)"
+        " WHERE c.claim_id = :c",
+        c=claim_id,
+    )
+    assert (row["status"], row["label"]) == ("refuted", "refuted")
+    rows = await query_rows(
+        relational,
+        "SELECT c.status, v.label FROM claim c JOIN verdict v USING (claim_id) WHERE c.run_id = :r",
+        r=run_id,
+    )
+    passed = {"supported", "contested", "superseded"}  # statuses only a supported verdict gives
+    assert all((r["status"] in passed) == (r["label"] == "supported") for r in rows), rows
+    shown = await query_rows(
+        relational, "SELECT claim_id FROM v_city_facts WHERE run_id = :r", r=run_id
+    )
+    assert claim_id not in {s["claim_id"] for s in shown}
+    resumed = resumed_ports.llm["openai"]
+    assert isinstance(resumed, ScriptedLLM)
+    statement = await query_rows(
+        relational, "SELECT statement FROM claim WHERE claim_id = :c", c=claim_id
+    )
+    assert not any(
+        statement[0]["statement"] in c.user for c in resumed.calls if c.role == "checker"
+    )  # the checker was never asked about it again

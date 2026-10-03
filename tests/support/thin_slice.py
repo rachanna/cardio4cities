@@ -16,6 +16,7 @@ adapter). All content is about the fictional Halden Bay, Norvania."""
 
 import os
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Any
 
@@ -57,6 +58,7 @@ from scripts.reference.yaml_reference import read_indicators, read_slots
 from tests.support.gazetteer import NEAR_TOWN, PLACE, TOWN, sync_gazetteer
 from tests.support.webworld import ALLOW_ALL, Reply, WebWorld
 from tests.support.workflow_fakes import (
+    Handler,
     HashEmbeddings,
     ListSearch,
     MemoryVector,
@@ -299,20 +301,32 @@ class Slice:
     vector: MemoryVector
 
 
-@pytest.fixture
-async def thin_slice(
-    relational: PostgresRelational, migrated: str, valid_env: dict[str, str]
+@asynccontextmanager
+async def run_slice(
+    relational: PostgresRelational,
+    database_url: str,
+    env: dict[str, str],
+    anthropic_roles: dict[str, Handler] | None = None,
+    openai_roles: dict[str, Handler] | None = None,
 ) -> AsyncIterator[Slice]:
-    settings = load_settings({**valid_env, "DATABASE_URL": migrated})
+    """One offline run of S04 and S01. The scripted roles default to the thin slice's;
+    tests pass others to script failures (a role without a script is unavailable)."""
+    settings = load_settings({**env, "DATABASE_URL": database_url})
     await relational.reference.sync_indicators(read_indicators())
     await relational.reference.sync_slots(read_slots())
     await sync_gazetteer(relational, PLACE + TOWN + NEAR_TOWN)
-    anthropic = ScriptedLLM("anthropic", {"planner": planner, "extractor": extractor})
-    openai = ScriptedLLM("openai", {"checker": checker})
+    anthropic = ScriptedLLM(
+        "anthropic",
+        anthropic_roles if anthropic_roles is not None
+        else {"planner": planner, "extractor": extractor},
+    )  # fmt: skip
+    openai = ScriptedLLM(
+        "openai", openai_roles if openai_roles is not None else {"checker": checker}
+    )
     search = ListSearch([URL], by_query={EN_GOV_QUERY: [GOV_URL], NV_GOV_QUERY: [GOV_URL]})
     vector = MemoryVector()
     graph = await reachable_graph()
-    snapshots = PostgresSnapshots(migrated, settings.config.snapshots.max_bytes)
+    snapshots = PostgresSnapshots(database_url, settings.config.snapshots.max_bytes)
     world = WebWorld()
     world.site(
         HOST,
@@ -323,28 +337,41 @@ async def thin_slice(
             "/public-health": Reply(200, governance_page()),
         },
     )
-    with world.running():
-        ports = Ports(
-            relational=relational,
-            llm={"anthropic": anthropic, "openai": openai},
-            search=search,
-            fetch=world.fetcher(),
-            robots=ProtegoRobotsParser(),
-            parser=DocumentParser(),
-            embeddings=HashEmbeddings(),
-            vector=vector,
-            snapshots=snapshots,
-            graph=graph,
+    city_id = None
+    try:
+        with world.running():
+            ports = Ports(
+                relational=relational,
+                llm={"anthropic": anthropic, "openai": openai},
+                search=search,
+                fetch=world.fetcher(),
+                robots=ProtegoRobotsParser(),
+                parser=DocumentParser(),
+                embeddings=HashEmbeddings(),
+                vector=vector,
+                snapshots=snapshots,
+                graph=graph,
+            )
+            manager = RunManager(ports, settings)
+            started = await manager.start("9000001", slots=["S04", "S01"])
+            city_id = started.city_id
+            await manager.wait(started.run_id)
+        yield Slice(
+            relational, started.run_id, started.city_id, anthropic, openai, search, graph, vector
         )
-        manager = RunManager(ports, settings)
-        started = await manager.start("9000001", slots=["S04", "S01"])
-        await manager.wait(started.run_id)
-    yield Slice(
-        relational, started.run_id, started.city_id, anthropic, openai, search, graph, vector
-    )
-    await graph.delete_group(started.city_id)
-    await graph.close()
-    await snapshots.close()
+    finally:  # clean up the graph even when the run or a test fails
+        if city_id:
+            await graph.delete_group(city_id)
+        await graph.close()
+        await snapshots.close()
+
+
+@pytest.fixture
+async def thin_slice(
+    relational: PostgresRelational, migrated: str, valid_env: dict[str, str]
+) -> AsyncIterator[Slice]:
+    async with run_slice(relational, migrated, valid_env) as ran:
+        yield ran
 
 
 async def reachable_graph() -> GraphitiGraph:

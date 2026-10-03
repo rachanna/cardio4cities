@@ -38,6 +38,26 @@ async def verify(state: SlotState, config: RunnableConfig) -> dict[str, Any]:
             if claim.status in PASSED_CHECKER:
                 supported.append(claim_id)
             continue
+        stored = await d.relational.research.stored_verdict(claim_id)
+        if stored is not None:
+            # A resumed run: the verdict was stored before the stop, the status was not.
+            # The stored verdict stands; the checker is never asked twice (BD-18).
+            label = VerdictLabel(stored["label"])
+            await set_status(d, claim_id, STATUS_FOR[label])
+            await d.events.emit(
+                state["run_id"],
+                EventType.CLAIM_VERDICT,
+                {
+                    "claim_id": claim_id,
+                    "label": label.value,
+                    "verifier_model": stored["verifier_model"],
+                    "fallback_used": stored["fallback_used"],
+                    "from_stored_verdict": True,
+                },
+            )
+            if label is VerdictLabel.SUPPORTED:
+                supported.append(claim_id)
+            continue
         source = await d.relational.sources.source_for_extraction(claim.source_id) or {}
         text = str(source.get("parsed_text") or "")
         user = context.build_user_message(

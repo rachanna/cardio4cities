@@ -503,6 +503,7 @@ A slot is re-planned when all hold:
 | `blocked` | "{n} candidate sources refuse automated access ({top_reasons})." |
 | `unreachable` | "{n} candidate sources could not be reached ({top_reasons})." |
 | Claims found but none confirmed | append: " {n} claims were found but could not be confirmed against their sources." |
+| Budget stopped allowed sources (BD-14) | append: " The run's budget ran out before {n} allowed sources could be read." Allowed but unread pages never make a slot `blocked` or `unreachable` |
 
 `level_word` comes from a fixed map: `national` → "national", `state_province` → "state or regional", and so on.
 

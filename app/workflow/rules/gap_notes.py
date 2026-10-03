@@ -40,9 +40,11 @@ def gap_note(
     n_sources: int = 0,
     crawl_outcomes: Sequence[CrawlOutcome] = (),
     unconfirmed: int = 0,
+    unread: int = 0,
 ) -> str | None:
     """`languages`: display names of the search languages; `unconfirmed`: claims found
-    but not confirmed (quote not found, refuted or insufficient)."""
+    but not confirmed (quote not found, refuted or insufficient); `unread`: sources the
+    gate allowed that the run's budget stopped before they were read (BD-14)."""
     note: str | None
     if status is SlotStatus.ANSWERED:
         note = None
@@ -73,4 +75,7 @@ def gap_note(
     if unconfirmed and status is not SlotStatus.ANSWERED:
         found = "1 claim was" if unconfirmed == 1 else f"{unconfirmed} claims were"
         note = (note or "") + f" {found} found but could not be confirmed against their sources."
+    if unread and status is not SlotStatus.ANSWERED:
+        sources = "1 allowed source" if unread == 1 else f"{unread} allowed sources"
+        note = (note or "") + f" The run's budget ran out before {sources} could be read."
     return note

@@ -72,7 +72,12 @@ async def slot_result(
             _union(r.crawl_decision_ids for r in history)
         )
     ]
-    status = slot_status(slot, claims, len(fetched), outcomes)
+    # An allowed page that was never fetched (the budget stopped it) is neither blocked
+    # nor unreachable: only refusals and failures decide those statuses.
+    refusals = [o for o in outcomes if o is not CrawlOutcome.ALLOWED]
+    status = slot_status(slot, claims, len(fetched), refusals)
+    allowed = len(outcomes) - len(refusals)
+    unread = max(allowed - len(fetched), 0) if d.ledger.refused else 0
     showable = ranked(
         (Candidate(c, PublisherClass(cls)) for c, cls in rows if c.status in SHOWABLE_STATUSES),
         slot.accepted_levels,
@@ -86,8 +91,9 @@ async def slot_result(
         n_queries=len(queries),
         languages=list(dict.fromkeys(language_name(lang) for _, lang in queries)),
         n_sources=len(checked),
-        crawl_outcomes=outcomes,
+        crawl_outcomes=refusals,
         unconfirmed=sum(c.status in UNCONFIRMED for c in claims),
+        unread=unread,
     )
     return {
         "slot_id": slot_id,

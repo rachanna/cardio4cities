@@ -8,13 +8,14 @@ from typing import Any
 
 import pytest
 
-from app.domain.vocab import ProgrammeStatus
+from app.domain.vocab import ProgrammeStatus, SlotStatus
 from app.main import check_graph_marker
 from app.prompts.planner import context
 from app.prompts.planner.schema import PlannedQuery, PlannerOutput, SlotQueries, validate
 from app.settings import ConfigError
 from app.workflow.fetch_cache import FetchCache
 from app.workflow.limits import StageClock
+from app.workflow.rules.gap_notes import gap_note
 from app.workflow.rules.programme_status import programme_status_update
 from app.workflow.rules.selection import government_sites, publisher_table
 from scripts import purge_graph
@@ -106,6 +107,16 @@ def test_a_replan_line_names_status_queries_and_note() -> None:
     assert context.previous_attempt("S12", "blocked", [], None).endswith(
         "queries tried: none; note: none"
     )
+
+
+# --- gap note after a budget stop (LLD-2 §11.4, BD-14) ----------------------------------
+
+
+def test_a_budget_stop_is_named_in_the_gap_note() -> None:
+    note = gap_note(SlotStatus.ANSWERED_NEGATIVE, n_queries=3, languages=["English"], unread=2)
+    assert note is not None
+    assert note.endswith("The run's budget ran out before 2 allowed sources could be read.")
+    assert gap_note(SlotStatus.ANSWERED, unread=2) is None
 
 
 # --- stage timing (AT-38) --------------------------------------------------------------

@@ -138,12 +138,14 @@ These conditional edges make the three required routing points visible in the re
 | `match_quotes` | code | claim drafts in slot state (BD-09) | `claim` rows for located quotes only; a miss is recorded as a `claim_dropped` event with its reason and quote, never as a row (BD-09) | `claim_dropped` | — | — |
 | `verify` | model | top claims (§5.3) + located passages | `verdict`, `claim.status` | `claim_verdict` | Checker (LLD-3 §5) | Retry, then labelled fallback model (§17) |
 | `record_unsupported` | code | verdicts | — | — | — | — |
-| `consistency` | code | supported claims, prior claims | `consistency`, `contested_pair`, `claim.status` | `conflict_found` | — | — |
-| `write` | code | supported claims | `entity`, `entity_alias`, `relation`, Graphiti edges, `graph_link` | `fact_written` | Embeddings (entity merge) | Graph write failure: claim stays supported in Postgres, `graph_link` absent, event payload notes it; retried once at `brief_ready` |
+| `consistency` | code | supported claims, prior claims | `consistency`, `contested_pair`, `claim.status`; claim-index payload status for contested claims | `conflict_found` | — | — |
+| `write` | code | supported claims | `entity`, `entity_alias`, `relation`, Graphiti edges, `graph_link`; `claim.search_tsv`; Qdrant claim-index point (LLD-5 §4.2) | `fact_written` | Embeddings (entity merge) | Graph write failure: claim stays supported in Postgres, `graph_link` absent, event payload notes it; retried once at `brief_ready` |
 | `slot_done` | code | subgraph state | returns `SlotReport` | — | — | — |
 | `coverage` | code agent | all slot reports, claims | `slot_result` | `slot_status` per slot | — | — |
 | `analytics` | code | Graphiti subgraph | `entity.attributes.centrality` | — | — | Skip silently |
 | `brief_ready` | code | everything | `run_summary`, `run.status`, `city.latest_run_id` | `run_finished` | — | — |
+
+**Claim index (CR-01).** Supersession (where a claim becomes `superseded`) and any change to `refuted` or `insufficient` after indexing delete the claim's index point (LLD-5 §4.2).
 
 ### 3.4 Planner fallback
 
@@ -555,25 +557,15 @@ Global concurrency limits: model calls `llm.concurrency = 4`, embeddings `embed.
 
 ### 15.1 Steps
 
-1. **Classify** (model, LLD-3 §6): returns `question_type ∈ {figure, relationship, change_over_time, open, out_of_scope}`, plus `slot_ids`, `indicator_codes`, `entity_mentions` and an optional `as_of` date.
-2. **Retrieve** by type (code):
+Steps 1–4 (understanding, routes, re-validation, fusion, anchors, bundle) are specified in `LLD-5-retrieval.md` §3–§7.
 
-| Type | Retrieval |
-|---|---|
-| `figure` | `v_city_facts` rows for the indicators and slots, ranked by §5.2, top 6 |
-| `relationship` | Resolve mentions with §6 (lookup only, no creation); Graphiti search in the city partition restricted to the relevant relation types; current edges only. For the fixed graph-only questions, the query templates in LLD-1 §6.4 |
-| `change_over_time` | As `relationship`, including end-dated edges, filtered by `as_of` when given |
-| `open` | Qdrant top 8 chunks (city and latest run); Graphiti hybrid search top 8 facts; `v_city_facts` for any slots named |
-| `out_of_scope` | No retrieval; fixed polite refusal |
-
-3. **Bundle.** Verified facts = supported or contested claims reached through Postgres or through `graph_link` from graph edges. Unverified mentions = Qdrant chunks whose text did not become a supported claim. Each bundle item carries its claim ID (or `source_id` and offsets for mentions), badge and confidence.
-4. **Answer** (model, LLD-3 §7): returns sentences, each `{text, claim_ids, kind ∈ fact | mention | abstain, slot_id?}`.
 5. **Post-check** (code), per sentence:
    - `fact` sentences: `claim_ids` non-empty and all in the bundle's verified facts;
    - every number token in the text (regex for digits with separators, percentages, years excluded when followed by no unit) appears in the cited claims' `value_as_written` or quote after §4.1 normalisation;
    - if the sentence names the city with a figure whose claim is not `city_wide`, it must contain the level word from §11.4 (for example "national");
    - `mention` sentences cite a mention item and contain "not confirmed" wording from a fixed list.
    - **Failure:** the sentence is removed and replaced by an abstention for its slot (§15.2).
+   - Extended by LLD-5 §9 (names, contested completeness, years, coverage).
 6. **Badge** each surviving sentence with the most severe main badge among its claims.
 7. Store `answer`; return.
 
@@ -633,6 +625,7 @@ With the admin parameter `graph=off`, retrieval for `relationship` and `change_o
 | Budget | §12 | AT-19 |
 | Wave 0 | §13 | AT-01 (partial) |
 | Question answering | §15 | AT-10, AT-15, AT-28 |
+| Retrieval | LLD-5 | AT-39 to AT-47 |
 | Report | §16 | AT-18 |
 
 ---

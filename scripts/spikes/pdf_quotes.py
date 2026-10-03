@@ -22,10 +22,13 @@ from dataclasses import dataclass, field
 from itertools import pairwise
 from pathlib import Path
 
+import yaml
+
 from app.adapters.fetch.httpx_pinned import PinnedFetcher
 from app.adapters.fetch.robots_protego import ProtegoRobotsParser
 from app.adapters.parse.documents import DocumentParser
 from app.domain.params import QuoteParams
+from app.settings import CONFIG_DIR
 from app.workflow.collection import CollectionParams, Collector, FetchKind
 from app.workflow.rules.quotes import QuoteDrop, match_quote
 
@@ -40,7 +43,8 @@ DOCUMENTS = {
 }
 KEYWORDS = ["hypertension", "blood pressure", "prevalence", "mortality", "diabetes", "%"]
 UA = "CARDIO4CitiesResearchBot/0.1 (+https://github.com/rachanna/cardio4cities)"
-RESULTS = Path(__file__).with_name("results") / "S-5-pdf-quotes.md"
+# Each run writes here; results/S-5-pdf-quotes.md is the curated record.
+RESULTS = Path(__file__).with_name("results") / "S-5-pdf-quotes-latest-run.md"
 
 PROMPT = """You copy text exactly. Below is part of a report, between <source> tags.
 Choose up to {n} lines that contain a number. For each, copy the line EXACTLY as it appears,
@@ -80,6 +84,7 @@ class Tally:
     tables: int = 0
     quotes: int = 0
     reasons: Counter[str] = field(default_factory=Counter)
+    window_reasons: Counter[str] = field(default_factory=Counter)  # matched within shown text
 
 
 def ask_ollama(base: str, model: str, prompt: str) -> list[dict[str, str]]:
@@ -139,7 +144,8 @@ async def run(
         Unlimited(),
         CollectionParams(UA, (80, 443), 1.0, 2, 30_000_000, 10.0, 120.0, robots_timeout),
     )
-    params = QuoteParams(min_words=6, max_words=60)
+    quote_config = yaml.safe_load((CONFIG_DIR / "local.yaml").read_text("utf-8"))["quote"]
+    params = QuoteParams(**quote_config)  # the shipped tunables, not literals
     tallies: dict[str, Tally] = {}
     for name, url in DOCUMENTS.items():
         tally = tallies[name] = Tally()
@@ -155,7 +161,13 @@ async def run(
                 tally.quotes += 1
                 outcome = match_quote(item["quote"], text, params, item["value"])
                 tally.reasons[outcome.reason if isinstance(outcome, QuoteDrop) else "matched"] += 1
+                # Same rule, scoped to the text the model was shown (what an extraction
+                # window would be): uniqueness then cannot be confused by other pages.
+                scoped = match_quote(item["quote"], segment, params, item["value"])
+                key = scoped.reason if isinstance(scoped, QuoteDrop) else "matched"
+                tally.window_reasons[key] += 1
         print(f"  tables {tally.tables}, quotes {tally.quotes}, outcomes {dict(tally.reasons)}")
+        print(f"  scoped to shown text: {dict(tally.window_reasons)}")
     return tallies
 
 
@@ -177,9 +189,17 @@ def write_summary(tallies: dict[str, Tally], model: str) -> float:
             ", ".join(f"{k} {v}" for k, v in sorted(reasons.items()) if k != "matched") or "none"
         )
         lines.append(f"| {name} | {t.tables} | {t.quotes} | {reasons['matched']} | {drops} |")
+    scoped_reasons: Counter[str] = Counter()
+    for t in tallies.values():
+        scoped_reasons.update(t.window_reasons)
+    scoped_drop = 1 - scoped_reasons["matched"] / total if total else 1.0
+    scoped = ", ".join(f"{k} {v}" for k, v in sorted(scoped_reasons.items()))
     lines += [
         "",
         f"**Overall drop rate: {drop:.1%}** of {total} quotes (pass bar: under about 20%).",
+        "",
+        f"Uniqueness scoped to the text the model was shown: **{scoped_drop:.1%}** dropped "
+        f"({scoped}).",
     ]
     RESULTS.parent.mkdir(parents=True, exist_ok=True)
     RESULTS.write_text("\n".join(lines) + "\n", encoding="utf-8")

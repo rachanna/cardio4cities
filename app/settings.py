@@ -214,6 +214,7 @@ class ExtractSection(_Section):
 class QuoteSection(_Section):
     min_words: int  # LLD-2 §4.1 [tunable] (BD-06)
     max_words: int
+    min_words_unique: int  # shorter quotes only when unique in the source (BD-08)
 
 
 class ChunkSection(_Section):

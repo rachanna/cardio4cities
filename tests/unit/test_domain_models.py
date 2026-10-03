@@ -49,6 +49,7 @@ def test_orders_follow_the_design() -> None:
 def test_shipped_tunables_match_lld2() -> None:
     """The [tunable] defaults in config are the values LLD-2 states."""
     assert (quote_params().min_words, quote_params().max_words) == (6, 60)
+    assert quote_params().min_words_unique == 3  # BD-08
     assert consistency_params().agree_pp == Decimal("0.5")
     assert consistency_params().agree_rel == Decimal("0.02")
     assert (badge_params().stale_years, badge_params().stale_years_people) == (5, 2)

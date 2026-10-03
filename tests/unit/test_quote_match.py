@@ -89,10 +89,58 @@ def test_decomposed_accents_match_composed() -> None:
     assert isinstance(_match("una tasa de hipertensión elevada en 2024", source), QuoteMatch)
 
 
-@pytest.mark.parametrize("quote", ["Too short quote here", " ".join(["word"] * 61)])
+@pytest.mark.parametrize("quote", ["Too short", " ".join(["word"] * 61)])
 def test_quote_length_outside_bounds_is_dropped(quote: str) -> None:
     assert _match(quote) == QuoteDrop("quote_length")
 
 
 def test_soft_hyphen_and_zero_width_characters_are_removed() -> None:
     assert normalise_text("hyper­tension​ rates") == "hypertension rates"
+
+
+TABLE_SOURCE = (
+    "[page 4]\nIndicator Women Men\n"
+    "Raised blood pressure 29.0% 33.5%\n"
+    "Controlled hypertension 21.1% 15.9%\n"
+    "Total 25.2% 25.2%\n"
+    "[page 5]\nAnnex table repeated\n"
+    "Total 25.2% 25.2%\n"
+)
+
+
+def test_short_quote_unique_in_source_is_matched() -> None:
+    """BD-08: a table row under six words is accepted when it occurs exactly once."""
+    quote = "Controlled hypertension 21.1% 15.9%"
+
+    result = _match(quote, TABLE_SOURCE, "21.1%")
+
+    assert isinstance(result, QuoteMatch)
+    assert TABLE_SOURCE[result.span_start : result.span_end] == quote
+
+
+def test_short_quote_occurring_twice_is_dropped() -> None:
+    """BD-08: a repeated short quote could anchor the value to the wrong row."""
+    assert _match("Total 25.2% 25.2%", TABLE_SOURCE, "25.2%") == QuoteDrop("quote_not_unique")
+
+
+def test_short_quote_still_needs_its_value_and_exact_text() -> None:
+    assert _match("Controlled hypertension 21.1% 15.9%", TABLE_SOURCE, "33.5%") == QuoteDrop(
+        "value_not_in_quote"
+    )
+    assert _match("Controlled hypertension 21.1% 16.9%", TABLE_SOURCE) == QuoteDrop(
+        "quote_not_found"
+    )
+
+
+def test_two_word_quote_is_too_short_even_if_unique() -> None:
+    assert _match("Indicator Women", TABLE_SOURCE) == QuoteDrop("quote_length")
+
+
+def test_long_quote_keeps_first_occurrence_rule() -> None:
+    """Quotes of six words or more are unchanged: first occurrence, no uniqueness check."""
+    source = "The survey covered adults in Halden Bay. " * 2
+
+    result = _match("The survey covered adults in Halden Bay.", source)
+
+    assert isinstance(result, QuoteMatch)
+    assert result.span_start == 0

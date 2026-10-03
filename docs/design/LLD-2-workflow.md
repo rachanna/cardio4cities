@@ -165,7 +165,7 @@ If the planner fails validation twice, the slot gets two template queries: `"{sl
 
 **Match:**
 
-1. `nq = normalise(quote)`; reject if fewer than 6 or more than 60 words `[tunable]` (`quote.min_words`, `quote.max_words`, BD-06).
+1. `nq = normalise(quote)`; reject if fewer than 3 or more than 60 words `[tunable]` (`quote.min_words_unique`, `quote.max_words`). A quote of 3 to 5 words (below `quote.min_words` = 6) is accepted only if it occurs exactly once; otherwise `dropped` with reason `quote_not_unique`, because taking the first of several occurrences could anchor a value to the wrong table row (BD-08). D2-3 checks that uniqueness within the extraction window the model was shown.
 2. Find all occurrences of `nq` in `normalise(parsed_text)`, **case-sensitive, exact**.
 3. Zero occurrences: status `dropped`, event `claim_dropped` with reason `quote_not_found`.
 4. One or more: take the first; map back to original offsets for `span_start` and `span_end`.

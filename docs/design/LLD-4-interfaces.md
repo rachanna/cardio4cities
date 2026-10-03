@@ -284,7 +284,7 @@ verify:     { max_claims_per_slot: 5, label_margin_chars: 200 }   # BD-10
 geography:  { nearby_km: 75 }   # BD-10
 eval:       { checker_agreement_min: 0.9 }   # LLD-3 §9
 stream:     { poll_interval_s: 0.5, heartbeat_s: 15 }   # BD-09
-select:     { max_new_urls_per_slot_round: 4, max_reused_per_slot_round: 2, other_place_min_population: 15000 }   # BD-14, BD-15
+select:     { max_new_urls_per_slot_round: 3, max_reused_per_slot_round: 2, other_place_min_population: 15000 }   # BD-14, BD-15
 replan:     { max_rounds: 2, max_rounds_wider_geo: 1, priority: [S04, S03, S05, S06] }   # priority: BD-15
 plan:       { queries_per_slot: 2 }   # BD-15
 extract:    { window_tokens: 12000, overlap_tokens: 500 }

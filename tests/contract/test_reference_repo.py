@@ -1,11 +1,16 @@
 """ReferenceRepo on Postgres: loads are idempotent and the start-up checks pass on the
 shipped reference files. Gazetteer rows are fictional (Halden Bay, Norvania)."""
 
+import copy
+from pathlib import Path
+
 import pytest
+import yaml
 from sqlalchemy import text
 
 from app.adapters.postgres.relational import PostgresRelational
 from app.settings import check_indicator_codes, check_reference_slots
+from scripts.reference.load_yaml_reference import load
 from scripts.reference.yaml_reference import (
     REFERENCE_DIR,
     read_indicators,
@@ -55,14 +60,23 @@ async def test_yaml_sync_updates_changed_rows_and_removes_dropped_ones(
     assert (result.updated, result.deleted, result.total) == (1, 1, len(indicators) - 1)
 
 
-async def test_placeholder_providers_are_never_written(relational: PostgresRelational) -> None:
-    sources = read_sources(REFERENCE_DIR, {i.code for i in read_indicators()})
+async def test_placeholder_providers_are_never_written(
+    relational: PostgresRelational, tmp_path: Path
+) -> None:
+    """BD-03: a provider whose code is still a placeholder is listed as pending, never loaded."""
+    shipped = yaml.safe_load((REFERENCE_DIR / "sources.yaml").read_text(encoding="utf-8"))
+    pending = copy.deepcopy(shipped[0])
+    pending["provider"] = "pending_provider"
+    pending["indicators"]["HTN_PREV"]["code"] = "<confirmed by a spike>"
+    (tmp_path / "sources.yaml").write_text(yaml.safe_dump([*shipped, pending]), encoding="utf-8")
+    sources = read_sources(tmp_path, {i.code for i in read_indicators()})
     await relational.reference.sync_sources(sources.ready)
 
     codes = await relational.reference.indicator_codes()
 
-    assert sources.pending  # WHO and DHS stay pending until the D1-5 spike
-    assert not any(key.split(".")[0] in sources.pending for key in codes)
+    assert sources.pending == {"pending_provider": ["HTN_PREV"]}
+    assert not any(key.split(".")[0] == "pending_provider" for key in codes)
+    assert any(key.startswith("who_gho.") for key in codes)
 
 
 async def test_gazetteer_sync_is_idempotent(relational: PostgresRelational) -> None:
@@ -106,3 +120,17 @@ async def test_gazetteer_stores_parsed_fields(relational: PostgresRelational) ->
     assert place.alternate_names == ["Haldenbukt", "HB"]
     assert (place.admin1_code, place.population, place.timezone) == ("01", 420000, "Europe/Oslo")
     assert country.languages == ["nv", "en"]
+
+
+async def test_strict_load_accepts_the_shipped_reference_data(
+    relational: PostgresRelational, migrated: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """S-2 confirmed every Wave 0 code (BD-13), so the deployed `--strict` load passes and
+    the start-up checks accept what it wrote."""
+    monkeypatch.setenv("DATABASE_URL", migrated)
+    assert await load(REFERENCE_DIR, strict=True) == 0
+    assert check_reference_slots(await relational.reference.slot_ids()) == []
+    assert check_indicator_codes(await relational.reference.indicator_codes()) == []
+    providers = {p.provider: p for p in await relational.reference.sources()}
+    assert sorted(providers) == ["who_gho", "world_bank"]
+    assert providers["who_gho"].indicators["HTN_CONTROL"].code == "NCD_HYP_CONTROL_A"

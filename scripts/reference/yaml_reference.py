@@ -5,10 +5,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError
+from pydantic import TypeAdapter, ValidationError
 
 from app.adapters.postgres.repos.reference import SourceEntry
-from app.domain.models import IndicatorDef, SlotDef
+from app.domain.models import IndicatorDef, SlotDef, SourceProvider
 
 REFERENCE_DIR = Path(__file__).resolve().parents[2] / "reference"
 PLACEHOLDER = re.compile(r"^\s*<.*>\s*$")
@@ -16,23 +16,6 @@ PLACEHOLDER = re.compile(r"^\s*<.*>\s*$")
 
 class ReferenceError(Exception):
     pass
-
-
-class _SourceIndicator(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    code: str
-    age: tuple[int, int] | None = None
-
-
-class _Source(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    provider: str
-    adapter: str
-    geography: str | list[str]
-    representativeness: str | None = None
-    indicators: dict[str, _SourceIndicator]
 
 
 @dataclass(frozen=True)
@@ -71,7 +54,7 @@ def read_indicators(directory: Path = REFERENCE_DIR) -> list[IndicatorDef]:
 
 def read_sources(directory: Path, indicator_codes: set[str]) -> Sources:
     """Split providers into ready ones and ones still holding placeholder codes (BD-03)."""
-    sources = _load(directory / "sources.yaml", list[_Source])
+    sources = _load(directory / "sources.yaml", list[SourceProvider])
     ready, pending = [], {}
     for source in sources:
         unknown = set(source.indicators) - indicator_codes
@@ -85,7 +68,7 @@ def read_sources(directory: Path, indicator_codes: set[str]) -> Sources:
         if placeholders:
             pending[source.provider] = placeholders
             continue
-        config = source.model_dump(exclude={"provider", "adapter"}, exclude_none=True)
+        config = source.model_dump(mode="json", exclude={"provider", "adapter"}, exclude_none=True)
         ready.append(SourceEntry(source.provider, source.adapter, config))
     return Sources(ready, pending)
 

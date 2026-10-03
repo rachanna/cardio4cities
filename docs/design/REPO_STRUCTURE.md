@@ -97,7 +97,7 @@ cardio4cities/
 │       ├── search/               # brave.py, searxng.py, tavily.py
 │       ├── fetch/                # httpx_pinned.py (IP-pinned, httpx: BD-07), robots_protego.py
 │       ├── parse/                # documents.py: trafilatura (HTML, table spans expanded with lxml), pdfplumber (PDF) (BD-07, BD-10)
-│       ├── structured/           # who_gho.py, dhs.py, world_bank.py
+│       ├── structured/           # who_gho.py, world_bank.py: pure URL building and parsing (BD-13)
 │       ├── vector/               # qdrant.py, qdrant_probe.py
 │       ├── graph/                # graphiti.py (direct-save path, BD-11), neo4j_probe.py
 │       ├── snapshots/            # postgres.py
@@ -118,6 +118,8 @@ cardio4cities/
 │   │                             # search_links_only.py, pdf_quotes.py, run_timing.py,
 │   │                             # thin_slice.py (D2-3 live check; city typed at run time);
 │   │                             # replay_source.py (BD-10: re-run a stored source, no web);
+│   │                             # structured_endpoints.py (S-2, BD-13); outputs naming real
+│   │                             # places go to the git-ignored spike_results/
 │   │                             # results/ holds each spike's written outcome
 │   ├── purge_city.py             # LLD-1 §8
 │   ├── eval_prompts.py           # LLD-3 §9

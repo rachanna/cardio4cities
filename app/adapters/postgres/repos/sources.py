@@ -57,6 +57,13 @@ class PostgresSourceRepo:
             )
             return {row.url_canonical for row in rows}
 
+    async def set_parsed_text(self, source_id: str, parsed_text: str) -> None:
+        async with self._engine.begin() as conn:
+            await conn.execute(
+                text("UPDATE source SET parsed_text = :t WHERE source_id = :s"),
+                {"t": parsed_text, "s": source_id},
+            )
+
     async def source_for_extraction(self, source_id: str) -> dict[str, object] | None:
         async with self._engine.connect() as conn:
             row = (

@@ -534,7 +534,9 @@ Global concurrency limits: model calls `llm.concurrency = 4`, embeddings `embed.
 5. **Code verification:** the record is re-read from the snapshot, and the claim's indicator, area, period and value must equal it exactly. Pass → `verdict(label = supported, verifier_model = "code:record_match", verifier_family = "code")`. Fail → `insufficient`.
 6. Emit `wave0_finding`.
 
-**Sub-national matching (DHS).** The region name from the provider must equal the city's `admin1_name` after normalisation (§6 step 2), or appear in a generic alias file. Otherwise the sub-national record is skipped, never guessed.
+**Sub-national matching.** The region name from the provider must equal the city's `admin1_name` after normalisation (§6 step 2, plus generic region words), or appear in `reference/region_aliases.yaml` (owner-approved entries only). Otherwise the sub-national record is skipped, never guessed. No registry provider serves regions yet: DHS has no hypertension indicator in its API (BD-13).
+
+**As built (BD-13).** Every API call goes through `Collector.fetch_api`: the gate's address checks and pinning apply, robots.txt does not (an official API is governed by its terms), and the decision is recorded as `allowed` with rule `api_terms:<provider>`. Adapters are pure (URL building, parsing), so code verification re-parses the stored snapshot with the same adapter. Population is stored as a source and creates no claim. One indicator's failure never stops the others.
 
 **Tests:** a mocked WHO response produces a supported national claim with the right labels; an altered value fails the code check; an unmatched DHS region name is skipped.
 

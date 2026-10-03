@@ -15,7 +15,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.adapters.postgres.db import SCHEMA
-from app.domain.models import IndicatorDef, SlotDef
+from app.domain.models import IndicatorDef, SlotDef, SourceProvider
 
 
 @dataclass(frozen=True)
@@ -114,6 +114,16 @@ class PostgresReferenceRepo:
                 for row in rows
                 for indicator, spec in row.config.get("indicators", {}).items()
             }
+
+    async def sources(self) -> list[SourceProvider]:
+        async with self._engine.connect() as conn:
+            rows = await conn.execute(text("SELECT provider, adapter, config FROM ref_source"))
+            return [
+                SourceProvider.model_validate(
+                    {"provider": r.provider, "adapter": r.adapter, **r.config}
+                )
+                for r in rows
+            ]
 
     async def slots(self) -> list[SlotDef]:
         async with self._engine.connect() as conn:

@@ -35,6 +35,7 @@ from app.ports.repos import RelationalPort
 from app.ports.robots import RobotsParser
 from app.ports.search import SearchPort
 from app.ports.snapshots import SnapshotPort
+from app.ports.structured import StructuredDataPort
 from app.ports.vector import VectorPort
 from app.prompts.loader import load_prompt
 from app.settings import ModelRef, RoleConfig, Settings
@@ -68,6 +69,7 @@ class RunPorts(Protocol):
     vector: VectorPort | None
     snapshots: SnapshotPort | None
     graph: GraphPort | None
+    structured: dict[str, StructuredDataPort]
 
 
 class RunInProgressError(Exception):
@@ -253,6 +255,7 @@ class RunManager:
             embeddings=embeddings,
             vector=vector,
             graph=graph,
+            structured=dict(p.structured),
             entities=EntityResolver(
                 self.relational.entities,
                 embeddings,

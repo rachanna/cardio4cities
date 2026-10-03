@@ -19,6 +19,7 @@ from app.ports.repos import RelationalPort
 from app.ports.robots import RobotsParser
 from app.ports.search import SearchHit, SearchPort
 from app.ports.snapshots import SnapshotPort
+from app.ports.structured import StructuredDataPort
 from app.ports.vector import VectorHit, VectorPoint, VectorPort
 
 Handler = Callable[[str], BaseModel]  # user message -> parsed output
@@ -132,3 +133,4 @@ class Ports:
     vector: VectorPort | None
     snapshots: SnapshotPort | None
     graph: GraphPort | None
+    structured: dict[str, StructuredDataPort] = field(default_factory=dict)

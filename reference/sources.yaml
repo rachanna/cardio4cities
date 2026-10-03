@@ -1,24 +1,97 @@
 # Source registry for Wave 0 (LLD-1 §3.4), loaded into ref_source.
-# Keyed by provider and indicator, never by city.
-# Codes written as <...> are placeholders until the D1-5 spike confirms them;
-# the loader never writes a provider that still has one (BD-03).
+# Keyed by provider and indicator, never by city. Codes confirmed by spike S-2 (BD-13).
+# An indicator with no `slot` is stored as a source for sanity checks and never becomes a
+# claim. Placeholder codes (<...>) are never loaded; `--strict` refuses them (BD-03).
+#
+# DHS is not listed: its indicator API has no hypertension or blood-pressure indicators
+# (spike S-2, BD-13). Survey reports remain reachable through the normal web path.
+
 - provider: who_gho
   adapter: structured.who_gho
+  publisher_class: multilateral
+  publisher_name: World Health Organization, Global Health Observatory
+  attribution: >-
+    Source: World Health Organization, Global Health Observatory. WHO data may be
+    reused for non-commercial purposes with acknowledgement of WHO as the source.
   geography: national
   representativeness: modelled
+  method: modelled
+  note: age-standardised WHO estimate
   indicators:
-    HTN_PREV: { code: "<GHO indicator code, confirmed day 1>", age: [30, 79] }
-    HTN_CONTROL: { code: "<GHO indicator code, confirmed day 1>", age: [30, 79] }
-    DM_PREV: { code: "<GHO indicator code, confirmed day 1>" }
-    NCD_PREMATURE_MORT: { code: "<GHO indicator code, confirmed day 1>" }
-- provider: dhs
-  adapter: structured.dhs
-  geography: [national, state_province]
-  representativeness: representative_sample
-  indicators:
-    HTN_PREV: { code: "<DHS indicator id, confirmed day 1>" }
+    HTN_PREV:
+      code: NCD_HYP_PREVALENCE_A
+      slot: S03
+      label: Hypertension among adults aged 30-79
+      measure: measured_prevalence
+      age: [30, 79]
+      sex: SEX_BTSX
+      case_definition: age-standardised; SBP>=140 or DBP>=90 mmHg, or taking medication for hypertension
+      denominator: adults aged 30-79
+      unit: "%"
+    HTN_AWARE:
+      code: NCD_HYP_DIAGNOSIS_A
+      slot: S04
+      label: Diagnosed hypertension among adults aged 30-79 with hypertension
+      measure: cascade_awareness
+      age: [30, 79]
+      sex: SEX_BTSX
+      case_definition: age-standardised; previously diagnosed, among adults with SBP>=140 or DBP>=90 mmHg or on medication
+      denominator: adults aged 30-79 with hypertension
+      unit: "%"
+    HTN_TREATED:
+      code: NCD_HYP_TREATMENT_A
+      slot: S04
+      label: Treated hypertension among adults aged 30-79 with hypertension
+      measure: cascade_treatment
+      age: [30, 79]
+      sex: SEX_BTSX
+      case_definition: age-standardised; taking medication, among adults with SBP>=140 or DBP>=90 mmHg or on medication
+      denominator: adults aged 30-79 with hypertension
+      unit: "%"
+    HTN_CONTROL:
+      code: NCD_HYP_CONTROL_A
+      slot: S04
+      label: Controlled hypertension among adults aged 30-79 with hypertension
+      measure: cascade_control
+      age: [30, 79]
+      sex: SEX_BTSX
+      case_definition: age-standardised; SBP<140 and DBP<90 mmHg, among adults with hypertension
+      denominator: adults aged 30-79 with hypertension
+      unit: "%"
+    DM_PREV:
+      code: NCD_DIABETES_PREVALENCE_AGESTD
+      slot: S05
+      label: Diabetes among adults aged 18 and over
+      measure: measured_prevalence
+      age: [18, null]
+      age_group: AGEGROUP_YEARS18-PLUS
+      sex: SEX_BTSX
+      case_definition: age-standardised; fasting plasma glucose >=7.0 mmol/L or HbA1c >=6.5%, or taking medication for diabetes
+      denominator: adults aged 18 and over
+      unit: "%"
+    NCD_PREMATURE_MORT:
+      code: NCDMORT3070
+      slot: S06
+      label: Probability of dying between ages 30 and 70 from cardiovascular disease, cancer, diabetes or chronic respiratory disease
+      measure: mortality_rate
+      age: [30, 69]
+      age_group: AGEGROUP_YEARS30-69
+      sex: SEX_BTSX
+      denominator: people aged exactly 30
+      unit: "%"
+
 - provider: world_bank
   adapter: structured.world_bank
+  publisher_class: multilateral
+  publisher_name: World Bank, World Development Indicators
+  attribution: >-
+    Source: World Bank, World Development Indicators. Licensed under Creative Commons
+    Attribution 4.0 (CC BY 4.0).
   geography: national
+  representativeness: census
+  method: administrative
   indicators:
-    POP_TOTAL: { code: "SP.POP.TOTL" }
+    POP_TOTAL:
+      code: SP.POP.TOTL
+      label: Total population
+      sex: total

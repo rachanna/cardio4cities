@@ -353,30 +353,34 @@ File `reference/indicators.yaml` → `ref_indicator`. The **comparability group*
 
 ### 3.4 Source registry (Wave 0)
 
-File `reference/sources.yaml` → `ref_source`. Keyed by provider and indicator, **never by city**.
+File `reference/sources.yaml` → `ref_source`. Keyed by provider and indicator, **never by city**. Codes confirmed by spike S-2 (BD-13).
 
 ```yaml
 - provider: who_gho
-  adapter: structured.who_gho          # LLD-4 ports
+  adapter: structured.who_gho
+  publisher_class: multilateral
+  publisher_name: World Health Organization, Global Health Observatory
+  attribution: "..."                       # cited with every Wave 0 fact
   geography: national
   representativeness: modelled
+  method: modelled
+  note: age-standardised WHO estimate
   indicators:
-    HTN_PREV:    { code: "<GHO indicator code, confirmed day 1>", age: [30, 79] }
-    HTN_CONTROL: { code: "<GHO indicator code, confirmed day 1>", age: [30, 79] }
-    DM_PREV:     { code: "<…>" }
-    NCD_PREMATURE_MORT: { code: "<…>" }
-- provider: dhs
-  adapter: structured.dhs
-  geography: [national, state_province]
-  representativeness: representative_sample
-  indicators: { HTN_PREV: { code: "<DHS indicator id, confirmed day 1>" } }
-- provider: world_bank
-  adapter: structured.world_bank
-  geography: national
-  indicators: { POP_TOTAL: { code: "SP.POP.TOTL" } }
+    HTN_CONTROL:
+      code: NCD_HYP_CONTROL_A              # also HTN_PREV, HTN_AWARE, HTN_TREATED, DM_PREV, NCD_PREMATURE_MORT
+      slot: S04                            # no slot: stored as a source, never a claim
+      label: Controlled hypertension among adults aged 30-79 with hypertension
+      measure: cascade_control
+      age: [30, 79]
+      age_group: null                      # the provider's age-dimension code, when it has one
+      sex: SEX_BTSX                        # the provider's code for both sexes
+      case_definition: "age-standardised; SBP<140 and DBP<90 mmHg, among adults with hypertension"
+      denominator: adults aged 30-79 with hypertension
+      unit: "%"
+- provider: world_bank                     # POP_TOTAL: SP.POP.TOTL, a source for sanity checks only
 ```
 
-Indicator codes for WHO and DHS are confirmed on day 1 `[spike]`; the loader refuses placeholder values.
+DHS is not in the registry: its indicator API has no hypertension indicator (BD-13). The loader refuses placeholder values; the deployed load runs with `--strict`.
 
 ---
 

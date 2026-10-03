@@ -55,6 +55,11 @@ ADAPTERS: AdapterRegistry = {
     "snapshots": {"postgres": "app.adapters.snapshots.postgres:make"},
     # graph (D2-4, BD-11): the factory also takes the embeddings adapter
     "graph": {"graphiti_neo4j": "app.adapters.graph.graphiti:make"},
+    # official APIs for Wave 0 (D2-5, BD-13), keyed by the registry's provider name
+    "structured": {
+        "who_gho": "app.adapters.structured.who_gho:make",
+        "world_bank": "app.adapters.structured.world_bank:make",
+    },
     # model providers (D2-3)
     "llm": {
         "anthropic": "app.adapters.llm.anthropic:make",
@@ -128,6 +133,9 @@ def build_container(settings: Settings, registry: AdapterRegistry | None = None)
     container.graph = build("graph", config.graph.provider, container.embeddings)
     container.snapshots = build("snapshots", config.snapshots.provider)
     container.renderer = build("renderer", config.renderer.provider)
+    for provider in config.structured.providers:
+        if (adapter := build("structured", provider)) is not None:
+            container.structured[provider] = adapter
     for provider in config.tracing.providers:
         if (adapter := build("tracing", provider)) is not None:
             container.tracing.append(adapter)

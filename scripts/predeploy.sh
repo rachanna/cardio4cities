@@ -4,5 +4,6 @@
 set -e
 alembic upgrade head
 python -m scripts.reference.load_geonames
-# Add --strict once spike S-2 confirms the WHO and DHS indicator codes (BD-04).
-python -m scripts.reference.load_yaml_reference
+# --strict since spike S-2 confirmed every Wave 0 indicator code (BD-13): a placeholder
+# code now stops the deploy instead of being skipped.
+python -m scripts.reference.load_yaml_reference --strict

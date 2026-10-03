@@ -212,6 +212,24 @@ class PostgresResearchRepo:
                 {"k": key, "c": claim_id},
             )
 
+    async def stored_verdict(self, claim_id: str) -> dict[str, Any] | None:
+        """The verdict already stored for a claim: label, verifier_model, fallback_used."""
+        async with self._engine.connect() as conn:
+            row = (
+                (
+                    await conn.execute(
+                        text(
+                            "SELECT label, verifier_model, fallback_used FROM verdict"
+                            " WHERE claim_id = :c"
+                        ),
+                        {"c": claim_id},
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+        return dict(row) if row else None
+
     async def add_verdict(self, verdict: Verdict) -> None:
         async with self._engine.begin() as conn:
             await conn.execute(

@@ -5,6 +5,9 @@
 (semantic route). Supported and contested claims are indexed; any other status removes
 the point. An index failure is logged and never undoes the Postgres status: Postgres has
 the final word, and retrieval re-validates every candidate against it (RD-04).
+
+A claim becomes supported or contested only when its stored verdict is `supported`
+(BD-18): whatever calls this, a refuted or insufficient verdict can never become a fact.
 """
 
 import logging
@@ -39,8 +42,18 @@ def index_text(statement: str, quote: str, translation: str | None) -> str:
     return f"{statement} | {translation or quote}"
 
 
+class VerdictMismatchError(RuntimeError):
+    """A claim would become a fact without a supported verdict (BD-18)."""
+
+
 async def set_status(d: RunDeps, claim_id: str, status: ClaimStatus) -> None:
-    await d.relational.research.set_claim_status(claim_id, status.value)
+    research = d.relational.research
+    if status.value in INDEXED:
+        verdict = await research.stored_verdict(claim_id)
+        if verdict is None or verdict["label"] != "supported":
+            label = verdict["label"] if verdict else "none"
+            raise VerdictMismatchError(f"{claim_id}: status {status.value} with verdict {label}")
+    await research.set_claim_status(claim_id, status.value)
     await sync(d, claim_id)
 
 

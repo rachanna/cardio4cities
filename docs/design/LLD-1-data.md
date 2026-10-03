@@ -682,7 +682,7 @@ LEFT JOIN verdict v ON v.claim_id = c.claim_id;
 CREATE VIEW v_city_facts AS
 SELECT f.* FROM v_fact_evidence f
 JOIN city ON city.city_id = f.city_id AND city.latest_run_id = f.run_id
-WHERE f.status IN ('supported','contested');
+WHERE f.status IN ('supported','contested') AND f.verdict = 'supported';  -- BD-18
 ```
 
 Contested claims appear in `v_city_facts` with the "Sources disagree" badge; refuted, insufficient, dropped and superseded claims never do.

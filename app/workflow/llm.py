@@ -75,15 +75,18 @@ async def call_role[T: BaseModel](
     schema: type[T],
     problems: Callable[[T], list[str]] = lambda _: [],
     binding: Binding | None = None,
+    repair: bool = True,
 ) -> RoleOutput[T]:
-    """Primary call plus one repair attempt when the output fails validation."""
+    """Primary call plus one repair attempt when the output fails validation (none when
+    `repair` is false: the caller counts attempts itself)."""
     chosen = binding or deps.roles[role].primary
     message = user
-    for attempt in range(2):
+    attempts = 2 if repair else 1
+    for attempt in range(attempts):
         try:
             parsed, model_id = await _call_once(deps, role, chosen, system, message, schema)
         except LLMOutputValidationError as exc:
-            if attempt == 1:
+            if attempt == attempts - 1:
                 raise
             message = (
                 f"{user}\n\nYour previous output was invalid: {exc}. "
@@ -93,7 +96,7 @@ async def call_role[T: BaseModel](
         issues = problems(parsed)
         if not issues:
             return RoleOutput(parsed, model_id, chosen.family, False)
-        if attempt == 1:
+        if attempt == attempts - 1:
             raise LLMOutputValidationError(f"{role}: {'; '.join(issues)}", parsed.model_dump_json())
         message = (
             f"{user}\n\nYour previous output had these problems: {'; '.join(issues)}. "
@@ -105,12 +108,15 @@ async def call_role[T: BaseModel](
 async def call_checker[T: BaseModel](
     deps: RunDeps, system: str, user: str, schema: type[T]
 ) -> RoleOutput[T]:
-    """Retry the primary checker twice, then the labelled fallback (LLD-2 §17, R-82)."""
+    """Two calls on the primary checker, then the labelled fallback (LLD-2 §17, R-82).
+    Each primary attempt is a single call: a failed attempt is not repaired, it counts."""
     roles = deps.roles["checker"]
     failure: Exception | None = None
     for _ in range(2):
         try:
-            return await call_role(deps, "checker", system, user, schema, binding=roles.primary)
+            return await call_role(
+                deps, "checker", system, user, schema, binding=roles.primary, repair=False
+            )
         except (ProviderUnavailableError, LLMOutputValidationError) as exc:
             failure = exc
     if roles.fallback is None:

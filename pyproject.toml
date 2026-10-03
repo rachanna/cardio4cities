@@ -27,6 +27,7 @@ dependencies = [
     "langgraph-checkpoint-postgres>=3.0",
     "psycopg[binary]>=3.2",
     "cryptography>=44",
+    "certifi>=2024.2",
 ]
 
 [dependency-groups]
@@ -228,4 +229,5 @@ forbidden_modules = [
     "psycopg",
     "psycopg_pool",
     "cryptography",
+    "certifi",
 ]

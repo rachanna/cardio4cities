@@ -43,8 +43,15 @@ class FetchPort(Protocol):
         intermediates: tuple[bytes, ...] = (),
     ) -> FetchResult:
         """One request, dialled to `pinned_ip`; the hostname is kept for Host, SNI and
-        certificate checks. `intermediates`: issuer certificates the server did not send
-        (fetched by the collector from the certificate's AIA URLs), used only to build the
-        chain to a trusted root (BD-15). Raises FetchError on network failure or timeout,
-        TLSCertificateError when the certificate fails verification."""
+        certificate checks. `intermediates`: the result of `complete_chain`, used only to
+        build the chain to a trusted root (BD-15, BD-16). Raises FetchError on network
+        failure or timeout, TLSCertificateError when the certificate fails verification."""
+        ...
+
+    async def complete_chain(
+        self, url: str, pinned_ip: str, limits: FetchLimits, issuers: tuple[bytes, ...]
+    ) -> tuple[bytes, ...]:
+        """Verify the server's chain with `issuers` (fetched from its AIA URLs) as untrusted
+        intermediates, against the trusted roots and the host name; return the verified
+        chain's intermediates. Raises TLSCertificateError when there is no such chain."""
         ...

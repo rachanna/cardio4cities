@@ -5,26 +5,33 @@ answer, so DNS rebinding cannot redirect a request to a private address. The hos
 is still used for the Host header, TLS SNI and certificate verification. One request,
 no redirects: the collector re-gates every hop.
 
-Certificates (BD-15): verification is always on. A failure is reported with its cause
-(expired, self-signed, host name mismatch, issuer missing). When the issuer is missing,
-the certificate is read on a separate connection that sends no request, and its issuer
-(AIA) URLs are reported so the collector can fetch the missing intermediate through the
-gate. The intermediate is then used only to build the chain: it is never a trust anchor
-(partial chains are refused), so the chain must still end at a trusted root.
+Certificates (BD-15, BD-16): verification is always on. A failure is reported with its
+cause (expired, self-signed, host name mismatch, issuer missing). When the issuer is
+missing, the certificate is read on a separate connection that sends no request, and its
+issuer (AIA) URLs are reported so the collector can fetch the missing intermediate
+through the gate. `complete_chain` then verifies the whole chain in code, with every
+fetched certificate an untrusted intermediate, against the trusted roots and the host
+name, and returns only the intermediates on that verified chain. Only those are ever
+added to a TLS context, as chain-building certificates: self-issued and non-CA
+certificates are refused there too, and partial chains stay refused, so OpenSSL verifies
+the connection to a trusted root again.
 """
 
 import asyncio
 import contextlib
+import ipaddress
 import socket
 import ssl
 from collections.abc import Callable, Iterable
 from typing import Any
 
+import certifi
 import httpcore
 import httpx
 from cryptography import x509
 from cryptography.hazmat.primitives.serialization import Encoding, pkcs7
 from cryptography.x509.oid import AuthorityInformationAccessOID
+from cryptography.x509.verification import PolicyBuilder, Store, VerificationError
 
 from app.ports.errors import FetchError, TLSCertificateError
 from app.ports.fetch import FetchLimits, FetchResult
@@ -33,6 +40,7 @@ from app.settings import Settings
 Dial = Callable[[str, int], tuple[str, int]]
 Resolver = Callable[[str], "asyncio.Future[list[str]] | Any"]
 ContextFactory = Callable[[], ssl.SSLContext]
+RootsFactory = Callable[[], list[x509.Certificate]]
 
 # OpenSSL verify codes -> cause (TLSCertificateError)
 VERIFY_CAUSES = {
@@ -139,22 +147,60 @@ class PinnedFetcher:
         resolver: Callable[[str], Any] | None = None,
         dial: Dial | None = None,
         context_factory: ContextFactory = ssl.create_default_context,
+        trusted_roots: RootsFactory | None = None,
     ) -> None:
         self._resolver = resolver or _getaddrinfo
         self._dial = dial
         self._contexts = context_factory
         self._ssl = context_factory()
+        self._roots_factory = trusted_roots or _certifi_roots
+        self._roots: list[x509.Certificate] | None = None
 
     def _context(self, intermediates: tuple[bytes, ...]) -> ssl.SSLContext:
         """The default context, or a fresh one that also knows the given intermediates,
-        for chain building only: partial chains stay refused."""
-        pems = [pem for raw in intermediates for pem in _pems(raw)]
+        for chain building only. Self-issued and non-CA certificates are never added, and
+        partial chains stay refused, so the chain must still end at a trusted root."""
+        pems = [
+            c.public_bytes(Encoding.PEM).decode("ascii")
+            for raw in intermediates
+            for c in _certificates(raw)
+            if _is_intermediate(c)
+        ]
         if not pems:
             return self._ssl
         context = self._contexts()
         context.load_verify_locations(cadata="".join(pems))
         context.verify_flags &= ~ssl.VERIFY_X509_PARTIAL_CHAIN
         return context
+
+    async def complete_chain(
+        self, url: str, pinned_ip: str, limits: FetchLimits, issuers: tuple[bytes, ...]
+    ) -> tuple[bytes, ...]:
+        """Verify the server's certificate chain in code: the server's own certificate,
+        `issuers` (fetched from its AIA URLs) as untrusted intermediates, the trusted roots
+        and the host name. Returns the DER intermediates of the verified chain. Raises
+        TLSCertificateError when no chain to a trusted root exists."""
+        leaf_der = await self._peer_certificate(url, pinned_ip, limits)
+        if not leaf_der:
+            raise TLSCertificateError("issuer_missing")
+        try:
+            leaf = x509.load_der_x509_certificate(leaf_der)
+        except ValueError as exc:
+            raise TLSCertificateError("untrusted") from exc
+        candidates = [c for raw in issuers for c in _certificates(raw)]
+        if self._roots is None:
+            self._roots = self._roots_factory()
+        host = httpx.URL(url).host
+        try:
+            subject: x509.verification.Subject = x509.IPAddress(ipaddress.ip_address(host))
+        except ValueError:
+            subject = x509.DNSName(host)
+        verifier = PolicyBuilder().store(Store(self._roots)).build_server_verifier(subject)
+        try:
+            chain = verifier.verify(leaf, candidates)
+        except VerificationError as exc:
+            raise TLSCertificateError("issuer_untrusted") from exc
+        return tuple(c.public_bytes(Encoding.DER) for c in chain[1:-1])
 
     async def resolve(self, host: str) -> list[str]:
         return list(await self._resolver(host))
@@ -179,8 +225,13 @@ class PinnedFetcher:
             raise TLSCertificateError(cause, urls) from exc
 
     async def _issuer_urls(self, url: str, pinned_ip: str, limits: FetchLimits) -> tuple[str, ...]:
-        """Read the server's certificate without verifying it, on a connection that sends
-        nothing, and return its CA Issuers (AIA) URLs. Nothing read here is trusted."""
+        """The CA Issuers (AIA) URLs of the server's certificate. Nothing read is trusted."""
+        der = await self._peer_certificate(url, pinned_ip, limits)
+        return _aia_urls(der) if der else ()
+
+    async def _peer_certificate(self, url: str, pinned_ip: str, limits: FetchLimits) -> bytes:
+        """The server's certificate, read without verifying it on a connection that sends
+        nothing. Used only to find its issuer and to verify its chain in code."""
         parsed = httpx.URL(url)
         port = parsed.port or 443
         target, target_port = self._dial(pinned_ip, port) if self._dial else (pinned_ip, port)
@@ -195,14 +246,14 @@ class PinnedFetcher:
                 limits.connect_timeout_s,
             )
         except (OSError, TimeoutError, ssl.SSLError):
-            return ()
+            return b""
         try:
             der = writer.get_extra_info("ssl_object").getpeercert(binary_form=True)
         finally:
             writer.close()
             with contextlib.suppress(OSError, ssl.SSLError):
                 await writer.wait_closed()
-        return _aia_urls(der) if der else ()
+        return der or b""
 
     async def _fetch(
         self, url: str, pinned_ip: str, limits: FetchLimits, intermediates: tuple[bytes, ...]
@@ -282,7 +333,24 @@ def _aia_urls(der: bytes) -> tuple[str, ...]:
     )
 
 
-def _pems(raw: bytes) -> list[str]:
+def _certifi_roots() -> list[x509.Certificate]:
+    """The trusted roots for verifying a completed chain: the Mozilla root store."""
+    with open(certifi.where(), "rb") as bundle:
+        return x509.load_pem_x509_certificates(bundle.read())
+
+
+def _is_intermediate(cert: x509.Certificate) -> bool:
+    """A certificate that may only build a chain: a CA that is not self-issued."""
+    if cert.subject == cert.issuer:
+        return False
+    try:
+        constraints = cert.extensions.get_extension_for_class(x509.BasicConstraints).value
+    except x509.ExtensionNotFound:
+        return False
+    return constraints.ca
+
+
+def _certificates(raw: bytes) -> list[x509.Certificate]:
     """An issuer certificate as served at an AIA URL: DER, PEM or PKCS#7. Anything else
     gives nothing, and verification then fails as before."""
     loaders: tuple[Callable[[bytes], list[x509.Certificate]], ...] = (
@@ -296,7 +364,7 @@ def _pems(raw: bytes) -> list[str]:
             certs = load(raw)
         except ValueError:
             continue
-        return [c.public_bytes(Encoding.PEM).decode("ascii") for c in certs]
+        return list(certs)
     return []
 
 

@@ -97,3 +97,22 @@ def chunk_text(text: str, tables: Sequence[tuple[int, int]], params: ChunkParams
     for s, e in _prose_chunks(text, cursor, len(text), params):
         chunks.append(Chunk(len(chunks), s, e, text[s:e].strip(), False))
     return [c for c in chunks if c.text]
+
+
+def windows(text: str, window_tokens: int, overlap_tokens: int) -> list[tuple[int, int]]:
+    """Extraction windows (LLD-3 §4.1): spans of about `window_tokens` tokens with about
+    `overlap_tokens` overlap, cut at whitespace. Offsets refer to `text`."""
+    words = [(m.start(), m.end()) for m in re.finditer(r"\S+", text)]
+    if not words:
+        return []
+    per_window = max(1, int(window_tokens / TOKENS_PER_WORD))
+    overlap = min(per_window - 1, int(overlap_tokens / TOKENS_PER_WORD))
+    spans = []
+    first = 0
+    while first < len(words):
+        last = min(len(words), first + per_window) - 1
+        spans.append((words[first][0], words[last][1]))
+        if last == len(words) - 1:
+            break
+        first = last + 1 - overlap
+    return spans

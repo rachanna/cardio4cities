@@ -1,10 +1,14 @@
 """A RelationalPort stand-in; tests set the module-level values with monkeypatch."""
 
+from typing import Any
+
 from app.settings import Settings
 
 SLOT_IDS: list[str] = [f"S{n:02d}" for n in range(1, 17)]
 INDICATOR_CODES: dict[str, str] = {"world_bank.POP_TOTAL": "SP.POP.TOTL"}
 FAIL: bool = False
+PLACES: list[dict[str, Any]] = []  # search_places rows, best first
+RUNS: dict[str, dict[str, Any]] = {}
 closed: list[bool] = []
 
 
@@ -17,10 +21,19 @@ class FakeReference:
     async def indicator_codes(self) -> dict[str, str]:
         return dict(INDICATOR_CODES)
 
+    async def search_places(self, query: str, limit: int = 5) -> list[dict[str, Any]]:
+        return PLACES[:limit]
+
+
+class FakeRuns:
+    async def run_row(self, run_id: str) -> dict[str, Any] | None:
+        return RUNS.get(run_id)
+
 
 class FakeRelational:
     def __init__(self) -> None:
         self._reference = FakeReference()
+        self.runs = FakeRuns()
 
     @property
     def reference(self) -> FakeReference:

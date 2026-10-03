@@ -52,3 +52,4 @@ entity:     { merge_threshold: 0.92, candidate_threshold: 0.85 }
 badge:      { stale_years: 5, stale_years_people: 2, small_sample: 300 }
 confidence: { recent_years: 5 }
 analytics:  { enabled: false }
+stream:     { poll_interval_s: 0.5, heartbeat_s: 15 }   # LLD-4 §4 [tunable]

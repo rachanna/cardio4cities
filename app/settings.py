@@ -247,6 +247,11 @@ class AnalyticsSection(_Section):
     enabled: bool
 
 
+class StreamSection(_Section):
+    poll_interval_s: float  # LLD-4 §4: live following polls run_event [tunable]
+    heartbeat_s: float  # LLD-4 §4: comment line that keeps proxies from closing
+
+
 class Config(_Section):
     app: AppSection
     access: AccessSection
@@ -273,6 +278,7 @@ class Config(_Section):
     badge: BadgeSection
     confidence: ConfidenceSection
     analytics: AnalyticsSection
+    stream: StreamSection
 
 
 # --- Loaded settings -------------------------------------------------------

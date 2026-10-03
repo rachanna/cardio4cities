@@ -18,10 +18,11 @@ from fastapi.staticfiles import StaticFiles
 from app.api import errors
 from app.api.auth import AccessConfig
 from app.api.limits import FailureLimiter
-from app.api.routers import health, session
+from app.api.routers import health, runs, session
 from app.api.routers.health import HealthService
 from app.container import AdapterRegistry, Container, build_container
 from app.settings import ConfigError, check_indicator_codes, check_reference_slots, load_settings
+from app.workflow.runner import RunManager
 
 log = logging.getLogger(__name__)
 APP_VERSION = "0.1.0"
@@ -71,6 +72,7 @@ def _lifespan(
                 session_secret=settings.secret(access.session_secret_env),
             )
             app.state.session_limiter = FailureLimiter()
+            app.state.runs = RunManager(container, settings)
             app.state.health = HealthService(
                 relational=container.relational,
                 probes=container.probes,
@@ -93,6 +95,7 @@ def create_app(
     errors.install(app)
     app.include_router(session.router, prefix="/api/v1")
     app.include_router(health.router, prefix="/api/v1")
+    app.include_router(runs.router, prefix="/api/v1")
     web_dir = next((d for d in WEB_DIRS if d.is_dir()), None)
     if web_dir is not None:  # mounted last: API routes take precedence
         app.mount("/", StaticFiles(directory=web_dir, html=True), name="web")

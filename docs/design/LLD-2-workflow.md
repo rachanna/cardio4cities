@@ -390,8 +390,9 @@ For each candidate URL, in order; the first rule that applies decides:
 
 | Status | Treatment |
 |---|---|
-| 2xx | Parse and apply |
-| 3xx | Follow up to 5 redirects; then as above |
+| 2xx | Parse and apply. The text is decoded as UTF-8 with any byte order mark dropped, and a file longer than 500 KiB is applied from its first 500 KiB (BD-20) |
+| 3xx | Follow up to 5 redirects; then as above. A redirect to a URL we never dial (scheme or port not allowed) is "Unreachable", outcome `unreachable_network` (BD-20) |
+| 429 | "Unreachable", outcome `unreachable_server_error`: too many requests is not "no robots.txt" (owner, BD-20) |
 | 4xx (including 401, 403, 404) | "Unavailable": no restrictions apply |
 | 5xx, timeout or network error | "Unreachable": treat the whole site as disallowed; outcome `unreachable_server_error` or `unreachable_network`, so the slot reports it as unreachable, not blocked |
 
@@ -403,10 +404,11 @@ Checked against RFC 9309 when implementing (BD-07): §2.3.1.3 (4xx: crawlers MAY
 |---|---|
 | User agent | `CARDIO4CitiesResearchBot/0.1 (+<repo URL>)` |
 | Per-domain concurrency | 1 |
-| Per-domain spacing | `max(crawl_delay, fetch.min_interval_s = 1)` `[tunable]` |
-| Global fetch concurrency | `fetch.concurrency = 6` `[tunable]` |
+| Per-domain spacing | `max(crawl_delay, fetch.min_interval_s = 1)` `[tunable]`. The budget is reserved before any wait, and only the domain is held while waiting, so one slow site never holds the global permits (BD-20) |
+| Crawl-delay cap | A crawl-delay above `fetch.crawl_delay_cap_s = 30` `[tunable]` → `rate_limited` at the gate, no request; a wait that would run past the run's time left → `rate_limited`, nothing reserved (owner, BD-20) |
+| Global fetch concurrency | `fetch.concurrency = 6` `[tunable]`, held only for the request itself |
 | Timeouts | connect 5 s, read 20 s |
-| Size | stop at 10 MB → `parse_outcome = too_large`, no snapshot |
+| Size | stop at 10 MB → `parse_outcome = too_large`, no snapshot. Counted on the decoded body as it streams in, and on the bytes received: we ask for `gzip, deflate` only and inflate a bounded amount at a time, so a compressed body never inflates past the cap; any other encoding is refused unread (BD-20) |
 | Types | `text/html`, `application/xhtml+xml`, `application/pdf`, `text/plain`; JSON only for structured adapters |
 | Redirects | Up to 5; **each new host goes through the gate again**; the connection uses the IP checked in step 3 (prevents DNS rebinding) |
 | 401, 402, 403 on the page | `blocked_login_or_paywall`; body discarded unread |

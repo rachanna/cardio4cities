@@ -38,7 +38,12 @@ class OpenAILLM:
         if params.temperature is not None:
             kwargs["temperature"] = params.temperature
         try:
-            response = await self._client.responses.parse(**kwargs)
+            client = (
+                self._client.with_options(timeout=params.timeout_s)
+                if params.timeout_s is not None
+                else self._client
+            )
+            response = await client.responses.parse(**kwargs)
         except ValidationError as exc:
             raise LLMOutputValidationError(
                 f"{role}: output did not fit the schema", str(exc)

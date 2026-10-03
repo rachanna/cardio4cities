@@ -226,7 +226,7 @@ The verifier receives a **restricted slice**: one claim, its labels and the code
 | Claims verified per slot | about 5 | Remaining claims stay in Qdrant as "found, not verified" |
 | Fetches per run | about 60 | No new fetches; current work finishes |
 | Searches per run | about 48 | No new searches |
-| Wall clock per run | about 5 min | Stop new work; finish writes; mark coverage |
+| Wall clock per run | 7 min (420 s, BD-15) | Stop new work; finish writes; mark coverage |
 | Tokens / model cost per run | set after day-1 measurement | As above |
 
 A run **always** ends with every slot carrying a status (AT-32). The budget guard is a wrapper checked before every external call, not a separate step.

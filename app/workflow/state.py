@@ -65,6 +65,9 @@ class Candidate(BaseModel):
     publisher_class: str
     rank: int
     query_id: str
+    # Search text, for ranking only (the other-place rule, BD-15); never evidence (R-58)
+    title: str = ""
+    snippet: str = ""
 
 
 class Draft(BaseModel):

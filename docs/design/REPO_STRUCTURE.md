@@ -83,7 +83,8 @@ cardio4cities/
 │   │                             #       numbers, thresholds, comparability, consistency,
 │   │                             #       entity_resolution, slot_status, gap_notes, wave0_record,
 │   │                             #       labels (reference-period rule, derived flags), label_evidence,
-│   │                             #       geography_fit, programme_status, region_match
+│   │                             #       geography_fit, programme_status, region_match,
+│   │                             #       other_places (source selection, BD-15)
 │   ├── query/                    # LLD-5 (CHG-01): understand.py, routes/ (structured.py, keyword.py,
 │   │                             #   semantic.py, graph.py), revalidate.py, fuse.py, anchors.py,
 │   │                             #   bundle.py, answer.py, postcheck.py, trace.py
@@ -185,7 +186,7 @@ container, main → everything                 (composition root)
 
 The fetch adapter uses `httpx`, chosen over `httpx2` for the security-critical path (BD-07); `httpx2` is a test-only dependency.
 
-**Vendor packages allowed only under `app/adapters/`:** `anthropic`, `openai`, `ollama`, `sentence_transformers`, `qdrant_client`, `graphiti_core`, `neo4j`, `httpx`, `httpx2`, `httpcore`, `httpcore2`, `protego`, `trafilatura`, `lxml`, `pdfplumber`, `weasyprint`, `langsmith`, `opentelemetry`, `asyncpg`, `sqlalchemy`, `alembic`, `psycopg`, `psycopg_pool` (the LangGraph checkpointer's driver, BD-14).
+**Vendor packages allowed only under `app/adapters/`:** `anthropic`, `openai`, `ollama`, `sentence_transformers`, `qdrant_client`, `graphiti_core`, `neo4j`, `httpx`, `httpx2`, `httpcore`, `httpcore2`, `protego`, `trafilatura`, `lxml`, `pdfplumber`, `weasyprint`, `langsmith`, `opentelemetry`, `asyncpg`, `sqlalchemy`, `alembic`, `psycopg`, `psycopg_pool` (the LangGraph checkpointer's driver, BD-14), `cryptography` (reading a certificate's issuer URL, BD-15).
 
 Expressed as import-linter `layers` and `forbidden` contracts. The architecture test fails the build on any violation.
 

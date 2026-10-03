@@ -1,5 +1,6 @@
 """select_sources (LLD-2 §14): de-duplicate across the run, deny list, publisher class,
-rank by tier then search rank. The top N new URLs go to the crawl gate; URLs another slot
+rank by tier, then the other-place rule (BD-15), then search rank. The top N new URLs go
+to the crawl gate; URLs another slot
 already fetched this run are reused, not fetched again (the run's fetch cache, BD-14), up
 to their own cap."""
 
@@ -9,6 +10,7 @@ from langchain_core.runnables import RunnableConfig
 
 from app.workflow.nodes._deps import deps
 from app.workflow.rules.crawl_gate import canonicalise
+from app.workflow.rules.other_places import place_matcher
 from app.workflow.rules.selection import Candidate as Selected
 from app.workflow.rules.selection import select_urls
 from app.workflow.state import Candidate, SlotState
@@ -26,7 +28,13 @@ async def select_sources(state: SlotState, config: RunnableConfig) -> dict[str, 
         d.fetch_cache.seed(await d.relational.sources.fetched_sources(state["run_id"]))
     hits = [(c.url, c.rank) for c in raw]
     known = {u for u in by_url if d.fetch_cache.known(u)}
-    everything = select_urls(hits, (), d.publishers, len(by_url))
+    if d.places is None:  # the country's places, once per run
+        rows = await d.relational.reference.country_places(
+            state["city"].country_iso2, d.other_place_min_population
+        )
+        d.places = place_matcher(state["city"], rows)
+    later = {u for u, c in by_url.items() if d.places.names_other_place(c.title, c.snippet, u)}
+    everything = select_urls(hits, (), d.publishers, len(by_url), later)
 
     def candidate(s: Selected) -> Candidate:
         return Candidate(

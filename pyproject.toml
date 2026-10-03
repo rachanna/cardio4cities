@@ -26,6 +26,7 @@ dependencies = [
     "graphiti-core==0.30.2",
     "langgraph-checkpoint-postgres>=3.0",
     "psycopg[binary]>=3.2",
+    "cryptography>=44",
 ]
 
 [dependency-groups]
@@ -226,4 +227,5 @@ forbidden_modules = [
     "alembic",
     "psycopg",
     "psycopg_pool",
+    "cryptography",
 ]

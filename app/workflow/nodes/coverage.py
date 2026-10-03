@@ -4,7 +4,8 @@ IDs), the sources checked and its best claims, stored in `slot_result` and strea
 `slot_status`. It calls no external service, so it runs after a budget stop too.
 
 Then the re-plan rule (§11.3): slots that qualify go back to `plan_slots` for another
-round while the ledger is in its normal phase; otherwise the run moves on to `analytics`.
+round while the ledger is in its normal phase, priority slots first and only as many as
+the searches left can serve (BD-15); otherwise the run moves on to `analytics`.
 The ledger's counters are saved with the run each round, for a resume (BD-14)."""
 
 from collections.abc import Iterable
@@ -28,7 +29,13 @@ from app.domain.wording import language_name
 from app.workflow.deps import RunDeps
 from app.workflow.nodes._deps import deps
 from app.workflow.rules.gap_notes import gap_note
-from app.workflow.rules.slot_status import should_replan, slot_flags, slot_status
+from app.workflow.rules.slot_status import (
+    replan_capacity,
+    replan_order,
+    should_replan,
+    slot_flags,
+    slot_status,
+)
 from app.workflow.state import RunState, SlotReport
 
 UNCONFIRMED = frozenset({ClaimStatus.EXTRACTED, ClaimStatus.REFUTED, ClaimStatus.INSUFFICIENT})
@@ -134,6 +141,9 @@ async def coverage(state: RunState, config: RunnableConfig) -> dict[str, Any]:
         status = SlotStatus(result["status"])
         if should_replan(d.slots[slot_id], status, replans.get(slot_id, 0), winding_down, d.replan):
             again.append(slot_id)
+    # Priority slots first, and only as many as the searches left can serve (BD-15)
+    capacity = replan_capacity(d.ledger.searches, d.ledger.limits.searches, d.queries_per_slot)
+    again = replan_order(again, d.replan.priority)[:capacity]
     await d.relational.runs.save_budget_used(run_id, d.ledger.snapshot())
     if not again:
         return {"slots_to_work": []}

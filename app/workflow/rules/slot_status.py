@@ -69,3 +69,17 @@ def should_replan(
     if status is SlotStatus.ANSWERED_WIDER_GEO and slot.answer_kind is AnswerKind.STATISTIC:
         return replans_used < params.max_rounds_wider_geo
     return False
+
+
+def replan_order(slot_ids: Iterable[str], priority: Sequence[str]) -> list[str]:
+    """Slots to re-plan, priority slots first in their given order, then the rest in
+    catalogue order (BD-15)."""
+    wanted = set(slot_ids)
+    first = [s for s in priority if s in wanted]
+    return first + sorted(wanted - set(first))
+
+
+def replan_capacity(searches_used: int, searches_limit: int, per_slot: int) -> int:
+    """How many slots the searches left can re-plan; the lower-priority slots wait rather
+    than start searches the budget would refuse halfway (BD-15)."""
+    return max(searches_limit - searches_used, 0) // per_slot

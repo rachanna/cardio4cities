@@ -47,7 +47,15 @@ async def search(state: SlotState, config: RunnableConfig) -> dict[str, Any]:
         )
         query_ids.append(query_id)
         candidates += [
-            Candidate(url=h.url, domain="", publisher_class="", rank=h.rank, query_id=query_id)
+            Candidate(
+                url=h.url,
+                domain="",
+                publisher_class="",
+                rank=h.rank,
+                query_id=query_id,
+                title=h.title,
+                snippet=h.snippet,
+            )
             for h in hits
-        ]  # only the URL is used from here on: snippets never become evidence (AT-06)
+        ]  # title and snippet only rank candidates: they never become evidence (AT-06)
     return {"query_ids": query_ids, "candidates": candidates, "error": error}

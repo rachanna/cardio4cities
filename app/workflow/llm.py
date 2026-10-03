@@ -1,7 +1,9 @@
 """One way to call a model role (LLD-2 §17, LLD-3 §2.3): reserve budget first, record
 tokens and cost after, repair once on invalid output, and for the checker fall back to
-the labelled same-family model when the primary fails twice."""
+the labelled same-family model when the primary fails twice. Each call's timeout is the
+time left on the run (BD-15)."""
 
+import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -48,9 +50,15 @@ async def _call_once[T: BaseModel](
     deps: RunDeps, role: str, binding: Binding, system: str, user: str, schema: type[T]
 ) -> tuple[T, str]:
     await deps.ledger.reserve("model")
-    result = await deps.llm[binding.provider].complete(
-        role, system, user, schema, _params(role, binding)
-    )
+    # A call never outlives the run's wall clock (BD-15): its timeout is the time left
+    left = deps.ledger.time_left_s()
+    params = _params(role, binding).model_copy(update={"timeout_s": left})
+    try:
+        result = await asyncio.wait_for(
+            deps.llm[binding.provider].complete(role, system, user, schema, params), left
+        )
+    except TimeoutError as exc:
+        raise ProviderUnavailableError(f"{role}: the run's time ran out") from exc
     await deps.ledger.record_model(
         result.model_id, result.tokens_in, result.tokens_out, result.cost_micro_usd
     )

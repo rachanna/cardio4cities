@@ -267,7 +267,7 @@ llm:
   concurrency: 4
   allow_same_family_checker: false   # BD-02; see §5.2
 embeddings: { provider: openai, model: "<confirm day 1>", dimension: 0, key: openai_small_v1, concurrency: 4 }   # concurrency: BD-14
-search:     { provider: brave, mode: links_only, api_key_env: BRAVE_API_KEY, rate_per_s: 1 }
+search:     { provider: brave, mode: links_only, api_key_env: BRAVE_API_KEY, rate_per_s: 5 }   # 5: BD-15
             # searxng (local): { provider: searxng, mode: links_only, base_url: http://localhost:8888, rate_per_s: 1 } (BD-02)
 relational: { dsn_env: DATABASE_URL }
 vector:     { provider: qdrant, url_env: QDRANT_URL, api_key_env: QDRANT_API_KEY }
@@ -275,7 +275,7 @@ graph:      { provider: graphiti_neo4j, uri_env: NEO4J_URI, user_env: NEO4J_USER
 snapshots:  { provider: postgres, max_bytes: 10485760 }
 renderer:   { provider: weasyprint }
 tracing:    { providers: [events, langsmith], langsmith_api_key_env: LANGSMITH_API_KEY }
-budget:     { wall_clock_s: 300, searches: 48, fetches: 60, tokens: 0, cost_micro_usd: 0, wind_down_at: 0.85 }
+budget:     { wall_clock_s: 420, searches: 64, fetches: 60, tokens: 1500000, cost_micro_usd: 3000000, wind_down_at: 0.85 }   # BD-15
 limits:     { runs_per_day: 20, ask_per_min: 20, resolve_per_min: 30 }
 fetch:      { concurrency: 6, min_interval_s: 1, max_bytes: 10485760, connect_timeout_s: 5, read_timeout_s: 20,
               allowed_ports: [80, 443], robots_timeout_s: 15 }   # BD-07
@@ -284,8 +284,9 @@ verify:     { max_claims_per_slot: 5, label_margin_chars: 200 }   # BD-10
 geography:  { nearby_km: 75 }   # BD-10
 eval:       { checker_agreement_min: 0.9 }   # LLD-3 §9
 stream:     { poll_interval_s: 0.5, heartbeat_s: 15 }   # BD-09
-select:     { max_new_urls_per_slot_round: 4, max_reused_per_slot_round: 2 }   # reused: BD-14
-replan:     { max_rounds: 2, max_rounds_wider_geo: 1 }
+select:     { max_new_urls_per_slot_round: 3, max_reused_per_slot_round: 2, other_place_min_population: 15000 }   # BD-14, BD-15
+replan:     { max_rounds: 2, max_rounds_wider_geo: 1, priority: [S04, S03, S05, S06] }   # priority: BD-15
+plan:       { queries_per_slot: 2 }   # BD-15
 extract:    { window_tokens: 12000, overlap_tokens: 500 }
 quote:      { min_words: 6, max_words: 60 }   # BD-06
 consistency:{ agree_pp: 0.5, agree_rel: 0.02 }

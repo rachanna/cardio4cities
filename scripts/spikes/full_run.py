@@ -24,6 +24,7 @@ from typing import Any
 
 import yaml
 from dotenv import load_dotenv
+from sqlalchemy import text
 
 from app.container import build_container
 from app.main import check_graph_marker
@@ -33,7 +34,7 @@ from app.workflow.runner import RunManager
 ROOT = Path(__file__).resolve().parents[2]
 RAW_DIR = ROOT / "spike_results"
 RESULTS = Path(__file__).parent / "results"
-TARGET_S = 300  # the 5-minute target (budget.wall_clock_s)
+TARGET_S = 420  # the 7-minute target (budget.wall_clock_s, BD-15)
 
 
 def configured(max_usd: float) -> Settings:
@@ -41,8 +42,9 @@ def configured(max_usd: float) -> Settings:
     config file (git-ignored) so the Brave key is resolved like any configured secret."""
     os.environ["APP_ENV"] = "local-quality"
     raw = yaml.safe_load((CONFIG_DIR / "local-quality.yaml").read_text(encoding="utf-8"))
+    deployed = yaml.safe_load((CONFIG_DIR / "deployed.yaml").read_text(encoding="utf-8"))
     raw["search"] = {"provider": "brave", "mode": "links_only", "api_key_env": "BRAVE_API_KEY",
-                     "rate_per_s": raw["search"]["rate_per_s"]}  # fmt: skip
+                     "rate_per_s": deployed["search"]["rate_per_s"]}  # fmt: skip
     raw["budget"]["cost_micro_usd"] = int(max_usd * 1e6)
     folder = RAW_DIR / "s6-config"
     folder.mkdir(parents=True, exist_ok=True)
@@ -90,6 +92,28 @@ async def report_only(run_id: str, label: str, max_usd: float) -> int:
         await container.close()
 
 
+TLS_CAUSES = {
+    "expired": "has expired",
+    "self_signed": "is self-signed",
+    "hostname_mismatch": "does not match the host name",
+    "issuer_missing": "chain is incomplete",
+    "untrusted": "could not be verified",
+    "issuer_url_refused": "issuer certificate URL was refused",
+}
+
+
+async def certificate_causes(relational: Any, run_id: str) -> dict[str, int]:
+    """Crawl decisions whose reason names a certificate cause (BD-15); a completed chain
+    leaves no trace here because the site was read."""
+    async with relational._engine.connect() as conn:
+        rows = await conn.execute(
+            text("SELECT reason FROM crawl_decision WHERE run_id = :r AND reason LIKE '%TLS%'"),
+            {"r": run_id},
+        )
+        reasons = [r.reason for r in rows]
+    return {k: n for k, words in TLS_CAUSES.items() if (n := sum(words in x for x in reasons))}
+
+
 async def report(container: Any, run_id: str, label: str, elapsed: float, max_usd: float) -> int:
     relational = container.relational
     run = await relational.runs.run_row(run_id)
@@ -97,6 +121,7 @@ async def report(container: Any, run_id: str, label: str, elapsed: float, max_us
     slots = await relational.runs.slot_results(run_id)
     events = await relational.runs.events_after(run_id, 0, 20_000)
     budget = summary.get("budget", {})
+    tls = await certificate_causes(relational, run_id)
     searches = int(budget.get("searches", 0))
     search_usd = searches * 0.005
     model_usd = float(summary.get("cost_usd", 0))
@@ -112,6 +137,9 @@ async def report(container: Any, run_id: str, label: str, elapsed: float, max_us
         f"- slots by status: {summary.get('slots')}",
         f"- claims by outcome: {summary.get('claims')}",
         f"- dropped by reason: {summary.get('dropped')}",
+        f"- certificate outcomes (crawl decisions by TLS cause, BD-15): {tls}",
+        f"- re-plan rounds used: {sum(s['replans_used'] for s in slots)} across"
+        f" {sum(1 for s in slots if s['replans_used'])} slots",
         f"- sources: {summary.get('sources')}",
         f"- budget used: searches {searches}, fetches {budget.get('fetches')}, robots"
         f" {budget.get('robots')}, model calls {budget.get('model_calls')}, tokens in"
@@ -132,7 +160,8 @@ async def report(container: Any, run_id: str, label: str, elapsed: float, max_us
     RESULTS.mkdir(exist_ok=True)
     (RESULTS / f"S-6-full-run-{label}.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     RAW_DIR.mkdir(exist_ok=True)
-    detail = {"run_id": run_id, "summary": summary, "slots": slots}
+    detail = {"run_id": run_id, "summary": summary, "slots": slots, "tls": tls,
+              "elapsed_s": round(elapsed), "status": run["status"]}  # fmt: skip
     (RAW_DIR / f"S-6-{label}-{run_id}.json").write_text(
         json.dumps(detail, indent=2, default=str), encoding="utf-8"
     )

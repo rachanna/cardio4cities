@@ -16,7 +16,7 @@ from typing import Literal, Protocol
 from urllib.parse import urljoin, urlsplit
 
 from app.domain.vocab import CrawlOutcome, ParseOutcome, SourceKind
-from app.ports.errors import FetchError
+from app.ports.errors import FetchError, TLSCertificateError
 from app.ports.fetch import FetchLimits, FetchPort, FetchResult
 from app.ports.parse import ParsedDocument, ParserPort
 from app.ports.robots import RobotsParser
@@ -42,6 +42,8 @@ from app.workflow.rules.robots import (
 
 MAX_REDIRECTS = 5  # LLD-2 §9.3
 RETRY_AFTER_MAX_S = 10.0  # LLD-2 §9.3: honour Retry-After up to 10 s, retry once
+MAX_ISSUER_URLS = 2  # AIA URLs tried per certificate (BD-15)
+CERTIFICATE_MAX_BYTES = 64 * 1024  # an issuer certificate, DER, PEM or PKCS#7 (BD-15)
 MIN_READABLE_CHARS = 200  # LLD-2 §9.4
 ALLOWED_TYPES = {
     "text/html": SourceKind.WEB_HTML,
@@ -56,7 +58,7 @@ GENERIC_TYPES = frozenset(
 )
 _PASSWORD_FIELD = re.compile(rb"<input[^>]+type\s*=\s*['\"]?password", re.IGNORECASE)
 
-FetchKind = Literal["fetch", "robots"]
+FetchKind = Literal["fetch", "robots", "certificate"]
 Outcome = Literal["fetched", "not_fetched", "http_error"]
 
 
@@ -114,6 +116,7 @@ class _Robots:
     availability: Availability
     status: int | None
     text: str = ""
+    detail: str = ""  # why robots.txt could not be reached, e.g. a certificate cause
 
 
 @dataclass(frozen=True)
@@ -141,6 +144,10 @@ class Collector:
         self._clock, self._sleep = clock, sleep
         self._robots: dict[str, _Robots] = {}  # per origin, for the run
         self._robots_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
+        # Certificates (BD-15): issuer certificates fetched from AIA URLs, and the chain
+        # completed for each host, so every later request to it verifies at once.
+        self._issuers: dict[str, bytes | str] = {}  # AIA URL -> certificate, or why not
+        self._chains: dict[str, tuple[bytes, ...]] = {}
         self._domain_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
         self._last_request: dict[str, float] = {}
         self._global = asyncio.Semaphore(params.concurrency)
@@ -186,10 +193,12 @@ class Collector:
                 ),
             )
         if robots.availability == "unreachable_network":
+            cause = f" ({robots.detail})" if robots.detail else ""
             return replace(
                 base,
                 outcome=CrawlOutcome.UNREACHABLE_NETWORK,
-                reason="robots.txt could not be reached: the whole site is treated as disallowed",
+                reason=f"robots.txt could not be reached{cause}: the whole site is treated"
+                " as disallowed",
             )
         if robots.availability == "unavailable":
             return replace(base, reason="no robots.txt (4xx): no restrictions apply")
@@ -238,8 +247,8 @@ class Collector:
         for _ in range(ROBOTS_MAX_REDIRECTS + 1):
             try:
                 result = await self._request(url, ip, limits, "robots", crawl_delay=None)
-            except FetchError:
-                return _Robots("unreachable_network", None)
+            except FetchError as exc:
+                return _Robots("unreachable_network", None, detail=str(exc))
             location = result.headers.get("location")
             if 300 <= result.status < 400 and location:
                 target = canonicalise(urljoin(url, location))
@@ -262,6 +271,64 @@ class Collector:
     async def _request(
         self, url: str, ip: str, limits: FetchLimits, kind: FetchKind, crawl_delay: float | None
     ) -> FetchResult:
+        """`_send`, completing a certificate chain the server left incomplete (BD-15): the
+        certificate's own issuer (AIA) URLs are gated like any request (public address,
+        pinned IP, budget, spacing), the issuer certificate is fetched, and the request is
+        sent again with it. Verification itself never relaxes: expired, self-signed and
+        mismatched certificates stay refused, with their cause in the decision."""
+        host = host_of(url)
+        try:
+            return await self._send(url, ip, limits, kind, crawl_delay, self._chains.get(host, ()))
+        except TLSCertificateError as exc:
+            if exc.cause != "issuer_missing" or host in self._chains or not exc.issuer_urls:
+                raise
+            found, why = await self._issuer_certificates(exc.issuer_urls)
+            if not found:
+                raise FetchError(f"{exc}; {why}") from exc
+            self._chains[host] = found
+            return await self._send(url, ip, limits, kind, crawl_delay, found)
+
+    async def _issuer_certificates(self, urls: tuple[str, ...]) -> tuple[tuple[bytes, ...], str]:
+        """The issuer certificates behind `urls`, or why none could be had."""
+        found: list[bytes] = []
+        why = "its issuer certificate could not be fetched"
+        for url in urls[:MAX_ISSUER_URLS]:
+            if url not in self._issuers:
+                self._issuers[url] = await self._issuer(url)
+            got = self._issuers[url]
+            if isinstance(got, bytes):
+                found.append(got)
+            else:
+                why = got
+        return tuple(found), why
+
+    async def _issuer(self, url: str) -> bytes | str:
+        checked = await self._address(url)
+        if checked.outcome is not CrawlOutcome.ALLOWED or checked.pinned_ip is None:
+            return f"its issuer certificate URL was refused ({checked.reason})"
+        limits = FetchLimits(
+            max_bytes=CERTIFICATE_MAX_BYTES,
+            connect_timeout_s=self._params.connect_timeout_s,
+            read_timeout_s=self._params.read_timeout_s,
+            user_agent=self._params.user_agent,
+        )
+        try:
+            result = await self._send(checked.url, checked.pinned_ip, limits, "certificate", None)
+        except FetchError as exc:
+            return f"its issuer certificate could not be fetched ({exc})"
+        if result.status != 200 or not result.content or result.truncated:
+            return f"its issuer certificate could not be fetched (HTTP {result.status})"
+        return result.content
+
+    async def _send(
+        self,
+        url: str,
+        ip: str,
+        limits: FetchLimits,
+        kind: FetchKind,
+        crawl_delay: float | None,
+        intermediates: tuple[bytes, ...] = (),
+    ) -> FetchResult:
         """One request, spaced per domain at max(crawl-delay, min interval), one at a
         time per domain, within the global concurrency limit."""
         domain = host_of(url)
@@ -273,7 +340,7 @@ class Collector:
                     await self._sleep(wait)
             await self._budget.reserve(kind)
             try:
-                return await self._fetcher.fetch(url, ip, limits)
+                return await self._fetcher.fetch(url, ip, limits, intermediates)
             finally:
                 self._last_request[domain] = self._clock()
 

@@ -14,10 +14,10 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Literal
 
-Kind = Literal["search", "fetch", "robots", "model"]
+Kind = Literal["search", "fetch", "robots", "certificate", "model"]
 Phase = Literal["normal", "winding_down", "exhausted"]
 WarningHook = Callable[[str, float, float], Awaitable[None]]  # counter, used, limit
-WOUND_DOWN = frozenset({"search", "fetch", "robots"})  # refused once the clock winds down
+WOUND_DOWN = frozenset({"search", "fetch", "robots", "certificate"})  # refused when winding down
 
 
 class BudgetExhaustedError(Exception):
@@ -43,6 +43,7 @@ class BudgetLedger:
     searches: int = 0
     fetches: int = 0
     robots: int = 0
+    certificates: int = 0  # issuer certificates fetched from AIA URLs (BD-15)
     model_calls: int = 0
     tokens_in: int = 0
     tokens_out: int = 0
@@ -73,6 +74,10 @@ class BudgetLedger:
 
     def _ratios(self) -> dict[str, float]:
         return {k: used / limit for k, (used, limit) in self._usage().items()}
+
+    def time_left_s(self) -> float:
+        """Seconds left on the run's wall clock: the cap on a model call (BD-15)."""
+        return max(self.limits.wall_clock_s - (self.clock() - self.started), 0.0)
 
     def phase(self) -> Phase:
         worst = max(self._ratios().values())
@@ -106,6 +111,8 @@ class BudgetLedger:
             self.fetches += 1
         elif kind == "robots":
             self.robots += 1  # counted, not limited: one per site per run
+        elif kind == "certificate":
+            self.certificates += 1  # counted, not limited: one per issuer URL per run
         else:
             for counter in ("tokens", "cost"):
                 if ratios.get(counter, 0) >= 1:
@@ -143,6 +150,7 @@ class BudgetLedger:
             "searches": self.searches,
             "fetches": self.fetches,
             "robots": self.robots,
+            "certificates": self.certificates,
             "model_calls": self.model_calls,
             "tokens_in": self.tokens_in,
             "tokens_out": self.tokens_out,
@@ -166,6 +174,7 @@ class BudgetLedger:
             count("fetches"),
             count("robots"),
         )
+        self.certificates = count("certificates")
         self.model_calls = count("model_calls")
         self.tokens_in, self.tokens_out = count("tokens_in"), count("tokens_out")
         self.cost_micro_usd = count("cost_micro_usd")

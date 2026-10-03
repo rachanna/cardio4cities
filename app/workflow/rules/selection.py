@@ -77,8 +77,11 @@ def select_urls(
     already_fetched: Iterable[str],
     table: PublisherTable,
     max_new: int,
+    later: Iterable[str] = (),
 ) -> list[Candidate]:
-    """`hits`: (url, search rank) from every search of this slot round."""
+    """`hits`: (url, search rank) from every search of this slot round. `later`: canonical
+    URLs the other-place rule ranks after the rest of their tier (BD-15)."""
+    down = set(later)
     fetched = set(already_fetched)
     best: dict[str, Candidate] = {}
     for url, rank in hits:
@@ -92,7 +95,8 @@ def select_urls(
         if canonical not in best or rank < best[canonical].search_rank:
             best[canonical] = candidate
     ranked = sorted(
-        best.values(), key=lambda c: (SOURCE_TIER[c.publisher_class], c.search_rank, c.url)
+        best.values(),
+        key=lambda c: (SOURCE_TIER[c.publisher_class], c.url in down, c.search_rank, c.url),
     )
     return ranked[:max_new]
 

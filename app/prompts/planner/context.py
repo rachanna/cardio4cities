@@ -1,5 +1,6 @@
 """Planner input (LLD-3 §3.1), assembled by code. v2 (BD-14) adds the country's generic
-government `site:` filters; a re-plan round lists each slot's earlier attempt."""
+government `site:` filters; a re-plan round lists each slot's earlier attempt. v3 (BD-15)
+gives the number of queries per slot from config."""
 
 from collections.abc import Sequence
 
@@ -13,6 +14,7 @@ def build_user_message(
     round_no: int = 0,
     previous: Sequence[str] = (),
     government_sites: Sequence[str] = (),
+    queries_per_slot: int = 2,
 ) -> str:
     place = ", ".join(p for p in (city.name, city.admin1_name, city.country_name) if p)
     lines = [
@@ -21,6 +23,7 @@ def build_user_message(
         f"city: {place}",
         f"languages: {', '.join(city.languages) or 'en'}",
         f"round: {round_no}",
+        f"queries_per_slot: {queries_per_slot}",
         f"government_sites: {', '.join(government_sites) or 'none'}",
         "slots:",
     ]

@@ -420,9 +420,9 @@ Checked against RFC 9309 when implementing (BD-07): §2.3.1.3 (4xx: crawlers MAY
 
 | Type | Parser | Notes |
 |---|---|---|
-| HTML | Main-content extraction (trafilatura default `[verify]`) | Tables kept as text tables with headers |
+| HTML | Main-content extraction (trafilatura default `[verify]`) | Tables kept as text tables with headers. Decoded by `domain.charset` (BD-21): byte order mark, then the server's `charset`, then `<meta>`, then UTF-8 if valid, then windows-1252. `text/plain` the same, without `<meta>` |
 | PDF | Text with page markers; table extraction (pdfplumber default `[verify]`) only on pages whose text contains target keywords for the slot | Page number kept in offsets |
-| Failure or under 200 characters of text | `parse_outcome = unreadable`, event `source_unreadable` | |
+| Failure or under 200 characters of text | `parse_outcome = unreadable`, event `source_unreadable` | A parser never raises: a malformed or encrypted PDF, or HTML the libraries cannot read, gives empty text. The PDF `[page N]` markers do not count toward the 200 characters, so a scanned PDF is unreadable (BD-21) |
 
 `parsed_text` is what offsets refer to. The snapshot holds the raw bytes.
 
@@ -462,6 +462,7 @@ The stream endpoint always reads from Postgres after `Last-Event-ID`, then follo
 | `fact_written` | `claim_id`, `kind`, `graph_edge` (bool) |
 | `slot_status` | `slot_id`, `round`, `status`, `flags`, `gap_note` |
 | `budget_warning` | `counter`, `used`, `limit` |
+| `step_failed` | `slot_id`, `round`, `stage` (`search`, `crawl_gate`, `fetch_parse`, `index_chunks`, `extract`, `match_quotes`, `verify`, `check`, or a node name when the whole node failed), `item` (query, URL, source and window, or claim ID; null for a whole node), `error` (the type, plus the message only for our own port errors, which never quote fetched text). BD-21 |
 | `run_finished` | `status`, `summary` |
 
 ---
@@ -620,11 +621,12 @@ With the admin parameter `graph=off`, retrieval for `relationship` and `change_o
 
 | Situation | Handling |
 |---|---|
-| Search or fetch network error | One retry after 1 s; then record the outcome |
+| Search or fetch network error | One retry after 1 s; then record the outcome. Each search attempt reserves budget. A search that failed twice is not stored as a query tried (a re-plan may try it again) and emits `step_failed`. A fetch is retried only when the connection failed (`FetchError.retryable`): not after a timeout, which already used its whole time, nor for a certificate, a refused wait or an undecodable body (BD-21). robots.txt is retried the same way |
 | Model 429 or 5xx | Up to 2 retries with backoff (1 s, 3 s) |
 | Model output fails schema validation | One repair attempt (the validation error is sent back); extractor then escalates to its stronger model once; then the item is skipped with an event |
 | Checker fails twice on the primary model | Exactly two calls on the primary (a failed attempt is not repaired; it counts), then the same-family fallback model, verdict marked `fallback_used = true` (R-82, BD-18). With no checker available the claim stays `extracted` and never becomes a fact |
-| Exception inside a slot subgraph | Caught in `slot_done`; `SlotReport.error` set; the slot still gets a status from data so far |
+| Exception inside a slot subgraph | Caught per item first (BD-21): one URL in `crawl_gate` or `fetch_parse`, one window in `extract`, one draft in `match_quotes` (labels that cannot hold, such as an inverted age band, drop the claim as `claim_dropped` / `invalid_labels`), one claim in `verify` (a claim already supported before the failure is kept). Each emits `step_failed` and the loop goes on. A failure of a whole node is caught by the node guard: `SlotReport.error` set, `step_failed` with no item, and the slot still gets a status from data so far. The run summary counts `step_failed` events by stage (`failed_steps`). Every vendor error is mapped to a port error in its adapter (model HTTP errors of any status, Qdrant upserts; a host name IDNA cannot encode does not resolve) |
+| Two candidates redirect to one page | One source per canonical URL per run: the second insert is absorbed and the candidate reuses the stored source (`sources.source_at`); the fetch cache also remembers the final URL, and a resumed run seeds it with both URLs (BD-21). A source is shared with waiting slots as soon as it is stored; a failure to index its chunks in Qdrant is a `step_failed`, and extraction still reads its text from Postgres |
 | Postgres unavailable | Run `failed`; the only fatal condition |
 | Graphiti write fails | Claim stays supported in Postgres; retried once at `brief_ready`; if still failing, the graph-only demo question will show it, and the run summary records the count. The retry brings the graph in line with Postgres (BD-19): missing edges for supported, contested and superseded claims (a superseded claim's edge is written already ended on its stored `relation.superseded_on`, never current), edges of superseded claims still current, and contested marks that did not reach the graph |
 | TLS certificate fails verification (BD-15) | Verification is never relaxed. The cause is named in the crawl decision (expired, self-signed, host name mismatch, issuer missing). When the server left out its intermediate, the certificate's own issuer (AIA) URLs are gated like any request (public address, pinned IP, budget kind `certificate`, spacing) and the issuer certificate is fetched once per run; the chain is then verified in code against the trusted roots with fetched certificates as untrusted intermediates, and only that verified chain's intermediates are used for the request (BD-16). Self-issued and non-CA certificates are never added; partial chains stay refused |

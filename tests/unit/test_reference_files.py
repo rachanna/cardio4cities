@@ -1,5 +1,6 @@
 """Reference-file parsing (no database). Gazetteer lines are fictional (Halden Bay, Norvania)."""
 
+import asyncio
 import shutil
 from pathlib import Path
 
@@ -118,12 +119,30 @@ def test_invalid_level_reported_as_reference_error(tmp_path: Path) -> None:
         read_slots(directory)
 
 
-def test_sources_with_placeholders_are_pending_not_ready() -> None:
+def test_shipped_registry_is_fully_confirmed() -> None:
+    """Spike S-2 confirmed every code (BD-13): nothing is pending."""
     sources = read_sources(REFERENCE_DIR, {i.code for i in read_indicators()})
 
+    assert [s.provider for s in sources.ready] == ["who_gho", "world_bank"]
+    assert sources.pending == {}
+    assert sources.ready[1].config["indicators"]["POP_TOTAL"]["code"] == "SP.POP.TOTL"
+
+
+def _with_placeholder(tmp_path: Path) -> Path:
+    """A copy of the reference files with one WHO code turned back into a placeholder."""
+    for name in ("slots.yaml", "indicators.yaml"):
+        shutil.copy(REFERENCE_DIR / name, tmp_path / name)
+    shipped = yaml.safe_load((REFERENCE_DIR / "sources.yaml").read_text(encoding="utf-8"))
+    shipped[0]["indicators"]["HTN_PREV"]["code"] = "<confirmed by a spike>"
+    (tmp_path / "sources.yaml").write_text(yaml.safe_dump(shipped), encoding="utf-8")
+    return tmp_path
+
+
+def test_sources_with_placeholders_are_pending_not_ready(tmp_path: Path) -> None:
+    sources = read_sources(_with_placeholder(tmp_path), {i.code for i in read_indicators()})
+
     assert [s.provider for s in sources.ready] == ["world_bank"]
-    assert set(sources.pending) == {"who_gho", "dhs"}
-    assert sources.ready[0].config["indicators"]["POP_TOTAL"]["code"] == "SP.POP.TOTL"
+    assert sources.pending == {"who_gho": ["HTN_PREV"]}
 
 
 def test_source_with_unknown_indicator_refused() -> None:
@@ -132,9 +151,9 @@ def test_source_with_unknown_indicator_refused() -> None:
 
 
 def test_strict_load_refuses_placeholders_before_touching_the_database(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.delenv("DATABASE_URL", raising=False)
 
-    assert load_yaml_reference.main(["--strict"]) == 1
-    assert "placeholder indicator codes" in capsys.readouterr().err
+    with pytest.raises(ReferenceError, match="placeholder indicator codes"):
+        asyncio.run(load_yaml_reference.load(_with_placeholder(tmp_path), strict=True))

@@ -42,3 +42,10 @@ Place names, coordinates, populations, first-level regions and country languages
 [Creative Commons Attribution 4.0](https://creativecommons.org/licenses/by/4.0/).
 The data is used to identify the city a user names; it holds no health information.
 Country languages are reduced to ISO 639-1 codes. See `reference/geonames/README.md`.
+
+National health figures found before any web search (Wave 0) come from the
+[WHO Global Health Observatory](https://www.who.int/data/gho), reused for non-commercial
+purposes with acknowledgement of WHO as the source, and population from the
+[World Bank World Development Indicators](https://data.worldbank.org/), licensed under
+[Creative Commons Attribution 4.0](https://creativecommons.org/licenses/by/4.0/).
+Every such figure names its source in the evidence panel.

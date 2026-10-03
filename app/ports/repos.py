@@ -15,6 +15,7 @@ from app.domain.models import (
     Relation,
     SlotDef,
     Source,
+    SourceProvider,
     Statistic,
     Verdict,
 )
@@ -34,6 +35,10 @@ class ReferenceRepo(Protocol):
     async def search_places(self, query: str, limit: int = 5) -> list[dict[str, Any]]: ...
 
     async def place_identity(self, gazetteer_id: str) -> dict[str, Any] | None: ...
+
+    async def sources(self) -> list[SourceProvider]:
+        """The Wave 0 registry (LLD-1 §3.4)."""
+        ...
 
     async def places_named(self, names: list[str], country_iso2: str) -> list[dict[str, Any]]:
         """Places in the country whose name, ASCII name or an alternate name equals one of
@@ -55,6 +60,10 @@ class SourceRepo(Protocol):
         ...
 
     async def source_for_extraction(self, source_id: str) -> dict[str, object] | None: ...
+
+    async def set_parsed_text(self, source_id: str, parsed_text: str) -> None:
+        """Wave 0: the canonical line of the record used (LLD-2 §13)."""
+        ...
 
 
 class RunRepo(Protocol):

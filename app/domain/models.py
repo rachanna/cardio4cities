@@ -66,6 +66,41 @@ class SlotDef(BaseModel):
         return self
 
 
+class SourceIndicator(BaseModel):
+    """One registry indicator (LLD-1 §3.4, BD-13): the provider's code and the labels its
+    records carry. `slot` None: stored as a source for sanity checks, never a claim."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    code: str
+    slot: str | None = None
+    label: str = ""  # plain words for the statement, e.g. "Hypertension among adults aged 30-79"
+    measure: MeasureType | None = None
+    age: tuple[int, int | None] | None = None  # the band the record describes
+    age_group: str | None = None  # the provider's age-dimension code, when it has one
+    sex: str = ""  # the provider's code for both sexes or the total
+    case_definition: str | None = None
+    denominator: str | None = None
+    unit: str | None = None
+
+
+class SourceProvider(BaseModel):
+    """One official data provider for Wave 0 (LLD-1 §3.4). Keyed by provider, never by city."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    provider: str
+    adapter: str
+    publisher_class: PublisherClass
+    publisher_name: str
+    attribution: str
+    geography: GeographyLevel
+    representativeness: Representativeness | None = None
+    method: Method = Method.NOT_STATED
+    note: str | None = None  # e.g. "age-standardised WHO estimate"
+    indicators: dict[str, SourceIndicator]
+
+
 class IndicatorDef(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 

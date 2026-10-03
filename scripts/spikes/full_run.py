@@ -19,15 +19,15 @@ import os
 import sys
 import time
 from collections import Counter
-from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+import yaml
 from dotenv import load_dotenv
 
 from app.container import build_container
 from app.main import check_graph_marker
-from app.settings import Settings, load_settings
+from app.settings import CONFIG_DIR, Settings, load_settings
 from app.workflow.runner import RunManager
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -37,15 +37,17 @@ TARGET_S = 300  # the 5-minute target (budget.wall_clock_s)
 
 
 def configured(max_usd: float) -> Settings:
-    """`local-quality` models and stores, Brave search, the model spend cap."""
+    """`local-quality` models and stores, Brave search, the model spend cap. Written as a
+    config file (git-ignored) so the Brave key is resolved like any configured secret."""
     os.environ["APP_ENV"] = "local-quality"
-    settings = load_settings()
-    config = settings.config
-    search = config.search.model_copy(
-        update={"provider": "brave", "api_key_env": "BRAVE_API_KEY", "base_url": None}
-    )
-    budget = config.budget.model_copy(update={"cost_micro_usd": int(max_usd * 1e6)})
-    return replace(settings, config=config.model_copy(update={"search": search, "budget": budget}))
+    raw = yaml.safe_load((CONFIG_DIR / "local-quality.yaml").read_text(encoding="utf-8"))
+    raw["search"] = {"provider": "brave", "mode": "links_only", "api_key_env": "BRAVE_API_KEY",
+                     "rate_per_s": raw["search"]["rate_per_s"]}  # fmt: skip
+    raw["budget"]["cost_micro_usd"] = int(max_usd * 1e6)
+    folder = RAW_DIR / "s6-config"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "local-quality.yaml").write_text(yaml.safe_dump(raw), encoding="utf-8")
+    return load_settings(config_dir=folder)
 
 
 async def run(city: str, pick: int, label: str, max_usd: float) -> int:

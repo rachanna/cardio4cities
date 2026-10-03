@@ -16,6 +16,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.ports.checkpoint import CheckpointPort
 from app.ports.embeddings import EmbeddingsPort
 from app.ports.fetch import FetchPort
 from app.ports.graph import GraphPort
@@ -31,11 +32,14 @@ from app.ports.structured import StructuredDataPort
 from app.ports.tracing import TracingPort
 from app.ports.vector import VectorPort
 from app.settings import Settings
+from app.workflow.state import CHECKPOINT_TYPES
 
 # port -> provider -> "module:factory"
 AdapterRegistry = Mapping[str, Mapping[str, str]]
 ADAPTERS: AdapterRegistry = {
     "relational": {"postgres": "app.adapters.postgres.relational:make"},
+    # workflow checkpoints in schema lg (D2-5, BD-14); the factory takes the state types
+    "checkpointer": {"postgres": "app.adapters.postgres.checkpointer:make"},
     # health probes by store provider (LLD-4 §7); full adapters arrive in D2-2 and D2-4
     "probe:vector": {"qdrant": "app.adapters.vector.qdrant_probe:make"},
     "probe:graph": {"graphiti_neo4j": "app.adapters.graph.neo4j_probe:make"},
@@ -82,6 +86,7 @@ class Container:
     vector: VectorPort | None = None
     graph: GraphPort | None = None
     snapshots: SnapshotPort | None = None
+    checkpointer: CheckpointPort | None = None
     renderer: RendererPort | None = None
     tracing: list[TracingPort] = field(default_factory=list)
     probes: list[HealthProbe] = field(default_factory=list)
@@ -89,7 +94,11 @@ class Container:
 
     async def close(self) -> None:
         """Close every adapter that holds connections."""
-        for adapter in (*self.probes, self.relational, self.vector, self.snapshots, self.graph):
+        adapters = (
+            *self.probes, self.relational, self.vector, self.snapshots, self.graph,
+            self.checkpointer,
+        )  # fmt: skip
+        for adapter in adapters:
             close = getattr(adapter, "close", None)
             if close is not None:
                 await close()
@@ -110,6 +119,7 @@ def build_container(settings: Settings, registry: AdapterRegistry | None = None)
         return factory(settings, *deps)
 
     container.relational = build("relational", "postgres")  # fixed choice (CON-04)
+    container.checkpointer = build("checkpointer", "postgres", CHECKPOINT_TYPES)
     for port, provider in (
         ("probe:vector", config.vector.provider),
         ("probe:graph", config.graph.provider),

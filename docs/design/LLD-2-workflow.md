@@ -165,7 +165,7 @@ If the planner fails validation twice, the slot gets two template queries: `"{sl
 
 **Match:**
 
-1. `nq = normalise(quote)`; reject if fewer than 6 or more than 60 words `[tunable]` (`quote.min_words`, `quote.max_words`, BD-06).
+1. `nq = normalise(quote)`; reject if fewer than 3 or more than 60 words `[tunable]` (`quote.min_words_unique`, `quote.max_words`). A quote of 3 to 5 words (below `quote.min_words` = 6) is accepted only if it occurs exactly once; otherwise `dropped` with reason `quote_not_unique`, because taking the first of several occurrences could anchor a value to the wrong table row (BD-08). D2-3 checks that uniqueness within the extraction window the model was shown.
 2. Find all occurrences of `nq` in `normalise(parsed_text)`, **case-sensitive, exact**.
 3. Zero occurrences: status `dropped`, event `claim_dropped` with reason `quote_not_found`.
 4. One or more: take the first; map back to original offsets for `span_start` and `span_end`.
@@ -358,9 +358,9 @@ For each candidate URL, in order; the first rule that applies decides:
 | 1 | Canonicalise: lower-case scheme and host, drop fragment, drop `utm_*` and similar tracking parameters | — |
 | 2 | Scheme `http` or `https`; port 80 or 443 `[tunable]` | `blocked_private_address` (reason "unsupported scheme or port") |
 | 3 | Resolve the host; every resolved address must be public (not private, loopback, link-local, multicast, reserved, or a cloud metadata address) | `blocked_private_address` |
-| 4 | Fetch `robots.txt` for the origin (cached per run): timeout 5 s, max 500 KiB, up to 5 redirects | see 9.2 |
+| 4 | Fetch `robots.txt` for the origin (cached per run): timeout `fetch.robots_timeout_s` (15 s; was 5 s, raised after spike S-5, BD-07), max 500 KiB, up to 5 redirects, each redirect target's address checked | see 9.2 |
 | 5 | Apply the robots rules for user agent `CARDIO4CitiesResearchBot`, else `*` | `blocked_robots` with the matching line in `rule` |
-| 6 | Apply `Content-Usage` rules in the matched group: `ai=n` or `tdm=n` for the path | `blocked_content_usage` |
+| 6 | Apply `Content-Usage` rules in the matched group, longest path wins: block on `ai-use=n` (draft-ietf-aipref-vocab-08), the earlier `ai=n` / `tdm=n`, or Cloudflare's `Content-Signal: ai-input=no`; `train-ai` and `search` opt-outs are recorded, not blocking (BD-07) | `blocked_content_usage` |
 | 7 | Allowed | `allowed`, with crawl-delay recorded for the fetcher |
 
 ### 9.2 robots.txt status handling (RFC 9309)
@@ -372,7 +372,7 @@ For each candidate URL, in order; the first rule that applies decides:
 | 4xx (including 401, 403, 404) | "Unavailable": no restrictions apply |
 | 5xx, timeout or network error | "Unreachable": treat the whole site as disallowed; outcome `unreachable_server_error` or `unreachable_network`, so the slot reports it as unreachable, not blocked |
 
-`[check exact RFC 9309 wording when implementing]`. Parsing uses an RFC 9309-compliant parser (Protego is the default choice `[verify]`); `Content-Usage` lines are parsed by our own small parser because general parsers ignore them.
+Checked against RFC 9309 when implementing (BD-07): §2.3.1.3 (4xx: crawlers MAY access any resources), §2.3.1.4 (5xx or unreachable: MUST assume complete disallow), §2.3.1.2 (follow at least five redirects), §2.5 (parse at least 500 KiB). Parsing uses an RFC 9309-compliant parser (Protego is the default choice `[verify]`); `Content-Usage` lines are parsed by our own small parser because general parsers ignore them.
 
 ### 9.3 Fetch rules
 

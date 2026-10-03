@@ -273,7 +273,9 @@ renderer:   { provider: weasyprint }
 tracing:    { providers: [events, langsmith], langsmith_api_key_env: LANGSMITH_API_KEY }
 budget:     { wall_clock_s: 300, searches: 48, fetches: 60, tokens: 0, cost_micro_usd: 0, wind_down_at: 0.85 }
 limits:     { runs_per_day: 20, ask_per_min: 20, resolve_per_min: 30 }
-fetch:      { concurrency: 6, min_interval_s: 1, max_bytes: 10485760, connect_timeout_s: 5, read_timeout_s: 20 }
+fetch:      { concurrency: 6, min_interval_s: 1, max_bytes: 10485760, connect_timeout_s: 5, read_timeout_s: 20,
+              allowed_ports: [80, 443], robots_timeout_s: 15 }   # BD-07
+chunk:      { prose_tokens: 400, overlap_tokens: 60, table_max_tokens: 1200 }   # BD-07
 verify:     { max_claims_per_slot: 5 }
 select:     { max_new_urls_per_slot_round: 4 }
 replan:     { max_rounds: 2, max_rounds_wider_geo: 1 }
@@ -398,9 +400,18 @@ class SearchPort(Protocol):
     async def search(self, query: str, lang: str, limit: int = 10) -> list[SearchHit]: ...
     # SearchHit: url, title, snippet, rank. Adapters MUST disable provider content retrieval.
 
-class FetchPort(Protocol):
+class FetchPort(Protocol):                     # reshaped by BD-07
+    async def resolve(self, host: str) -> list[str]: ...
     async def fetch(self, url: str, pinned_ip: str, limits: FetchLimits) -> FetchResult: ...
-    async def fetch_robots(self, origin: str) -> RobotsResult: ...
+    # One request, no redirects followed: the collector re-gates every hop (AT-23).
+    # robots.txt is fetched by the collector through the same port.
+
+class RobotsParser(Protocol):                  # BD-07: wraps Protego; Content-Usage parsed by our code
+    def parse(self, text: str) -> RobotsRules: ...
+
+class ParserPort(Protocol):                    # BD-07: trafilatura (HTML), pdfplumber (PDF)
+    def parse_html(self, content: bytes, url: str) -> ParsedDocument: ...
+    def parse_pdf(self, content: bytes, table_keywords: list[str]) -> ParsedDocument: ...
 
 class StructuredDataPort(Protocol):
     provider: str

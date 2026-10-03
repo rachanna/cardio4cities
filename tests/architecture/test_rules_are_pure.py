@@ -13,6 +13,7 @@ FORBIDDEN_MODULES = {
     "time", "random", "secrets", "shutil", "tempfile", "logging", "requests", "httpx",
 }  # fmt: skip
 FORBIDDEN_CALLS = {"open", "print", "input", "today", "now", "utcnow"}
+ALLOWED_SUBMODULES = {"urllib.parse"}  # string handling only, no I/O
 
 
 def _pure_files() -> list[Path]:
@@ -25,12 +26,16 @@ def test_module_is_pure(path: Path) -> None:
     problems = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
-            names = [a.name.split(".")[0] for a in node.names]
+            names = [a.name for a in node.names]
         elif isinstance(node, ast.ImportFrom) and node.module:
-            names = [node.module.split(".")[0]]
+            names = [node.module]
         else:
             names = []
-        problems += [f"imports {n}" for n in names if n in FORBIDDEN_MODULES]
+        problems += [
+            f"imports {n}"
+            for n in names
+            if n.split(".")[0] in FORBIDDEN_MODULES and n not in ALLOWED_SUBMODULES
+        ]
         if isinstance(node, ast.Call):
             func = node.func
             name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")

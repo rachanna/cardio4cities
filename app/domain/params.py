@@ -10,6 +10,7 @@ from decimal import Decimal
 class QuoteParams:
     min_words: int  # quote.min_words (LLD-2 §4.1)
     max_words: int  # quote.max_words
+    min_words_unique: int  # quote.min_words_unique: shorter quotes must occur once (BD-08)
 
 
 @dataclass(frozen=True)

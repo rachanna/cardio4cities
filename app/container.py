@@ -21,8 +21,10 @@ from app.ports.fetch import FetchPort
 from app.ports.graph import GraphPort
 from app.ports.health import HealthProbe
 from app.ports.llm import LLMPort
+from app.ports.parse import ParserPort
 from app.ports.renderer import RendererPort
 from app.ports.repos import RelationalPort
+from app.ports.robots import RobotsParser
 from app.ports.search import SearchPort
 from app.ports.snapshots import SnapshotPort
 from app.ports.structured import StructuredDataPort
@@ -37,6 +39,20 @@ ADAPTERS: AdapterRegistry = {
     # health probes by store provider (LLD-4 §7); full adapters arrive in D2-2 and D2-4
     "probe:vector": {"qdrant": "app.adapters.vector.qdrant_probe:make"},
     "probe:graph": {"graphiti_neo4j": "app.adapters.graph.neo4j_probe:make"},
+    # collection (D2-2)
+    "fetch": {"httpx_pinned": "app.adapters.fetch.httpx_pinned:make"},
+    "robots": {"protego": "app.adapters.fetch.robots_protego:make"},
+    "parser": {"trafilatura_pdfplumber": "app.adapters.parse.documents:make"},
+    "search": {
+        "searxng": "app.adapters.search.searxng:make",
+        "brave": "app.adapters.search.brave:make",
+    },
+    "embeddings": {
+        "openai": "app.adapters.embeddings.openai:make",
+        "sentence_transformers": "app.adapters.embeddings.sentence_transformers:make",
+    },
+    "vector": {"qdrant": "app.adapters.vector.qdrant:make"},
+    "snapshots": {"postgres": "app.adapters.snapshots.postgres:make"},
 }
 
 
@@ -48,6 +64,8 @@ class Container:
     embeddings: EmbeddingsPort | None = None
     search: SearchPort | None = None
     fetch: FetchPort | None = None
+    robots: RobotsParser | None = None
+    parser: ParserPort | None = None
     structured: dict[str, StructuredDataPort] = field(default_factory=dict)
     vector: VectorPort | None = None
     graph: GraphPort | None = None
@@ -58,10 +76,11 @@ class Container:
     missing: list[str] = field(default_factory=list)  # "port:provider" with no adapter yet
 
     async def close(self) -> None:
-        for probe in self.probes:
-            await probe.close()
-        if self.relational is not None:
-            await self.relational.close()
+        """Close every adapter that holds connections."""
+        for adapter in (*self.probes, self.relational, self.vector, self.snapshots):
+            close = getattr(adapter, "close", None)
+            if close is not None:
+                await close()
 
 
 def build_container(settings: Settings, registry: AdapterRegistry | None = None) -> Container:
@@ -96,6 +115,8 @@ def build_container(settings: Settings, registry: AdapterRegistry | None = None)
     container.embeddings = build("embeddings", config.embeddings.provider)
     container.search = build("search", config.search.provider)
     container.fetch = build("fetch", "httpx_pinned")
+    container.robots = build("robots", "protego")
+    container.parser = build("parser", "trafilatura_pdfplumber")
     container.vector = build("vector", config.vector.provider)
     container.graph = build("graph", config.graph.provider)
     container.snapshots = build("snapshots", config.snapshots.provider)

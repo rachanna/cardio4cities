@@ -22,7 +22,7 @@ _TYPOGRAPHIC = str.maketrans(
 _REMOVED = frozenset("­​‌‍⁠﻿")  # soft hyphen, zero-width
 _HORIZONTAL_SPACE = frozenset(" \t")
 
-DropReason = Literal["quote_length", "quote_not_found", "value_not_in_quote"]
+DropReason = Literal["quote_length", "quote_not_found", "quote_not_unique", "value_not_in_quote"]
 
 
 @dataclass(frozen=True)
@@ -117,15 +117,20 @@ def match_quote(
     value_as_written: str | None = None,
 ) -> QuoteMatch | QuoteDrop:
     """Locate `quote` in `parsed_text`. For statistic claims pass `value_as_written`:
-    the value must occur inside the matched quote (WD-03)."""
+    the value must occur inside the matched quote (WD-03). Quotes of `min_words_unique` to
+    `min_words - 1` words must occur exactly once in the source (BD-08)."""
     nq = normalise_text(quote)
     words = len(nq.split(" ")) if nq else 0
-    if not params.min_words <= words <= params.max_words:
+    if not params.min_words_unique <= words <= params.max_words:
         return QuoteDrop("quote_length")
     source = normalise(parsed_text)
     at = source.text.find(nq)
     if at < 0:
         return QuoteDrop("quote_not_found")
+    # A short quote (for example a table row) is accepted only when it occurs exactly once:
+    # taking the first of several occurrences could anchor a value to the wrong row (BD-08).
+    if words < params.min_words and source.text.find(nq, at + 1) >= 0:
+        return QuoteDrop("quote_not_unique")
     if value_as_written is not None and normalise_text(value_as_written) not in nq:
         return QuoteDrop("value_not_in_quote")
     return QuoteMatch(span_start=source.starts[at], span_end=source.ends[at + len(nq) - 1])

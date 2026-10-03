@@ -1,0 +1,28 @@
+# Publisher classes and deny list for source selection (LLD-2 §14). Generic: names no
+# city and no country's sites. Patterns match a domain or any of its subdomains;
+# `suffix` patterns match a domain's ending label sequence (e.g. gov.xx).
+# Classes are tried in this order; an .org domain not matched is `ngo`; anything else `other`.
+deny:  # social media, Q&A sites, generic aggregators: never fetched
+  domains: [facebook.com, instagram.com, x.com, twitter.com, tiktok.com, linkedin.com,
+            pinterest.com, reddit.com, quora.com, youtube.com, medium.com, scribd.com,
+            slideshare.net, answers.com, wikihow.com]
+classes:
+  government:
+    suffixes: [gov, mil]
+    second_level: [gov, gob, gouv, go, govt, gv, nic, gub]   # e.g. gov.xx, gob.xx, go.xx
+  multilateral:
+    domains: [who.int, worldbank.org, un.org, unicef.org, dhsprogram.com, paho.org,
+              undp.org, unfpa.org, ilo.org, oecd.org, iarc.who.int, ghdx.healthdata.org,
+              data.worldbank.org, ncdrisc.org, ncdalliance.org]
+  academic:
+    suffixes: [edu]
+    second_level: [ac, edu]
+    domains: [ncbi.nlm.nih.gov, pubmed.ncbi.nlm.nih.gov, europepmc.org, thelancet.com,
+              bmj.com, nature.com, sciencedirect.com, springer.com, wiley.com,
+              plos.org, frontiersin.org, mdpi.com, biomedcentral.com, ahajournals.org,
+              jamanetwork.com, nejm.org, tandfonline.com, sagepub.com, oup.com,
+              cambridge.org, medrxiv.org, researchgate.net]
+  news:
+    domains: [reuters.com, apnews.com, bbc.com, bbc.co.uk, theguardian.com, aljazeera.com,
+              dw.com, france24.com, nytimes.com, washingtonpost.com, ft.com,
+              economist.com, bloomberg.com, cnn.com, npr.org, allafrica.com]

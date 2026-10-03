@@ -1,4 +1,11 @@
-from typing import Literal, Protocol
+"""Fetching (LLD-2 §9, LLD-4 §8; reshaped by BD-07).
+
+The fetcher makes exactly one request to an address the crawl gate already
+checked and never follows redirects: the collector re-gates every hop, so a
+redirect can never reach an address the gate has not approved (AT-23).
+"""
+
+from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict
 
@@ -9,37 +16,26 @@ class FetchLimits(BaseModel):
     max_bytes: int
     connect_timeout_s: float
     read_timeout_s: float
-    max_redirects: int
     user_agent: str
 
 
 class FetchResult(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    final_url: str
+    url: str
     status: int
-    headers: dict[str, str]
-    content: bytes
+    headers: dict[str, str]  # lower-cased names
+    content: bytes  # empty when the body was discarded or the size limit was hit
     content_type: str | None
-    redirect_chain: list[str]
-    truncated: bool
-
-
-RobotsOutcome = Literal["ok", "unavailable", "unreachable_network", "unreachable_server_error"]
-
-
-class RobotsResult(BaseModel):
-    """robots.txt as fetched, with RFC 9309 status handling (LLD-2 §9.2)."""
-
-    model_config = ConfigDict(frozen=True)
-
-    outcome: RobotsOutcome
-    status: int | None
-    body: str
-    final_url: str | None
+    truncated: bool  # the body exceeded max_bytes; nothing was kept
 
 
 class FetchPort(Protocol):
-    async def fetch(self, url: str, pinned_ip: str, limits: FetchLimits) -> FetchResult: ...
+    async def resolve(self, host: str) -> list[str]:
+        """Every address the host resolves to; empty when it does not resolve."""
+        ...
 
-    async def fetch_robots(self, origin: str) -> RobotsResult: ...
+    async def fetch(self, url: str, pinned_ip: str, limits: FetchLimits) -> FetchResult:
+        """One request, dialled to `pinned_ip`; the hostname is kept for Host, SNI and
+        certificate checks. Raises FetchError on network failure or timeout."""
+        ...

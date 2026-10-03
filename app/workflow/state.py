@@ -83,6 +83,7 @@ class SlotState(TypedDict, total=False):
     claim_ids: Annotated[list[str], operator.add]
     matched_claim_ids: list[str]
     supported_claim_ids: list[str]
+    ended: dict[str, str]  # claim ID -> ISO date its edge ends (consistency -> write)
     error: str | None
     slot_reports: Annotated[dict[str, SlotReport], merge_dicts]  # the only output
 

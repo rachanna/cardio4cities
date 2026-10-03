@@ -13,6 +13,7 @@ from app.domain.params import (
     VerifyParams,
 )
 from app.ports.embeddings import EmbeddingsPort
+from app.ports.graph import GraphPort
 from app.ports.llm import Effort, LLMPort
 from app.ports.repos import RelationalPort
 from app.ports.search import SearchPort
@@ -20,6 +21,7 @@ from app.ports.snapshots import SnapshotPort
 from app.ports.vector import VectorPort
 from app.workflow.budget import BudgetLedger
 from app.workflow.collection import Collector
+from app.workflow.entities import EntityResolver
 from app.workflow.events import EventEmitter
 from app.workflow.rules.chunking import ChunkParams
 from app.workflow.rules.selection import PublisherTable
@@ -61,6 +63,8 @@ class RunDeps:
     collector: Collector
     embeddings: EmbeddingsPort
     vector: VectorPort
+    graph: GraphPort
+    entities: EntityResolver
     snapshots: SnapshotPort
     ledger: BudgetLedger
     events: EventEmitter
@@ -81,3 +85,8 @@ class RunDeps:
     @property
     def collection(self) -> str:
         return f"source_chunks__{self.embeddings.key}"
+
+    @property
+    def claim_collection(self) -> str:
+        """Confirmed claims for the semantic route (CHG-01, LLD-5 §4.2)."""
+        return f"claim_index__{self.embeddings.key}"

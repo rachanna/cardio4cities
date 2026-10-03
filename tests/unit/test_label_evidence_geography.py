@@ -19,6 +19,7 @@ from app.domain.vocab import (
 from app.prompts.checker.context import ages, build_user_message, population
 from app.workflow.rules.geography_fit import (
     PlaceCandidate,
+    city_named,
     distance_km,
     geography_fit,
     lookup_names,
@@ -124,7 +125,6 @@ def test_distance_is_great_circle_kilometres() -> None:
     ("level", "name", "candidates", "relation"),
     [
         (L.CITY_WIDE, "Halden Bay", (SELF,), R.CITY),
-        (L.SUB_CITY_AREA, "Halden Bay's harbour wards", (), R.CITY),
         (L.METRO_REGION, "Halden Bay Metropolitan Region", (SELF,), R.CONTAINS_CITY),
         (L.DISTRICT, "Halden Bay district", (SELF,), R.CONTAINS_CITY),
         (L.STATE_PROVINCE, "West Coast", (), R.CONTAINS_CITY),
@@ -134,7 +134,6 @@ def test_distance_is_great_circle_kilometres() -> None:
         (L.GLOBAL, "world", (), R.CONTAINS_CITY),
         (L.CITY_WIDE, "Kestrel Point", (KESTREL,), R.NEARBY),
         (L.DISTRICT, "Port Ostra district", (OSTRA,), R.ELSEWHERE),
-        (L.SUB_CITY_AREA, "Kestrel Point", (KESTREL,), R.NEARBY),  # never the city itself
         (L.CITY_WIDE, "New Halden Bay", (SATELLITE,), R.NEARBY),  # a satellite town
         (L.DISTRICT, "nine districts (Port Ostra and Kestrel Point)", (), R.UNRESOLVED),
     ],
@@ -234,3 +233,30 @@ def test_checker_sees_the_period_at_the_precision_the_source_stated(
     stated = labels(reference_start=start, reference_end=end, reference_precision=precision,
                     period_type=period_type)  # fmt: skip
     assert _period(stated) == text
+
+
+# --- sub-city claims need the city's own name in the evidence (D2-4) -------------------
+
+
+@pytest.mark.parametrize("level", [L.SUB_CITY_AREA, L.SUB_CITY_POPULATION])
+def test_sub_city_claim_is_the_city_only_when_the_evidence_names_it(level: GeographyLevel) -> None:
+    named = geography_fit(level, "harbour wards", HALDEN, (), 75, city_named_in_evidence=True)
+    assert (named.relation, named.place_name) == (R.CITY, "Halden Bay")
+    unnamed = geography_fit(level, "Kestrel Point", HALDEN, (KESTREL,), 75)
+    assert unnamed.relation is R.UNRESOLVED  # dropped, and counted in the run summary
+
+
+@pytest.mark.parametrize(
+    ("texts", "named"),
+    [
+        (["In Halden Bay's harbour wards, 38.5% of adults"], True),
+        (["the HALDEN BAY survey"], True),
+        (["the harbour wards of the city"], False),
+        (["Haldenbay district"], False),  # whole words only; no alternate names
+        (["no name here", "a passage about Halden Bay"], True),
+    ],
+)
+def test_city_named_matches_name_or_ascii_name_as_whole_words(
+    texts: list[str], named: bool
+) -> None:
+    assert city_named(HALDEN, texts) is named

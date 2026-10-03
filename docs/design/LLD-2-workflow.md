@@ -492,7 +492,7 @@ A slot is re-planned when all hold:
 - `replans_used < 2`, or `< 1` when the status is `answered_wider_geo` `[tunable]`;
 - the ledger reports no `budget_warning` for searches, fetches or wall clock.
 
-`route_after_coverage` returns `replan` when at least one slot qualifies; `slots_to_work` is set to those slots and `round` increments. Queries tried in earlier rounds are removed from the planner's output and from the template fallback; a slot left with no new query is not searched again (BD-14).
+`route_after_coverage` returns `replan` when at least one slot qualifies; `slots_to_work` is set to those slots and `round` increments. Queries tried in earlier rounds are removed from the planner's output and from the template fallback; a slot left with no new query is not searched again (BD-14). Every round asks for `plan.queries_per_slot` (2) queries per slot; qualifying slots are re-planned in `replan.priority` order (S04, S03, S05, S06, then the rest in catalogue order), and only as many as the searches left can serve: `(budget.searches - searches used) // plan.queries_per_slot` (BD-15).
 
 ### 11.4 Gap notes (templates, HD-05)
 
@@ -522,11 +522,11 @@ class BudgetLedger:
 
 | Limit | Default `[tunable]` | At 85 % | At 100 % |
 |---|---|---|---|
-| Wall clock | 300 s | No new searches, fetches or re-plans | No new model calls |
-| Searches | 48 | No re-plans | `reserve("search")` raises `BudgetExhausted` |
+| Wall clock | 420 s (BD-15) | No new searches, fetches or re-plans | No new model calls; a call in flight is cut off (its timeout is the time left) |
+| Searches | 64 (BD-15) | No re-plans | `reserve("search")` raises `BudgetExhausted` |
 | Fetches | 60 | No re-plans | `reserve("fetch")` raises |
-| Tokens | set after day-1 measurement | No re-plans | `reserve("model")` raises |
-| Model cost | set after day-1 measurement | No re-plans | `reserve("model")` raises |
+| Tokens | 1,500,000 (S-6, BD-15) | No re-plans | `reserve("model")` raises |
+| Model cost | $3 (S-6, BD-15) | No re-plans | `reserve("model")` raises |
 
 Every external call goes through `reserve` first. Nodes catch `BudgetExhausted`, stop new work for their slot, and return what they have. `coverage`, `analytics` and `brief_ready` call no external service, so they always run, and the run ends as `stopped_by_budget` with every slot carrying a status. A run ends `stopped_by_budget` when the ledger refused at least one reservation; a run that used its whole budget without a refusal is `completed` (BD-14).
 
@@ -564,7 +564,7 @@ Global concurrency limits, shared by every slot branch: model calls `llm.concurr
    - `news`: a list of news publisher domains;
    - other `.org` domains: `ngo`; anything else: `other`.
 4. API preference: if the domain has an entry in `publishers.yaml` `api` (for example an article site that offers an official API), route to that adapter instead of fetching the page (COULD for the PoC).
-5. Rank by publisher tier, then search rank. Keep the top `select.max_new_urls_per_slot_round = 4` `[tunable]` not already fetched, and up to `select.max_reused_per_slot_round = 2` `[tunable]` already fetched (reused without a new gate decision).
+5. Rank by publisher tier, then the other-place rule, then search rank. **Other-place rule (BD-15):** a candidate whose search title, snippet or URL words name another gazetteer place of the country (population at least `select.other_place_min_population` = 15,000) and name neither the target city (any of its gazetteer names), its admin-1 region nor its country goes after the rest of its tier; it is never excluded, and national or state documents are unaffected. Search text only ranks; it never becomes evidence (R-58). Keep the top `select.max_new_urls_per_slot_round = 4` `[tunable]` not already fetched, and up to `select.max_reused_per_slot_round = 2` `[tunable]` already fetched (reused without a new gate decision).
 
 ---
 
@@ -621,6 +621,7 @@ With the admin parameter `graph=off`, retrieval for `relationship` and `change_o
 | Exception inside a slot subgraph | Caught in `slot_done`; `SlotReport.error` set; the slot still gets a status from data so far |
 | Postgres unavailable | Run `failed`; the only fatal condition |
 | Graphiti write fails | Claim stays supported in Postgres; retried once at `brief_ready`; if still failing, the graph-only demo question will show it, and the run summary records the count |
+| TLS certificate fails verification (BD-15) | Verification is never relaxed. The cause is named in the crawl decision (expired, self-signed, host name mismatch, issuer missing). When the server left out its intermediate, the certificate's own issuer (AIA) URLs are gated like any request (public address, pinned IP, budget kind `certificate`, spacing), the issuer certificate is fetched once per run and the request sent again with it; the intermediate only builds the chain to a trusted root (partial chains refused) |
 | Resume after crash | LangGraph checkpoint (Postgres, schema `lg`, thread ID = run ID) resumes the run once at start-up; all writes are idempotent: IDs are content-derived (`workflow/ids.stable_id`) or checked, Qdrant point IDs and graph edge UUIDs are derived from our IDs, inserts use `ON CONFLICT (<primary key>) DO NOTHING`, an event already stored is not appended again, and `verify` skips a claim that has a verdict. A run with no checkpoint, or already resumed once, is marked `failed` (BD-14) |
 
 ---

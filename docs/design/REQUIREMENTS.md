@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Version** | 1.1 |
+| **Version** | 1.3 |
 | **Date** | 2026-10-02 |
 | **Status** | Baselined. Changes need a decision-log entry. |
 | **Source of truth** | Case-study brief: *CARDIO4Cities AI Engineer Case Study* (Full Stack Data Scientist) |
@@ -570,7 +570,7 @@ Written as Given / When / Then so they translate directly into tests. *Demo-only
 | CON-07 | Hosting default: Render, paid instances billed by the second; stores as private services with disks. Any container host works through Docker Compose | `[decided]` default adapter |
 | CON-08 | Public sources only; respect robots.txt and terms of use; no circumvention of paywalls, logins or blocks | `[STATED]` via R-03 / `[INFERRED]` |
 | CON-09 | All deliverables in one GitHub or GitLab repository | `[STATED]` |
-| CON-10 | Spend capped: one run at a time, at most 20 runs a day; per run about 60 fetches and 5 minutes; token cap set after day-1 measurement; provider-level monthly limits as a second safety net | `[decided]` |
+| CON-10 | Spend capped: one run at a time, at most 20 runs a day; per run about 60 fetches and 7 minutes (420 s, owner 2026-10-03, BD-15); $3 and 1.5M tokens per run (measured by spike S-6, BD-15); provider-level monthly limits as a second safety net | `[decided]` |
 | CON-11 | Not tied to any paid service: every provider is an adapter chosen in configuration (R-81). Free or self-hosted adapters exist for every port; only public hosting (R-09) necessarily runs somewhere | `[decided]` owner requirement |
 | CON-12 | Search default: Brave Search API in links-only mode when deployed; SearXNG for local development. Tracing: own progress events always on; LangSmith free tier switchable | `[decided]` default adapters |
 
@@ -605,7 +605,7 @@ Every question now has a decided default (reasoning in `docs/design/BRAINSTORM.m
 |---|---|---|---|
 | Q-01 | Will the panel choose the city; could it be sparse, non-English or ambiguous? | Assume yes; rehearse sparse, non-English, ambiguous and the three pioneer cities | — |
 | Q-02 | Is reopening a stored city acceptable? | Yes, through "Open existing" with the run date; "Research" always runs fresh (R-83) | — |
-| Q-03 | Latency the demo tolerates | First findings within about 20 s (Wave 0); full run under 5 min; answers under about 15 s | Measure day 1 |
+| Q-03 | Latency the demo tolerates | First findings within about 20 s (Wave 0); full run under 7 min (owner 2026-10-03, BD-15); answers under about 15 s | Measure day 1 |
 | Q-04 | Health scope | Three risk factors plus stroke and heart-attack outcomes | — |
 | Q-05 | Access code on the URL | Yes | — |
 | Q-06 | Report format | Markdown or HTML, plus PDF | — |
@@ -720,3 +720,4 @@ The submission is complete when:
 | 1.0 | 2026-10-02 | Baseline. Brief requirements R-01–R-28 restated with strict readings and acceptance criteria; derived requirements R-29–R-54 carried over; R-55–R-76 added from prior design work and probes; hazards T-12–T-16 added; acceptance test catalogue AT-01–AT-28 created. |
 | 1.1 | 2026-10-02 | Moved to `docs/design/`. Added slot catalogue and statuses (§3.1); R-77–R-91 (health check and keep-alive, one main badge, slots as unit of work, replayable progress, vendor neutrality, config validation, research always fresh, run summary, Wave 0, crawl standards, statistics owned by Postgres, graph switch, required labels, plain vocabulary, demo-day freeze); tightened R-01, R-03, R-30, R-49, R-56, R-58; AT-29–AT-38; CON-04–CON-12 updated to decided defaults; A-13, A-14; all Q-xx resolved (Q-12 added); WON'T list extended. |
 | 1.2 | 2026-10-03 | CHG-01: R-92–R-100, AT-39–AT-47, R-64 extended; retrieval design in LLD-5. |
+| 1.3 | 2026-10-03 | Owner, after spike S-6 (BD-15): CON-10 and Q-03 allow 7 minutes per run; CON-10 records the measured caps ($3, 1.5M tokens). |

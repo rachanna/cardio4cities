@@ -134,6 +134,10 @@ v1 plus two rules, generic and free of city content (R-01):
 
 and the re-plan rule names `previous_attempts` and a government site filter as one more change of approach. The filters come from the government `second_level` labels in `reference/publishers.yaml` under the city's ISO 3166 code; code refuses a `site:` filter that is not in the list (§3.4, repair).
 
+### 3.2b System prompt (v3, BD-15)
+
+v2 with one change: "For each slot, write exactly queries_per_slot search queries (given in the context)". The context gains `queries_per_slot: {n}` (`plan.queries_per_slot`, 2), and code requires exactly that many new queries per slot in every round.
+
 ### 3.3 Output schema
 
 ```python

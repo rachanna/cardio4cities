@@ -66,7 +66,7 @@ Also confirm on day 1: the OpenAI checker and embedding model IDs and the embedd
 | D2-2 | Collection | LLD-2 §9, §14 | Crawl gate, robots and Content-Usage parsing, pinned-IP fetcher, HTML and PDF parsing, chunking and embedding, snapshots, selection | AT-04, AT-05, AT-06, AT-23, AT-33 against a local test server | 2 h |
 | D2-3 | **Thin slice** | LLD-2 §3, LLD-3 §3–5 | Graph with resolve, plan (one slot), search, select, gate, fetch, extract, match, verify, write to Postgres and Qdrant; events stored and streamed | One real city, slot S04: at least one verified, cited claim in Postgres; events replayable (AT-30); AT-07, AT-08 | 2 h |
 | D2-4 | Graph and entities | LLD-1 §6, LLD-2 §5.5, §6 | Entity resolution; Graphiti writes per S-1 outcome; supersession and contested relations; claim index in Qdrant; `search_tsv`; index updates on status change | AT-26; a GOVERNS edge written and readable with its claim ID; AT-39 plumbing: a refuted claim's index point is deleted | 1.5 h |
-| D2-5 | Breadth | LLD-2 §3, §11–13 | All 16 slots in parallel, Wave 0, coverage loop and re-plans, budget ledger, run summary | A full run on one real city ends under 5 min with every slot carrying a status; AT-16, AT-19, AT-32, AT-38 | 1.5 h |
+| D2-5 | Breadth | LLD-2 §3, §11–13 | All 16 slots in parallel, Wave 0, coverage loop and re-plans, budget ledger, run summary | A full run on one real city ends under 7 min (BD-15; was 5) with every slot carrying a status; AT-16, AT-19, AT-32, AT-38 | 1.5 h |
 
 **Day 2 exit check:** one real city researched end to end on the deployed URL from the command line or API; every slot has a status; verified facts in all three stores.
 

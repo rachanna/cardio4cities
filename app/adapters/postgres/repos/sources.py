@@ -56,3 +56,21 @@ class PostgresSourceRepo:
                 text("SELECT url_canonical FROM source WHERE run_id = :run_id"), {"run_id": run_id}
             )
             return {row.url_canonical for row in rows}
+
+    async def source_for_extraction(self, source_id: str) -> dict[str, object] | None:
+        async with self._engine.connect() as conn:
+            row = (
+                (
+                    await conn.execute(
+                        text(
+                            "SELECT source_id, url, title, publisher_class, published_date,"
+                            " published_precision, language, parsed_text FROM source"
+                            " WHERE source_id = :s"
+                        ),
+                        {"s": source_id},
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+        return dict(row) if row else None

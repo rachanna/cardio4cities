@@ -53,6 +53,11 @@ ADAPTERS: AdapterRegistry = {
     },
     "vector": {"qdrant": "app.adapters.vector.qdrant:make"},
     "snapshots": {"postgres": "app.adapters.snapshots.postgres:make"},
+    # model providers (D2-3)
+    "llm": {
+        "anthropic": "app.adapters.llm.anthropic:make",
+        "openai": "app.adapters.llm.openai:make",
+    },
 }
 
 

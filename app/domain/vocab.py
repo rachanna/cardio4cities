@@ -269,3 +269,39 @@ class RelationType(StrEnum):
 SINGLE_CURRENT_RELATIONS: frozenset[RelationType] = frozenset(
     {RelationType.GOVERNS, RelationType.LEADS}
 )
+
+
+class EntityType(StrEnum):
+    """Graph entity types (LLD-1 §6.1)."""
+
+    PLACE = "Place"
+    ORGANIZATION = "Organization"
+    PERSON = "Person"
+    PROGRAMME = "Programme"
+    POLICY = "Policy"
+    INDICATOR = "Indicator"
+
+
+class ProgrammeStatus(StrEnum):
+    PLANNED = "planned"
+    PILOTING = "piloting"
+    RUNNING = "running"
+    ENDED = "ended"
+    UNKNOWN = "unknown"
+
+
+_O, _P, _PR = EntityType.ORGANIZATION, EntityType.PLACE, EntityType.PROGRAMME
+# Allowed subject and object types per relation (LLD-1 §6.2); anything else is refused.
+RELATION_PAIRS: dict[RelationType, frozenset[tuple[EntityType, EntityType]]] = {
+    RelationType.GOVERNS: frozenset({(_O, _P)}),
+    RelationType.REPLACED_BY: frozenset({(_O, _O)}),
+    RelationType.PART_OF: frozenset({(_P, _P), (_O, _O)}),
+    RelationType.RUNS: frozenset({(_O, _PR)}),
+    RelationType.FUNDS: frozenset({(_O, _PR)}),
+    RelationType.PARTNERS_WITH: frozenset({(_O, _O)}),
+    RelationType.OPERATES_IN: frozenset({(_PR, _P)}),
+    RelationType.ISSUED_BY: frozenset({(EntityType.POLICY, _O)}),
+    RelationType.APPLIES_TO: frozenset({(EntityType.POLICY, _P)}),
+    RelationType.LEADS: frozenset({(EntityType.PERSON, _O)}),
+    RelationType.MEASURED_IN: frozenset({(EntityType.INDICATOR, _P)}),
+}

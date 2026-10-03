@@ -18,6 +18,7 @@ from app.ports.llm import Effort, LLMPort
 from app.ports.repos import RelationalPort
 from app.ports.search import SearchPort
 from app.ports.snapshots import SnapshotPort
+from app.ports.structured import StructuredDataPort
 from app.ports.vector import VectorPort
 from app.workflow.budget import BudgetLedger
 from app.workflow.collection import Collector
@@ -64,6 +65,7 @@ class RunDeps:
     embeddings: EmbeddingsPort
     vector: VectorPort
     graph: GraphPort
+    structured: dict[str, StructuredDataPort]  # by registry provider (Wave 0)
     entities: EntityResolver
     snapshots: SnapshotPort
     ledger: BudgetLedger

@@ -1,0 +1,6 @@
+# Region aliases for sub-national records (LLD-2 §13, BD-13): admin-1 name (as in the
+# gazetteer) -> other names a provider uses for it. Entries are added only with the
+# owner's approval: region names can coincide with city names, and every entry is place
+# data. Normalisation (case, accents, words such as "Region" or "Province") is applied
+# first, so most regions need no entry. Empty on purpose.
+{}

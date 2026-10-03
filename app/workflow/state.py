@@ -43,6 +43,7 @@ class RunState(TypedDict, total=False):
     city: CityIdentity
     round: int
     slots_to_work: list[str]
+    wave0_claim_ids: list[str]
     plans: Annotated[dict[str, SlotPlan], merge_dicts]
     slot_reports: Annotated[dict[str, SlotReport], merge_dicts]
     finished: bool

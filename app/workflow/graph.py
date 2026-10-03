@@ -26,6 +26,7 @@ from app.workflow.nodes.resolve_city import resolve_city
 from app.workflow.nodes.search import search
 from app.workflow.nodes.select_sources import select_sources
 from app.workflow.nodes.verify import route_after_verify, verify
+from app.workflow.nodes.wave0 import wave0
 from app.workflow.state import RunState, SlotOutput, SlotState
 
 
@@ -102,11 +103,13 @@ def fan_out(state: RunState) -> list[Send]:
 def build_graph() -> CompiledStateGraph[Any, Any, Any, Any]:
     g = StateGraph(RunState)
     g.add_node("resolve_city", resolve_city)
+    g.add_node("wave0", wave0)
     g.add_node("plan_slots", plan_slots)
     g.add_node("slot_subgraph", build_slot_graph())
     g.add_node("brief_ready", brief_ready)
     g.add_edge(START, "resolve_city")
-    g.add_edge("resolve_city", "plan_slots")
+    g.add_edge("resolve_city", "wave0")
+    g.add_edge("wave0", "plan_slots")
     g.add_conditional_edges("plan_slots", fan_out, ["slot_subgraph"])
     g.add_edge("slot_subgraph", "brief_ready")
     g.add_edge("brief_ready", END)

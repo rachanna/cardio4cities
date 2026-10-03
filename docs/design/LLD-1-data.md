@@ -599,8 +599,10 @@ CREATE TABLE relation (
   relation_type text NOT NULL,
   object_entity_id text NOT NULL REFERENCES entity,
   valid_from date, valid_to date, valid_from_is_proxy boolean NOT NULL DEFAULT false,
-  programme_status text CHECK (programme_status IN ('planned','piloting','running','ended','unknown'))
+  programme_status text CHECK (programme_status IN ('planned','piloting','running','ended','unknown')),
                                                  -- as the source states it (T-06, BD-14)
+  superseded_on date                             -- set before the claim becomes superseded: the date
+                                                 -- its edge ends, read by whichever slot writes it (BD-19)
 );
 
 CREATE TABLE verdict (
@@ -752,7 +754,7 @@ Declared as Pydantic models and passed to Graphiti as custom entity types. Attri
 | `Place` | `entity_id`, `gazetteer_id` (when known), `level` (GeographyLevel) |
 | `Organization` | `entity_id`, `subtype` (`government`, `facility`, `academic`, `ngo`, `funder`, `other`) |
 | `Person` | `entity_id` |
-| `Programme` | `entity_id`, `status` (`planned`, `piloting`, `running`, `ended`, `unknown`), `status_claim_id`, `status_as_of`: set from the newest supported claim that states a status, never from `unknown` or an undated claim over a stated one (T-06, BD-14) |
+| `Programme` | `entity_id`, `status` (`planned`, `piloting`, `running`, `ended`, `unknown`), `status_claim_id`, `status_as_of`: set from the newest supported claim that states a status, never from `unknown` or an undated claim over a stated one (T-06, BD-14). A status counts as of when it was observed (owner, BD-19): `ended` as of its end date, otherwise the claim's reference period end, then the relation's start, so "running since 2018" in a 2024 report is a 2024 observation. Observed on the same date (one report telling a history), the later stated start (`status_since`) is the later state; then the lower claim ID. The update is decided under a row lock |
 | `Policy` | `entity_id`, `level` (GeographyLevel), `year` |
 | `Indicator` | `entity_id`, `indicator_code` |
 
@@ -770,7 +772,7 @@ Declared as Pydantic models and passed to Graphiti as custom entity types. Attri
 | `ISSUED_BY` | Policy → Organization | One | Never superseded |
 | `APPLIES_TO` | Policy → Place | Many | Never superseded |
 | `LEADS` | Person → Organization | One current per organization role | A newer supported claim end-dates the old edge |
-| `MEASURED_IN` | Indicator → Place | Many | Never superseded; carries no value (R-87) |
+| `MEASURED_IN` | Indicator → Place | Many | Never superseded; carries no value (R-87). Not written for `OTHER` or `POP_TOTAL`, which name no indicator a slot asks about (BD-19) |
 
 Any other pair is refused by the write adapter before reaching Graphiti.
 
@@ -797,7 +799,7 @@ graph.add_triplet(subject_node, edge, object_node)
 
 **Fallback.** If (1) fails: write one compact episode per source listing that source's verified relations, with extraction instructions restricting types to §6.2, then map resulting edges back to claims by matching subject, relation and object names. Recorded as a decision if used.
 
-**Supersession.** For `GOVERNS` and `LEADS`, before writing a new edge the write node finds the current edge with the same subject role and place or organisation. If the new claim's `valid_from` is later, it sets `invalid_at` on the old edge, sets `graph_link.invalidated_at`, and marks the old claim `superseded`. Nothing is deleted (R-44, R-60).
+**Supersession.** For `GOVERNS` and `LEADS`, before writing a new edge the write node finds the current edge with the same subject role and place or organisation. If the new claim's `valid_from` is later, it sets `invalid_at` on the old edge, sets `graph_link.invalidated_at`, and marks the old claim `superseded`. Nothing is deleted (R-44, R-60). The end date is stored on the old claim's `relation.superseded_on` before its status changes, so an edge not yet written (another slot's claim, or a resumed run) is written already ended, and `brief_ready` ends any that stayed current (BD-19).
 
 **Contested relations.** When two supported claims disagree on a `GOVERNS` or `LEADS` relation with overlapping validity, both edges are written with `status = contested` in their attributes, and a `contested_pair` row is created. Neither is end-dated.
 

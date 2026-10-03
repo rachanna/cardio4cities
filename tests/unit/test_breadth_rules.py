@@ -30,6 +30,7 @@ def test_a_first_status_is_recorded_with_its_claim_and_date() -> None:
         "status": "planned",
         "status_claim_id": "clm_a",
         "status_as_of": "2023-01-01",
+        "status_since": None,
     }
 
 

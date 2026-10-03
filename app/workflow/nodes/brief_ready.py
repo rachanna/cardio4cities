@@ -14,13 +14,13 @@ from langchain_core.runnables import RunnableConfig
 
 from app.domain.vocab import ClaimStatus, EventType, ParseOutcome
 from app.workflow.deps import RunDeps
-from app.workflow.graph_writes import write_graph
+from app.workflow.graph_writes import end_edge, mark_edge, write_graph
 from app.workflow.nodes._deps import deps
 from app.workflow.state import RunState
 
 EVENT_PAGE = 500
 ALWAYS_COUNTED = ("geography_unresolved",)
-RETRIED = frozenset({ClaimStatus.SUPPORTED, ClaimStatus.CONTESTED})
+RETRIED = frozenset({ClaimStatus.SUPPORTED, ClaimStatus.CONTESTED, ClaimStatus.SUPERSEDED})
 
 
 def drop_counts(events: Iterable[dict[str, Any]]) -> dict[str, int]:
@@ -92,8 +92,9 @@ async def _all_events(d: RunDeps, run_id: str) -> list[dict[str, Any]]:
 
 
 async def _retry_graph(d: RunDeps, run_id: str) -> dict[str, int]:
-    """Superseded claims are not retried: without their successor's date the edge would
-    look current."""
+    """Bring the graph in line with Postgres once more (BD-19): missing edges (a
+    superseded claim's is written ended on its stored date), edges a superseded claim
+    left current, and contested marks that did not reach the graph."""
     research = d.relational.research
     attempted = written = 0
     for claim_id in await research.claims_without_graph_link(run_id):
@@ -102,7 +103,15 @@ async def _retry_graph(d: RunDeps, run_id: str) -> dict[str, int]:
             continue
         attempted += 1
         written += await write_graph(d, claim_id)
-    return {"attempted": attempted, "written": written}
+    ended = 0
+    for claim_id in await research.superseded_live_links(run_id):
+        relation = await research.relation(claim_id)
+        if relation is not None and relation.superseded_on is not None:
+            await end_edge(d, claim_id, relation.superseded_on)
+            ended += 1
+    for claim_id in await research.contested_links(run_id):
+        await mark_edge(d, claim_id, ClaimStatus.CONTESTED.value)
+    return {"attempted": attempted, "written": written, "ended": ended}
 
 
 async def brief_ready(state: RunState, config: RunnableConfig) -> dict[str, Any]:

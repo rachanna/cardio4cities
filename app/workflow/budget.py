@@ -14,7 +14,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Literal
 
-Kind = Literal["search", "fetch", "robots", "certificate", "model"]
+Kind = Literal["search", "fetch", "robots", "certificate", "model", "indexing"]
 Phase = Literal["normal", "winding_down", "exhausted"]
 WarningHook = Callable[[str, float, float], Awaitable[None]]  # counter, used, limit
 WOUND_DOWN = frozenset({"search", "fetch", "robots", "certificate"})  # refused when winding down
@@ -44,6 +44,7 @@ class BudgetLedger:
     fetches: int = 0
     robots: int = 0
     certificates: int = 0  # issuer certificates fetched from AIA URLs (BD-15)
+    indexing: int = 0  # embedding calls for confirmed claims (BD-19)
     model_calls: int = 0
     tokens_in: int = 0
     tokens_out: int = 0
@@ -96,6 +97,11 @@ class BudgetLedger:
             await self._warn()
 
     def _reserve(self, kind: Kind) -> None:
+        if kind == "indexing":
+            # Embeddings for claims already confirmed (claim index, graph edges): counted,
+            # never refused, so a confirmed fact always reaches every store (BD-19)
+            self.indexing += 1
+            return
         ratios = self._ratios()
         if ratios["wall_clock"] >= 1:
             raise BudgetExhaustedError("wall_clock")
@@ -151,6 +157,7 @@ class BudgetLedger:
             "fetches": self.fetches,
             "robots": self.robots,
             "certificates": self.certificates,
+            "indexing": self.indexing,
             "model_calls": self.model_calls,
             "tokens_in": self.tokens_in,
             "tokens_out": self.tokens_out,
@@ -175,6 +182,7 @@ class BudgetLedger:
             count("robots"),
         )
         self.certificates = count("certificates")
+        self.indexing = count("indexing")
         self.model_calls = count("model_calls")
         self.tokens_in, self.tokens_out = count("tokens_in"), count("tokens_out")
         self.cost_micro_usd = count("cost_micro_usd")

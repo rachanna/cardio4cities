@@ -18,6 +18,7 @@ from app.domain.vocab import (
     SINGLE_CURRENT_RELATIONS,
     ConsistencyOutcome,
     GeographyLevel,
+    PeriodType,
     PublisherClass,
 )
 from app.workflow.rules.comparability import comparability_key, differing_parts, key_gaps
@@ -70,6 +71,11 @@ def _pair(
 
 
 def _period(labels: Labels) -> tuple[date, date] | None:
+    """The stated period. A publication-date proxy is no period: two figures dated only by
+    when their reports came out may describe the same years, so they overlap (BD-06(5),
+    BD-19)."""
+    if labels.period_type is PeriodType.PUBLICATION_DATE_PROXY:
+        return None
     start = labels.reference_start or labels.reference_end
     end = labels.reference_end or labels.reference_start
     return (start, end) if start and end else None

@@ -1,6 +1,8 @@
 """EntityRepo on Postgres (LLD-1 §4.4, LLD-2 §6): one entity per (city, type, key)."""
 
 import json
+from collections.abc import Callable
+from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -96,6 +98,28 @@ class PostgresEntityRepo:
                 {"ids": entity_ids},
             )
             return {r["entity_id"]: _entity(dict(r)) for r in rows.mappings()}
+
+    async def update_attributes(
+        self, entity_id: str, change: Callable[[dict[str, Any]], dict[str, Any] | None]
+    ) -> dict[str, Any] | None:
+        """Read the entity's attributes under a row lock, merge what `change` returns, and
+        return the merged attributes (None when `change` keeps them). Concurrent updates
+        of one entity apply one after the other (BD-19)."""
+        async with self._engine.begin() as conn:
+            current = (
+                await conn.execute(
+                    text("SELECT attributes FROM entity WHERE entity_id = :i FOR UPDATE"),
+                    {"i": entity_id},
+                )
+            ).scalar_one()
+            update = change(dict(current or {}))
+            if update is None:
+                return None
+            await conn.execute(
+                text("UPDATE entity SET attributes = attributes || :a WHERE entity_id = :i"),
+                {"a": json.dumps(update), "i": entity_id},
+            )
+            return {**(current or {}), **update}
 
     async def merge_attributes(self, entity_id: str, attributes: dict[str, object]) -> None:
         async with self._engine.begin() as conn:

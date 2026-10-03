@@ -65,6 +65,14 @@ class MemoryEntities:
     async def get(self, entity_ids: list[str]) -> dict[str, Entity]:
         return {i: self.by_id[i] for i in entity_ids if i in self.by_id}
 
+    async def update_attributes(self, entity_id: str, change: Any) -> dict[str, Any] | None:
+        old = self.by_id[entity_id]
+        update = change(dict(old.attributes))
+        if update is None:
+            return None
+        await self.merge_attributes(entity_id, update)
+        return dict(self.by_id[entity_id].attributes)
+
     async def merge_attributes(self, entity_id: str, attributes: dict[str, Any]) -> None:
         old = self.by_id[entity_id]
         self.by_id[entity_id] = old.model_copy(

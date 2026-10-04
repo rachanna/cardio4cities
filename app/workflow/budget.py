@@ -14,10 +14,16 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Literal
 
-Kind = Literal["search", "fetch", "robots", "certificate", "model", "indexing"]
+Kind = Literal["search", "fetch", "robots", "certificate", "model", "embedding", "indexing"]
 Phase = Literal["normal", "winding_down", "exhausted"]
 WarningHook = Callable[[str, float, float], Awaitable[None]]  # counter, used, limit
 WOUND_DOWN = frozenset({"search", "fetch", "robots", "certificate"})  # refused when winding down
+
+
+MODEL_ROW = (
+    "calls", "tokens_in", "tokens_out", "cost_micro_usd", "cached_tokens",
+    "cache_write_tokens", "reasoning_tokens",
+)  # fmt: skip
 
 
 class BudgetExhaustedError(Exception):
@@ -127,6 +133,9 @@ class BudgetLedger:
             self.robots += 1  # counted, not limited: one per site per run
         elif kind == "certificate":
             self.certificates += 1  # counted, not limited: one per issuer URL per run
+        elif kind == "embedding":  # counted by `record_embedding`, not as a model call
+            if ratios.get("cost", 0) >= 1:
+                raise BudgetExhaustedError("cost")
         else:
             for counter in ("tokens", "cost"):
                 if ratios.get(counter, 0) >= 1:
@@ -145,17 +154,38 @@ class BudgetLedger:
             if self.on_warning is not None:
                 await self.on_warning(counter, used, limit)
 
-    async def record_model(self, model: str, tokens_in: int, tokens_out: int, cost: int) -> None:
+    async def record_model(
+        self,
+        model: str,
+        tokens_in: int,
+        tokens_out: int,
+        cost: int,
+        cached_tokens: int = 0,
+        reasoning_tokens: int = 0,
+        cache_write_tokens: int = 0,
+    ) -> None:
         async with self._lock:
             self.tokens_in += tokens_in
             self.tokens_out += tokens_out
             self.cost_micro_usd += cost
-            row = self.by_model.setdefault(
-                model, {"calls": 0, "tokens_in": 0, "tokens_out": 0, "cost_micro_usd": 0}
-            )
+            row = self.by_model.setdefault(model, dict.fromkeys(MODEL_ROW, 0))
             row["calls"] += 1
             row["tokens_in"] += tokens_in
             row["tokens_out"] += tokens_out
+            row["cost_micro_usd"] += cost
+            row["cached_tokens"] += cached_tokens  # BD-30
+            row["cache_write_tokens"] += cache_write_tokens
+            row["reasoning_tokens"] += reasoning_tokens
+        await self._warn()
+
+    async def record_embedding(self, model: str, tokens: int, cost: int) -> None:
+        """Embeddings count apart from model calls (BD-30): their cost meets the cap,
+        and they appear in the summary as `embeddings:<model>`."""
+        async with self._lock:
+            self.cost_micro_usd += cost
+            row = self.by_model.setdefault(f"embeddings:{model}", dict.fromkeys(MODEL_ROW, 0))
+            row["calls"] += 1
+            row["tokens_in"] += tokens
             row["cost_micro_usd"] += cost
         await self._warn()
 

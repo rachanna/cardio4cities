@@ -563,6 +563,8 @@ class BudgetLedger:
 
 Every external call goes through `reserve` first. Nodes catch `BudgetExhausted`, stop new work for their slot, and return what they have. `coverage`, `analytics` and `brief_ready` call no external service, so they always run, and the run ends as `stopped_by_budget` with every slot carrying a status. A run ends `stopped_by_budget` when the ledger refused at least one reservation; a run that used its whole budget without a refusal is `completed` (BD-14).
 
+`reserve("embedding")` covers chunk and entity embeddings (BD-30): refused at the wall clock or the cost cap like a model call, but not counted as one; every embedding call's estimated tokens and cost are recorded as `embeddings:<model>` and count towards the cost cap. Every model call's usage is recorded, including a failed call the provider billed (no structured output, a refusal), with its cached, cache-write and reasoning tokens.
+
 `reserve("indexing")` covers the embedding calls that put a confirmed claim into the claim index and the graph (the claim-index point, the edge, a programme node's new status). It is counted but never refused, so a claim the checker confirmed just before a limit still reaches every store (BD-19); it costs only local or embedding calls, never a chat model.
 
 At 85 % of the wall clock, `reserve("search")`, `reserve("robots")` and `reserve("fetch")` raise; model calls go on until a limit is reached, so claims in hand are still extracted and checked. Each counter emits one `budget_warning` the first time it passes `wind_down_at`.

@@ -266,6 +266,7 @@ llm:
     ollama:    { base_url: http://ollama:11434 }
   concurrency: 4
   allow_same_family_checker: false   # BD-02; see §5.2
+  prompt_cache: true                  # BD-30: the repeated system prompt is cached
 embeddings: { provider: openai, model: "<confirm day 1>", dimension: 0, key: openai_small_v1, concurrency: 4 }   # concurrency: BD-14
 search:     { provider: brave, mode: links_only, api_key_env: BRAVE_API_KEY, rate_per_s: 5 }   # 5: BD-15
             # searxng (local): { provider: searxng, mode: links_only, base_url: http://localhost:8888, rate_per_s: 1 } (BD-02)

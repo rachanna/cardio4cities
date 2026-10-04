@@ -1,8 +1,13 @@
 """Typed errors that every adapter raises in place of vendor exceptions."""
 
+from typing import Any
+
 
 class PortError(Exception):
-    """Base class for errors raised through a port."""
+    """Base class for errors raised through a port. `usage`: what a failed model call
+    used, when the provider reported it (BD-30), so the cap and the summary count it."""
+
+    usage: Any = None
 
 
 class ProviderUnavailableError(PortError):

@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pydantic import BaseModel
 
 from app.ports.errors import LLMOutputValidationError, PortError, ProviderUnavailableError
-from app.ports.llm import LLMParams
+from app.ports.llm import LLMParams, LLMUsage
 from app.prompts.safety import escape_untrusted
 from app.workflow.deps import Binding, RunDeps
 
@@ -61,12 +61,21 @@ async def _call_once[T: BaseModel](
         )
     except TimeoutError as exc:
         raise ProviderUnavailableError(f"{role}: the run's time ran out") from exc
-    await deps.ledger.record_model(
-        result.model_id, result.tokens_in, result.tokens_out, result.cost_micro_usd
-    )
+    except PortError as exc:
+        if exc.usage is not None:  # a failed call the provider billed (BD-30)
+            await _record(deps, exc.usage)
+        raise
+    await _record(deps, result.usage())
     if not isinstance(result.parsed, schema):
         raise LLMOutputValidationError(f"{role}: unexpected output type", result.raw_text)
     return result.parsed, result.model_id
+
+
+async def _record(deps: RunDeps, usage: LLMUsage) -> None:
+    await deps.ledger.record_model(
+        usage.model_id, usage.tokens_in, usage.tokens_out, usage.cost_micro_usd,
+        usage.cached_tokens, usage.reasoning_tokens, usage.cache_write_tokens,
+    )  # fmt: skip
 
 
 def _repair(user: str, problem: str, previous: str) -> str:

@@ -121,6 +121,7 @@ class LLMSection(_Section):
     providers: dict[str, ProviderConfig]
     concurrency: int
     allow_same_family_checker: bool = False  # BD-02
+    prompt_cache: bool = False  # BD-30: cache the repeated system prompt [tunable]
 
 
 class EmbeddingsSection(_Section):

@@ -158,7 +158,7 @@ class EntityResolver:
         try:
             missing = [e for e in existing if e.entity_id not in self._vectors]
             texts = [name, *(e.canonical_name for e in missing)]
-            await self.ledger.reserve("model")
+            await self.ledger.reserve("embedding")  # not a model call (BD-30)
             vectors = await self.embeddings.embed(texts)
         except (PortError, BudgetExhaustedError) as exc:
             log.warning("entity embedding skipped (%s)", type(exc).__name__)

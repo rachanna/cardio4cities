@@ -1,0 +1,62 @@
+{% if not pdf %}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ r.city_name }}: cardiovascular research brief</title>
+<style>
+:root { --text: #1d1f23; --muted: #5b616b; --line: #d9dce1; --bg: #ffffff; --flag: #8a4b00; }
+@media (prefers-color-scheme: dark) { :root { --text: #e8eaed; --muted: #a3a9b3; --line: #3a3f47; --bg: #15171a; --flag: #f0b46a; } }
+body { font: 15px/1.55 system-ui, sans-serif; color: var(--text); background: var(--bg); max-width: 52rem; margin: 0 auto; padding: 1.5rem 1rem; }
+h1 { font-size: 1.6rem; } h2 { margin-top: 2rem; border-bottom: 1px solid var(--line); } h3 { font-size: 1.05rem; }
+.muted { color: var(--muted); } .flag { color: var(--flag); font-weight: 600; }
+a { overflow-wrap: anywhere; }
+@media print { body { max-width: none; } a { color: inherit; } }
+</style>
+</head>
+<body>{% endif %}
+<h1>{{ r.city_name }}: cardiovascular research brief</h1>
+<p class="muted">{{ r.city_name }}{% if r.region_name %}, {{ r.region_name }}{% endif %}, {{ r.country_name }}. Researched live on {{ date(r.run_date) }} (run {{ r.run_id }}, {{ r.run_status }}). Every fact below was checked against its source; the number in brackets is its source in the list at the end.</p>
+
+<h2>Summary</h2>
+{% for dimension, name, cited in r.summary %}
+<p><b>{{ name }}</b></p>
+<ul>{% for c in cited %}<li>{{ fact(c) }}</li>{% endfor %}</ul>
+{% else %}
+<p>No fact reached High or Medium confidence.</p>
+{% endfor %}
+
+{% for s in r.sections %}
+<h2>{{ s.dimension }} {{ s.name }}</h2>
+{% if s.intro %}<p>{% for p in s.intro %}{% if p.kind == "analysis" %}<b>Analysis:</b> {% endif %}{{ p.text }}{{ r.cite(p.refs) }} {% endfor %}</p>{% endif %}
+{% if not s.slots %}<p class="muted">No question of this dimension was researched in this run.</p>{% endif %}
+{% for b in s.slots %}
+<h3>{{ b.row.slot_id }} {{ b.row.question }} ({{ b.row.status_word }})</h3>
+{% if b.facts %}<ul>{% for c in b.facts %}<li>{{ fact(c) }}</li>{% endfor %}</ul>
+{% if b.row.gap_note %}<p class="muted">{{ b.row.gap_note }}</p>{% endif %}
+{% else %}<p class="muted">{{ b.row.gap_note or "Nothing confirmed." }}</p>{% endif %}
+{% endfor %}
+{% endfor %}
+
+{% if r.analysis %}
+<h2>Opportunities, risks and gaps (analysis)</h2>
+<ul>{% for p in r.analysis %}<li><b>{{ p.kind | capitalize }}:</b> {{ p.text }}{{ r.cite(p.refs) }}</li>{% endfor %}</ul>
+{% endif %}
+
+<h2>What we could not find</h2>
+<ul>{% for g in r.gaps %}<li><b>{{ g.slot_id }} {{ g.question }}</b> ({{ g.status_word }}): {{ g.gap_note or "Nothing confirmed." }}</li>{% else %}<li>Every question was answered.</li>{% endfor %}</ul>
+
+<h2>Handle with care</h2>
+<ul>{% for e in r.care %}<li>{{ e.item.card.statement }} [{{ e.citation }}]: <span class="flag">{{ e.item.reason }}</span>.</li>{% else %}<li>Nothing flagged.</li>{% endfor %}</ul>
+
+<h2>Sources</h2>
+<ol>{% for s in r.sources %}<li>{{ s.title or "Untitled" }} ({{ s.publisher_class }}). <a href="{{ s.url }}">{{ s.url }}</a>. Published {{ s.published_date or "date not stated" }}; retrieved {{ s.retrieved_at }}.</li>{% endfor %}</ol>
+
+<h2>Run details</h2>
+<ul>
+<li>Run: {{ r.run_id }}, {{ r.run_status }}, {{ date(r.run_date) }}</li>
+{% for role, version in r.models.items() %}<li>{{ role }}: {{ version }}</li>{% endfor %}
+{% for line in counts(r.counts) %}<li>{{ line }}</li>{% endfor %}
+</ul>
+{% if not pdf %}</body>
+</html>{% endif %}

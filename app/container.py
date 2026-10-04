@@ -57,6 +57,8 @@ ADAPTERS: AdapterRegistry = {
     },
     "vector": {"qdrant": "app.adapters.vector.qdrant:make"},
     "snapshots": {"postgres": "app.adapters.snapshots.postgres:make"},
+    # report PDF (D3-3, BD-40): pure Python, no system libraries
+    "renderer": {"fpdf2": "app.adapters.renderer.fpdf2:make"},
     # graph (D2-4, BD-11): the factory also takes the embeddings adapter
     "graph": {"graphiti_neo4j": "app.adapters.graph.graphiti:make"},
     # official APIs for Wave 0 (D2-5, BD-13), keyed by the registry's provider name

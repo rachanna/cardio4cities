@@ -61,3 +61,14 @@ LANGUAGE_NAMES: dict[str, str] = {
 
 def language_name(code: str) -> str:
     return LANGUAGE_NAMES.get(code.lower(), code)
+
+
+# The six dimensions of the brief (REQUIREMENTS §3), as the report heads its sections
+DIMENSION_NAMES: dict[str, str] = {
+    "D1": "Governance",
+    "D2": "Burden",
+    "D3": "Programmes",
+    "D4": "Policy",
+    "D5": "Stakeholders",
+    "D6": "Data",
+}

@@ -25,7 +25,8 @@ CURRENT = {
     "checker": 4,
     "classifier": 2,
     "answerer": 2,
-}  # BD-38: question answering
+    "reporter": 1,
+}  # classifier, answerer: BD-38; reporter: BD-40
 
 
 @cache

@@ -250,6 +250,7 @@ access:
   access_code_env: ACCESS_CODE
   admin_code_env: ADMIN_CODE
   session_secret_env: SESSION_SECRET
+  client_ip_header: CF-Connecting-IP   # deployed only: the proxy's client-address header (BD-36)
 llm:
   roles:
     planner:    { provider: anthropic, model: claude-sonnet-5-5, family: anthropic }
@@ -263,7 +264,7 @@ llm:
   providers:
     anthropic: { api_key_env: ANTHROPIC_API_KEY }
     openai:    { api_key_env: OPENAI_API_KEY }
-    ollama:    { base_url: http://ollama:11434 }
+    ollama:    { base_url_env: OLLAMA_BASE_URL }   # BD-05; adapter not built (BD-36)
   concurrency: 4
   allow_same_family_checker: false   # BD-02; see §5.2
   prompt_cache: true                  # BD-30: the repeated system prompt is cached
@@ -291,13 +292,17 @@ select:     { max_new_urls_per_slot_round: 3, max_reused_per_slot_round: 2, othe
 replan:     { max_rounds: 2, max_rounds_wider_geo: 1, priority: [S04, S03, S05, S06] }   # priority: BD-15
 plan:       { queries_per_slot: 2 }   # BD-15
 extract:    { window_tokens: 12000, overlap_tokens: 500, max_windows_per_source: 4, stop_windows_below_s: 60 }   # BD-29
-quote:      { min_words: 6, max_words: 60 }   # BD-06
+quote:      { min_words: 6, max_words: 60, min_words_unique: 3 }   # BD-06, BD-08
+structured:                                  # BD-13: official APIs for Wave 0
+  providers:
+    who_gho:    { base_url: https://ghoapi.azureedge.net/api }
+    world_bank: { base_url: https://api.worldbank.org/v2 }
 consistency:{ agree_pp: 0.5, agree_rel: 0.02 }
 entity:     { candidate_threshold: 0.85 }   # BD-24: logged for review, never merged
 badge:      { stale_years: 5, stale_years_people: 2, small_sample: 300 }
 confidence: { recent_years: 5 }
 analytics:  { enabled: false }
-retrieval:                                   # CHG-01 (LLD-5 §14)
+retrieval:                                   # CHG-01 (LLD-5 §14); added to the profiles by D3-2
   rrf_k: 60
   r2_top: 20
   r2_trigram_min: 0.4
@@ -321,6 +326,7 @@ The application refuses to start, with a message naming the problem, when:
 | Embedding model | Provider's reported dimension ≠ `embeddings.dimension`; or the Qdrant collection `source_chunks__{key}` or `claim_index__{key}` exists with a different vector size (checked at start-up since BD-25; an unreachable Qdrant is left to `/health`) |
 | Adapters | A provider a workflow port uses (relational, checkpointer, llm, embeddings, search, fetch, robots, parser, vector, snapshots, graph) has no adapter: refuse, naming it (BD-25). It used to start with a warning and fail every check at run time |
 | Graph embedding marker | Checked before every run starts or resumes, not only at start-up (BD-25): an empty graph takes the configured key; a graph that is unreachable, holds unmarked entities or another model's marker refuses the run with 503 `dependency_unavailable` (`component: neo4j`). At start-up the same check only warns, so a graph problem never stops the app |
+| Model families | A declared family that does not match its provider (Anthropic and OpenAI serve their own family; an Ollama model is neither), so a mislabelled checker cannot pass the independence check (BD-36) |
 | Secrets | Any `*_env` referenced by an enabled adapter is missing |
 | Placeholders | Any value `"<confirm day 1>"` or a `0` budget in `deployed` |
 | Reference data | `ref_slot` does not hold exactly S01–S16; `ref_source` contains placeholder indicator codes |
@@ -398,7 +404,7 @@ Messages are written for the City Lead: they say what happened and what to do, w
 | Rule | Detail |
 |---|---|
 | Stores | A trivial query each (`SELECT 1`, collection info, `RETURN 1`) |
-| Providers | A cached lightweight check (model list or a one-token call) at most every 10 minutes, so health checks do not burn budget |
+| Providers | A cached lightweight check (model list or a one-token call) at most every 10 minutes, so health checks do not burn budget. Not built yet: the provider components and prompt versions arrive with D3-5 (BD-36; code review RV-038); until then `/health` reports the stores and reference data |
 | Overall status | `ok` only if every component is `ok`; otherwise `degraded` with HTTP 503 |
 | Keep-alive | A scheduled job calls `/health` every 6 hours during the evaluation window `[tunable]`, which also keeps any free-tier store awake |
 | Resume | `resume: "off"` when this process cannot save checkpoints (Windows' Proactor loop, local only), so a run cannot resume after a restart; shown, not counted against the status. The run summary carries `checkpointed` (BD-25) |
@@ -480,6 +486,8 @@ class TracingPort(Protocol):
 Relational access uses repository classes per aggregate (`RunRepo`, `ClaimRepo`, `SourceRepo`, `EntityRepo`, `SlotRepo`, `AnswerRepo`, `ReportRepo`, `EventRepo`) over async SQLAlchemy Core. Postgres is a fixed choice (CON-04), so the repositories are the port and SQL lives only in `app/adapters/postgres/`.
 
 ### 8.1 Adapters for the PoC
+
+Not built (BD-36): `ollama`, `tavily`, `browser_print`, `otel` and `langsmith`; `weasyprint` arrives with D3-3. A workflow port whose adapter is not built is refused at start-up (§5.2, BD-25), so no profile selects one of these for the LLM or search; the renderer and tracing are not workflow ports, and start-up lists the deployed profile's `weasyprint` as not built yet until D3-3.
 
 | Port | Deployed default | Local or alternative |
 |---|---|---|

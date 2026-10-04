@@ -12,6 +12,8 @@
 
 ## 1. Layout
 
+Files marked *(not built)* are planned and have no file yet; *(Dn-n)* names the task that adds them (BD-36; code review §9).
+
 ```text
 cardio4cities/
 ├── CLAUDE.md                     # read first, every session
@@ -21,8 +23,9 @@ cardio4cities/
 ├── .python-version               # 3.12 (uv)
 ├── .gitattributes                # * text=auto eol=lf (BD-01)
 ├── .pre-commit-config.yaml       # gitleaks, ruff, import-linter
-├── .github/workflows/ci.yml      # lint and tests on push and PR
-├── Dockerfile                    # multi-stage: build web → copy into the Python image
+├── .github/workflows/ci.yml      # lint and tests, secret scan, image build; actions pinned to SHAs (BD-36)
+├── Dockerfile                    # Python image; the web build stage arrives with D3-4
+├── .dockerignore
 ├── docker-compose.yml            # local: postgres, qdrant, neo4j, searxng, app
 ├── render.yaml                   # deployed: web service, private services, Postgres, keep-alive job
 ├── .env.example                  # LLD-4 §5.3
@@ -32,6 +35,7 @@ cardio4cities/
 │   ├── searxng/settings.yml      # local SearXNG: JSON output, limiter off (BD-01)
 │   ├── local.yaml                # LLD-4 §5.1, local adapters, low-cost models (BD-05)
 │   ├── local-quality.yaml        # local.yaml with the deployed model bindings (APP_ENV=local-quality)
+│   ├── local-openai.yaml         # OpenAI-only development profile, labelled same-family checker (BD-23)
 │   └── deployed.yaml             # LLD-4 §5.1, deployed adapters
 │
 ├── reference/                    # generic reference data only: never city facts (A-09, AT-02)
@@ -41,6 +45,7 @@ cardio4cities/
 │   ├── sources.yaml              # LLD-1 §3.4 (Wave 0 registry)
 │   ├── publishers.yaml           # LLD-2 §14 (domain patterns, deny list)
 │   ├── region_aliases.yaml       # LLD-2 §13 (generic admin-1 name aliases)
+│   ├── keyword_stopwords.yaml    # LLD-5 §4.1 keyword route (D3-2, BD-36)
 │   └── geonames/README.md        # download instructions; dumps are git-ignored
 │
 ├── app/
@@ -62,6 +67,10 @@ cardio4cities/
 │   │   ├── wording.py            # user-facing vocabulary (R-90)
 │   │   ├── params.py             # tunables passed into the rules, built from config (BD-06)
 │   │   ├── dates.py              # calendar arithmetic; `today` is always passed in
+│   │   ├── geography.py          # effective geography level of a claim
+│   │   ├── place_names.py        # name keys shared by claims and the gazetteer (BD-17)
+│   │   ├── charset.py            # text decoding rules
+│   │   ├── prices.py             # model and embedding prices (BD-30)
 │   │   └── ids.py                # deterministic uuid5 IDs (Qdrant points, graph nodes)
 │   ├── workflow/
 │   │   ├── graph.py              # main graph and slot subgraph (LLD-2 §3)
@@ -85,30 +94,30 @@ cardio4cities/
 │   │                             #       labels (reference-period rule, derived flags), label_evidence,
 │   │                             #       geography_fit, programme_status, region_match,
 │   │                             #       other_places (source selection, BD-15)
-│   ├── query/                    # LLD-5 (CHG-01): understand.py, routes/ (structured.py, keyword.py,
+│   ├── query/                    # (D3-2) LLD-5 (CHG-01): understand.py, routes/ (structured.py, keyword.py,
 │   │                             #   semantic.py, graph.py), revalidate.py, fuse.py, anchors.py,
 │   │                             #   bundle.py, answer.py, postcheck.py, trace.py
-│   ├── report/                   # assemble, render, templates/report.{md,html}.j2 (LLD-2 §16)
+│   ├── report/                   # (D3-3) assemble, render, templates/report.{md,html}.j2 (LLD-2 §16)
 │   ├── prompts/
 │   │   ├── loader.py             # loads text, computes prompt_version (LLD-3 §2.5)
 │   │   ├── safety.py             # <source> wrapping and escaping (LLD-3 §2.2)
 │   │   └── <role>/v1.md, schema.py   # planner, extractor, checker, classifier, answerer, reporter
-│   ├── ports/                    # Protocols (LLD-4 §8), one module per port with its value types; errors.py
+│   ├── ports/                    # Protocols (LLD-4 §8), one module per port with its value types; errors.py, health.py
 │   └── adapters/                 # the ONLY place vendor SDKs are imported
-│       ├── llm/                  # anthropic.py, openai.py, ollama.py
+│       ├── llm/                  # anthropic.py, openai.py; ollama.py (not built)
 │       ├── embeddings/           # openai.py, sentence_transformers.py
-│       ├── search/               # brave.py, searxng.py, tavily.py
+│       ├── search/               # brave.py, searxng.py, _common.py (rate limit); tavily.py (not built)
 │       ├── fetch/                # httpx_pinned.py (IP-pinned, httpx: BD-07), robots_protego.py
 │       ├── parse/                # documents.py: trafilatura (HTML, table spans expanded with lxml), pdfplumber (PDF) (BD-07, BD-10)
 │       ├── structured/           # who_gho.py, world_bank.py: pure URL building and parsing (BD-13)
 │       ├── vector/               # qdrant.py, qdrant_probe.py
 │       ├── graph/                # graphiti.py (direct-save path, BD-11), neo4j_probe.py
 │       ├── snapshots/            # postgres.py
-│       ├── renderer/             # weasyprint.py, browser_print.py
-│       ├── tracing/              # events.py, langsmith.py, otel.py
-│       └── postgres/             # db.py, repos/, migrations/ (Alembic), checkpointer.py
+│       ├── renderer/             # (D3-3) weasyprint.py; browser_print.py (not built)
+│       ├── tracing/              # events are written by the workflow; langsmith.py, otel.py (not built, BD-36)
+│       └── postgres/             # db.py, relational.py, repos/, migrations/ (Alembic), checkpointer.py
 │
-├── web/                          # Next.js, static export to web/out
+├── web/                          # (D3-4) Next.js, static export to web/out; web/placeholder until then
 │   ├── app/                      # routes: / (access + start), /city/[id], /city/[id]/explore, /city/[id]/ask
 │   ├── components/               # FactCard, Badge, ConfidenceReasons, CoverageGrid, EvidencePanel,
 │   │                             # ProgressStream, EntityPage, EntityNeighbours, AnswerView, AdminOverlay
@@ -117,17 +126,18 @@ cardio4cities/
 │
 ├── scripts/
 │   ├── reference/                # load_geonames.py, load_yaml_reference.py
-│   ├── spikes/                   # graphiti_triplets.py, who_endpoint.py, reachability.py,
-│   │                             # search_links_only.py, pdf_quotes.py, run_timing.py,
+│   ├── spikes/                   # graphiti_triplets.py (S-1), structured_endpoints.py (S-2),
+│   │                             # reachability.py (S-3, BD-36), brave_links.py (S-4),
+│   │                             # pdf_quotes.py (S-5), full_run.py and compare_runs.py (S-6),
 │   │                             # thin_slice.py (D2-3 live check; city typed at run time);
 │   │                             # replay_source.py (BD-10: re-run a stored source, no web);
-│   │                             # structured_endpoints.py (S-2, BD-13); brave_links.py (S-4)
-│   │                             # and full_run.py (S-6, BD-14); outputs naming real
+│   │                             # outputs naming real
 │   │                             # places go to the git-ignored spike_results/
 │   │                             # results/ holds each spike's written outcome
-│   ├── purge_city.py             # LLD-1 §8
-│   ├── purge_graph.py            # local only: empty Neo4j and its embedding marker (BD-14)
+│   ├── purge_city.py             # (D3-5) LLD-1 §8, LangGraph checkpoints included (BD-36)
+│   ├── purge_graph.py            # local only: empty Neo4j, its marker and the graph links (BD-14, BD-36)
 │   ├── eval_prompts.py           # LLD-3 §9
+│   ├── predeploy.sh, start.sh    # Render pre-deploy (migrations, reference data) and start
 │   └── keepalive.sh              # calls /api/v1/health
 │
 ├── tests/
@@ -145,6 +155,7 @@ cardio4cities/
 │   ├── ARCHITECTURE.md           # concise, for the panel (R-20)
 │   ├── DECISIONS.md
 │   ├── REHEARSAL.md
+│   ├── no_seeding_allowlist.yaml # reviewed place names in docs/ for the AT-02 scan (BD-35)
 │   └── design/                   # REQUIREMENTS, BRAINSTORM, HLD, LLD-1..4, REPO_STRUCTURE, BUILD_PLAN
 ├── deck/                         # exported slides (R-22)
 └── samples/                      # example report from the deployed system (R-21)
@@ -202,19 +213,19 @@ Run as `uv run poe <task>`; tasks are defined in `pyproject.toml` under `[tool.p
 | `poe migrate` | Run Alembic migrations; needs `DATABASE_URL` only |
 | `poe reference` | Download GeoNames (if missing) and load all reference data; needs `DATABASE_URL` only |
 | `poe geonames` | Download GeoNames only (the AT-02 scan reads it) |
-| `poe dev` | API with reload on :8000, plus `web` dev server on :3000 proxying `/api` |
-| `poe web` | Build the static export into `web/out` |
+| `poe dev` | API with reload on :8000, plus `web` dev server on :3000 proxying `/api` (added by D3-4) |
+| `poe web` | Build the static export into `web/out` (added by D3-4) |
 | `poe test` | Unit, contract, architecture and acceptance tests (recorded responses) |
 | `poe lint` | ruff, mypy, import-linter |
 | `poe fmt` | ruff format and auto-fix |
 | `poe down` | Stop local stores |
-| `poe types` | Regenerate `web/lib/api-types.ts` from the OpenAPI document |
+| `poe types` | Regenerate `web/lib/api-types.ts` from the OpenAPI document (added by D3-4) |
 | `poe spike NAME` | Run one script in `scripts/spikes/` |
 | `poe eval` | Prompt golden set against real models (costs money) |
-| `poe eval-rag` | Retrieval evaluation with real models (costs money; ask the owner first; CHG-01) |
+| `poe eval-rag` | Retrieval evaluation with real models (costs money; ask the owner first; CHG-01; added by D3-2) |
 | `poe smoke URL` | Smoke tests against a deployed URL |
-| `poe purge CITY` | Remove a city from all stores |
-| `poe purge-graph` | Delete the local Neo4j graph and its embedding marker; refuses when `APP_ENV=deployed` (BD-14) |
+| `poe purge CITY` | Remove a city from all stores, its LangGraph checkpoints (`lg`) included (added by D3-5, BD-36) |
+| `poe purge-graph` | Delete the local Neo4j graph, its embedding marker and the Postgres graph links; refuses a graph not on this machine and `APP_ENV=deployed` (BD-14, BD-36) |
 
 ---
 

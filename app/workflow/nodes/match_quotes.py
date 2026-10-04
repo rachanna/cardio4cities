@@ -94,11 +94,13 @@ async def relation_for(
     rel: RelationOut,
     acronyms: dict[str, str],
     published: date | None,
+    source_id: str | None = None,
 ) -> Relation:
     """Resolve subject and object (LLD-2 §6); a missing start date takes the publication
-    date as a flagged proxy (LLD-1 §2.5)."""
-    subject = await d.entities.resolve(city_id, rel.subject_name, rel.subject_type, acronyms)
-    obj = await d.entities.resolve(city_id, rel.object_name, rel.object_type, acronyms)
+    date as a flagged proxy (LLD-1 §2.5). `source_id` scopes a generic name (BD-24)."""
+    resolve = d.entities.resolve
+    subject = await resolve(city_id, rel.subject_name, rel.subject_type, acronyms, source_id)
+    obj = await resolve(city_id, rel.object_name, rel.object_type, acronyms, source_id)
     valid_from, _ = parse_partial_date(rel.valid_from, end=False)
     valid_to, _ = parse_partial_date(rel.valid_to, end=True)
     # The publication date stands in for a missing start, unless it falls after the stated
@@ -253,6 +255,7 @@ async def match_quotes(state: SlotState, config: RunnableConfig) -> dict[str, An
                     out.relation,
                     acronyms[draft.source_id],
                     published if isinstance(published, date) else None,
+                    draft.source_id,
                 )
             await d.relational.research.add_claim(claim, statistic, relation)
             matched.append(Candidate(claim, PublisherClass(str(source["publisher_class"]))))

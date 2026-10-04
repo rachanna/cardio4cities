@@ -1,21 +1,20 @@
 """Entity resolution rules (LLD-2 §6, R-43, AT-26). Pure: the resolver
 (`app/workflow/entities.py`) does the lookups and writes.
 
-Steps, in order: alias hit; normalised key; acronym map from the source text; embedding
-merge (not for people); otherwise a new entity. An uncertain match never merges: two
-entities stay separate and the pair is logged for review.
+Steps, in order (BD-24): an acronym the source defines resolves through its long form;
+alias hit; normalised key; the same significant words in any order (organisations,
+programmes and policies); otherwise a new entity. Embedding similarity never merges: a
+close pair is only logged for review. A name made only of generic words joins only
+within its own source.
 """
 
 import math
 import re
 import unicodedata
 from collections.abc import Sequence
-from typing import Literal
 
 from app.domain.params import EntityParams
 from app.workflow.rules.quotes import normalise_text
-
-MergeDecision = Literal["merge", "candidate", "new"]
 
 _LEADING_THE = re.compile(r"^the\s+")
 _LEADING_THE_ANY_CASE = re.compile(r"^the\s+", re.IGNORECASE)
@@ -97,9 +96,100 @@ def cosine(a: Sequence[float], b: Sequence[float]) -> float:
     return dot / norm if norm else 0.0
 
 
-def merge_decision(score: float, params: EntityParams) -> MergeDecision:
-    if score >= params.merge_threshold:
-        return "merge"
-    if score >= params.candidate_threshold:
-        return "candidate"
-    return "new"
+def is_candidate(score: float, params: EntityParams) -> bool:
+    """A pair close enough to log for review; it never merges (owner, BD-24): "City
+    Council" and "District Council" score 0.95 with the local model."""
+    return score >= params.candidate_threshold
+
+
+def _significant_words(name: str) -> list[str]:
+    text = _strip_diacritics(normalise_text(name)).casefold()
+    return [w for w in _NON_WORD.split(text) if w and w not in _SMALL_WORDS]
+
+
+def word_set_key(name: str) -> str:
+    """The significant words in any order: "Health Directorate of Norvania" and
+    "Norvania Health Directorate" meet; "Halden Bay City Council" and "Halden Bay
+    District Council" do not (owner, BD-24)."""
+    return "-".join(sorted(set(_significant_words(name))))
+
+
+# Words that name a kind of body, not a particular one (BD-24). A name made only of
+# these ("Department of Health", "City Council") could be any city's, state's or
+# country's body, so it joins only within its own source.
+GENERIC_WORDS = frozenset(
+    {
+        "affairs",
+        "agency",
+        "authority",
+        "board",
+        "branch",
+        "bureau",
+        "cardiovascular",
+        "care",
+        "center",
+        "central",
+        "centre",
+        "city",
+        "clinic",
+        "clinics",
+        "commission",
+        "committee",
+        "community",
+        "control",
+        "council",
+        "county",
+        "department",
+        "development",
+        "directorate",
+        "disease",
+        "diseases",
+        "district",
+        "division",
+        "family",
+        "general",
+        "government",
+        "health",
+        "healthcare",
+        "heart",
+        "hospital",
+        "hospitals",
+        "hypertension",
+        "local",
+        "medical",
+        "metropolitan",
+        "ministry",
+        "municipal",
+        "municipality",
+        "national",
+        "ncd",
+        "ncds",
+        "noncommunicable",
+        "office",
+        "officer",
+        "prevention",
+        "primary",
+        "program",
+        "programme",
+        "province",
+        "provincial",
+        "public",
+        "region",
+        "regional",
+        "screening",
+        "secretariat",
+        "service",
+        "services",
+        "social",
+        "state",
+        "team",
+        "town",
+        "unit",
+        "welfare",
+    }
+)
+
+
+def is_generic(name: str) -> bool:
+    words = _significant_words(name)
+    return bool(words) and all(w in GENERIC_WORDS for w in words)

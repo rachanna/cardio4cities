@@ -15,12 +15,14 @@ from app.workflow.rules.entity_resolution import (
     acronym_fits,
     acronym_pairs,
     is_acronym,
-    merge_decision,
+    is_candidate,
+    is_generic,
     normalized_key,
+    word_set_key,
 )
 
 CITY = "city_hb"
-PARAMS = EntityParams(merge_threshold=0.92, candidate_threshold=0.85)
+PARAMS = EntityParams(candidate_threshold=0.85)
 
 
 @dataclass
@@ -135,12 +137,56 @@ async def test_people_with_similar_names_stay_separate() -> None:
     assert len(repo.by_id) == 2
 
 
-async def test_near_identical_organisation_names_merge_by_embedding() -> None:
+async def test_the_same_words_in_another_order_are_one_organisation() -> None:
+    """BD-24: the word-set match replaces the embedding merge."""
     r, repo = resolver()
-    a = await r.resolve(CITY, "Coastal District Health Office", EntityType.ORGANIZATION)
-    b = await r.resolve(CITY, "Coastal District Office Health", EntityType.ORGANIZATION)
+    a = await r.resolve(CITY, "Norvania Health Directorate", EntityType.ORGANIZATION)
+    b = await r.resolve(CITY, "Health Directorate of Norvania", EntityType.ORGANIZATION)
     assert a == b
-    assert repo.aliases[(CITY, "Coastal District Office Health")][1] == "embedding"
+    assert repo.aliases[(CITY, "Health Directorate of Norvania")][1] == "normalized"
+
+
+async def test_close_names_of_different_bodies_never_merge() -> None:
+    """RV-008: "City Council" and "District Council" scored 0.95 and merged. Embedding
+    similarity now only logs a pair for review (owner, BD-24)."""
+    r, repo = resolver()
+    city = await r.resolve(CITY, "Halden Bay City Council", EntityType.ORGANIZATION)
+    district = await r.resolve(CITY, "Halden Bay District Council", EntityType.ORGANIZATION)
+    assert city != district
+    assert len(repo.by_id) == 2
+    assert [(c[0], c[1]) for c in r.candidates] == [(city, CITY)]  # logged for review
+
+
+async def test_a_place_named_greater_x_is_not_the_city() -> None:
+    """RV-008: a metro figure's edge must not land on the city."""
+    r, _ = resolver()
+    city = await r.resolve(CITY, "Halden Bay", EntityType.PLACE)
+    assert await r.resolve(CITY, "Greater Halden Bay", EntityType.PLACE) != city
+
+
+async def test_a_generic_name_joins_only_within_its_own_source() -> None:
+    """RV-025 (owner, BD-24): a city's and a state's "Department of Health" stay apart;
+    repeated mentions in one source are one entity; no city-wide alias is registered."""
+    r, repo = resolver()
+    org = EntityType.ORGANIZATION
+    a1 = await r.resolve(CITY, "Department of Health", org, source_id="src_a")
+    a2 = await r.resolve(CITY, "the Department of Health", org, source_id="src_a")
+    b = await r.resolve(CITY, "Department of Health", org, source_id="src_b")
+    assert a1 == a2
+    assert a1 != b
+    assert (CITY, "Department of Health") not in repo.aliases
+
+
+async def test_an_acronym_this_source_defines_beats_another_sources_alias() -> None:
+    """RV-025: source B defines NHC as another body; B's NHC is that body."""
+    r, _ = resolver()
+    org = EntityType.ORGANIZATION
+    first = await r.resolve(CITY, "NHC", org, {"NHC": "Norvania Heart Council"}, "src_a")
+    second = await r.resolve(CITY, "NHC", org, {"NHC": "Northern Hospitals Consortium"}, "src_b")
+    assert first != second
+    assert await r.resolve(CITY, "Northern Hospitals Consortium", org) == second
+    # a source that does not define it still finds the alias the first source registered
+    assert await r.resolve(CITY, "NHC", org) == first
 
 
 async def test_same_name_of_another_type_is_another_entity() -> None:
@@ -210,8 +256,24 @@ def test_an_acronym_defined_two_ways_is_not_trusted() -> None:
     assert acronym_pairs(text) == {}
 
 
+@pytest.mark.parametrize(("score", "candidate"), [(0.97, True), (0.85, True), (0.84, False)])
+def test_a_close_pair_is_only_a_candidate(score: float, candidate: bool) -> None:
+    assert is_candidate(score, PARAMS) is candidate
+
+
+def test_word_set_keys() -> None:
+    assert word_set_key("Health Directorate of Norvania") == word_set_key(
+        "the Norvania Health Directorate"
+    )
+    assert word_set_key("Halden Bay City Council") != word_set_key("Halden Bay District Council")
+    assert word_set_key("North Coast Office") != word_set_key("South Coast Office")
+
+
 @pytest.mark.parametrize(
-    ("score", "decision"), [(0.95, "merge"), (0.92, "merge"), (0.88, "candidate"), (0.5, "new")]
-)
-def test_merge_thresholds(score: float, decision: str) -> None:
-    assert merge_decision(score, PARAMS) == decision
+    ("name", "generic"),
+    [("Department of Health", True), ("City Council", True), ("Ministry of Health", True),
+     ("National Hypertension Control Programme", True), ("Norvania Health Directorate", False),
+     ("Halden Bay City Council", False), ("Healthy Hearts Halden Bay", False)],
+)  # fmt: skip
+def test_generic_names(name: str, generic: bool) -> None:
+    assert is_generic(name) is generic

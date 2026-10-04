@@ -290,7 +290,7 @@ plan:       { queries_per_slot: 2 }   # BD-15
 extract:    { window_tokens: 12000, overlap_tokens: 500 }
 quote:      { min_words: 6, max_words: 60 }   # BD-06
 consistency:{ agree_pp: 0.5, agree_rel: 0.02 }
-entity:     { merge_threshold: 0.92, candidate_threshold: 0.85 }
+entity:     { candidate_threshold: 0.85 }   # BD-24: logged for review, never merged
 badge:      { stale_years: 5, stale_years_people: 2, small_sample: 300 }
 confidence: { recent_years: 5 }
 analytics:  { enabled: false }

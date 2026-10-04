@@ -337,7 +337,7 @@ All other relation types: identical subject, type and object → `agrees`; other
 1. **Alias hit.** `entity_alias(city_id, surface_form)` exists → return it (`method` unchanged).
 2. **Normalised key.** `normalized_key = slug(casefold(strip_diacritics(surface_form)))` after removing a leading "the" and punctuation. Match on `(city_id, entity_type, normalized_key)` → register alias with `method = normalized`.
 3. **Acronym map.** Before extraction results are resolved, code scans each source for `Long Name (ACR)` and `ACR (Long Name)` where `ACR` is 2–8 capital letters. Both forms are registered as aliases of one entity, `method = acronym`. A mention that is all capitals checks these aliases first.
-4. **Embedding merge** (not for `Person`). Embed the surface form; compare with existing entities of the same type in the city. Cosine `≥ 0.92` `[tunable]` → alias, `method = embedding`, `score` stored. Between `0.85` and `0.92` → new entity, candidate pair logged for review (model adjudication is COULD).
+4. **Embedding merge** (not for `Person`). Embed the surface form; compare with existing entities of the same type in the city. Cosine `≥ 0.92` `[tunable]` → alias, `method = embedding`, `score` stored. Between `0.85` and `0.92` → new entity, candidate pair logged for review (model adjudication is COULD). *Replaced by BD-24, below.*
 5. Otherwise create a new entity with `graph_uuid = uuid5(NAMESPACE, entity_id)`.
 
 The city itself is created as a `Place` entity at run start from the gazetteer identity, so every `OPERATES_IN`, `GOVERNS` and `APPLIES_TO` edge points at one node.
@@ -345,6 +345,17 @@ The city itself is created as a `Place` entity at run start from the gazetteer i
 **Tests:** "Ghana Health Service", "GHS" and "the Ghana Health Service" resolve to one entity; two different people with similar names stay separate.
 
 **As built (BD-12).** An alias hit counts only for the same entity type. An acronym pair is trusted only when the acronym is the initials of the long name and the source defines it one way. Candidate pairs are logged with entity IDs and score only. Relation claims are resolved in `match_quotes`, so their `relation` row is stored with the claim. A missing start date takes the publication date as a proxy only when that date is not after the stated end. The tests use fictional names (Norvania Health Directorate, NHD).
+
+**Current order (owner, BD-24).**
+1. An acronym the claim's own source defines resolves through its long form. The city-wide alias table is not consulted for it, so another source's alias for the same letters is never used.
+2. Alias hit, for the same entity type.
+3. Normalised key.
+4. For `Organization`, `Programme` and `Policy`: the same significant words in any order (`word_set_key`; small words such as "of" and "the" are ignored). "Health Directorate of Norvania" is "Norvania Health Directorate"; "Halden Bay City Council" is not "Halden Bay District Council".
+5. Otherwise a new entity.
+
+Embedding similarity never merges. A pair at or above `entity.candidate_threshold` (0.85) `[tunable]` is only logged for review, with IDs and score. Places and people join only by exact alias or key, so "Greater Halden Bay" is never the city.
+
+A name made only of generic words ("Department of Health", "City Council", "National Hypertension Control Programme"; `GENERIC_WORDS`, English only) could be any city's, state's or country's body. It joins only within its own source: its key carries the source ID, and no city-wide alias is registered for it.
 
 ---
 

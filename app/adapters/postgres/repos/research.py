@@ -7,7 +7,7 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from app.domain.models import Claim, Relation, Statistic, Verdict
+from app.domain.models import Claim, Relation, SourceRef, Statistic, StoredFact, Verdict
 
 
 def _claim(row: Any) -> Claim:
@@ -50,6 +50,66 @@ def _claim(row: Any) -> Claim:
             "label_spans": {k: tuple(v) for k, v in row["label_spans"].items()},
             "geography_fit": row["geography_fit"],
         }
+    )
+
+
+# A claim with its statistic, verdict, source and relation (D3-1): one row per claim
+_FACT_SELECT = (
+    "SELECT c.*, s.value_as_written, s.indicator_code,"
+    " v.label AS v_label, v.rationale AS v_rationale, v.scope_verified, v.period_verified,"
+    " v.verifier_model, v.verifier_family, v.fallback_used, v.prompt_version AS v_prompt,"
+    " src.url, src.title, src.publisher_class, src.published_date, src.retrieved_at,"
+    " r.subject_entity_id, r.relation_type, r.object_entity_id, r.valid_from, r.valid_to,"
+    " r.valid_from_is_proxy, r.programme_status, r.superseded_on"
+    " FROM claim c JOIN source src ON src.source_id = c.source_id"
+    " LEFT JOIN statistic s ON s.claim_id = c.claim_id"
+    " LEFT JOIN verdict v ON v.claim_id = c.claim_id"
+    " LEFT JOIN relation r ON r.claim_id = c.claim_id"
+)
+
+
+def _stored_fact(row: Any) -> StoredFact:
+    claim = _claim(row)
+    verdict = None
+    if row["v_label"] is not None:
+        verdict = Verdict(
+            claim_id=claim.claim_id,
+            label=row["v_label"],
+            rationale=row["v_rationale"],
+            scope_verified=row["scope_verified"],
+            period_verified=row["period_verified"],
+            verifier_model=row["verifier_model"],
+            verifier_family=row["verifier_family"],
+            fallback_used=row["fallback_used"],
+            prompt_version=row["v_prompt"],
+        )
+    relation = None
+    if row["relation_type"] is not None:
+        relation = Relation(
+            claim_id=claim.claim_id,
+            subject_entity_id=row["subject_entity_id"],
+            relation_type=row["relation_type"],
+            object_entity_id=row["object_entity_id"],
+            valid_from=row["valid_from"],
+            valid_to=row["valid_to"],
+            valid_from_is_proxy=row["valid_from_is_proxy"],
+            programme_status=row["programme_status"],
+            superseded_on=row["superseded_on"],
+        )
+    return StoredFact(
+        claim=claim,
+        value_as_written=row["value_as_written"],
+        indicator_code=row["indicator_code"],
+        verdict=verdict,
+        source=SourceRef(
+            source_id=claim.source_id,
+            url=row["url"],
+            title=row["title"],
+            publisher_class=row["publisher_class"],
+            published_date=row["published_date"],
+            retrieved_at=row["retrieved_at"],
+        ),
+        relation=relation,
     )
 
 
@@ -266,6 +326,82 @@ class PostgresResearchRepo:
                 .one_or_none()
             )
         return dict(row) if row else None
+
+    # --- reading a city (D3-1, LLD-4 §3.3) ------------------------------------------------
+
+    async def city_facts(self, city_id: str) -> list[StoredFact]:
+        """The facts of the city's latest run: exactly the claims in `v_city_facts`."""
+        sql = (
+            f"{_FACT_SELECT} WHERE c.claim_id IN"  # noqa: S608 - constant select
+            " (SELECT claim_id FROM v_city_facts WHERE city_id = :c) ORDER BY c.slot_id, c.claim_id"
+        )
+        async with self._engine.connect() as conn:
+            rows = await conn.execute(text(sql), {"c": city_id})
+            return [_stored_fact(r) for r in rows.mappings()]
+
+    async def stored_fact(self, claim_id: str) -> StoredFact | None:
+        """Any stored claim, whatever its status: the evidence view shows rejected ones too."""
+        async with self._engine.connect() as conn:
+            row = (
+                (await conn.execute(text(f"{_FACT_SELECT} WHERE c.claim_id = :c"), {"c": claim_id}))
+                .mappings()
+                .one_or_none()
+            )
+        return _stored_fact(row) if row else None
+
+    async def stored_facts(self, claim_ids: list[str]) -> dict[str, StoredFact]:
+        if not claim_ids:
+            return {}
+        async with self._engine.connect() as conn:
+            rows = await conn.execute(
+                text(f"{_FACT_SELECT} WHERE c.claim_id = ANY(:ids)"), {"ids": claim_ids}
+            )
+            return {f.claim.claim_id: f for f in map(_stored_fact, rows.mappings())}
+
+    async def contested_pairs(self, run_id: str) -> list[tuple[str, str]]:
+        """The run's disagreements, headline claim first (both sides are always shown)."""
+        async with self._engine.connect() as conn:
+            rows = await conn.execute(
+                text(
+                    "SELECT p.headline_claim, CASE WHEN p.headline_claim = p.claim_a"
+                    " THEN p.claim_b ELSE p.claim_a END AS other FROM contested_pair p"
+                    " JOIN claim c ON c.claim_id = p.claim_a WHERE c.run_id = :r"
+                    " ORDER BY p.pair_id"
+                ),
+                {"r": run_id},
+            )
+            return [(str(r.headline_claim), str(r.other)) for r in rows]
+
+    async def consistency(self, claim_id: str) -> dict[str, Any] | None:
+        async with self._engine.connect() as conn:
+            row = (
+                (
+                    await conn.execute(
+                        text(
+                            "SELECT outcome, compared_with, reason FROM consistency"
+                            " WHERE claim_id = :c"
+                        ),
+                        {"c": claim_id},
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+        return dict(row) if row else None
+
+    async def source_text(self, source_id: str, start: int, end: int) -> str | None:
+        """`parsed_text[start:end]` of a source, cut in the database (texts can be large)."""
+        async with self._engine.connect() as conn:
+            row = (
+                await conn.execute(
+                    text(
+                        "SELECT substr(parsed_text, :a, :n) AS part FROM source"
+                        " WHERE source_id = :s AND parsed_text IS NOT NULL"
+                    ),
+                    {"s": source_id, "a": start + 1, "n": max(end - start, 0)},
+                )
+            ).one_or_none()
+        return str(row.part) if row else None
 
     async def claim_with_statistic(self, claim_id: str) -> tuple[Claim, Statistic | None]:
         async with self._engine.connect() as conn:

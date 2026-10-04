@@ -12,6 +12,16 @@ from app.domain.models import Entity
 _COLUMNS = "entity_id, city_id, entity_type, canonical_name, normalized_key, graph_uuid, attributes"
 
 
+_E_COLUMNS = ", ".join(f"e.{c.strip()}" for c in _COLUMNS.split(","))
+_FACT_COUNTS = (
+    f"SELECT {_E_COLUMNS}, count(*) AS facts FROM entity e JOIN relation r"  # noqa: S608 - constant column list
+    " ON e.entity_id IN (r.subject_entity_id, r.object_entity_id)"
+    " JOIN v_city_facts f ON f.claim_id = r.claim_id"
+    " WHERE e.city_id = :c AND f.city_id = :c"
+    " GROUP BY e.entity_id ORDER BY e.entity_type, count(*) DESC, e.canonical_name"
+)
+
+
 def _entity(row: dict[str, object]) -> Entity:
     return Entity.model_validate({**row, "graph_uuid": str(row["graph_uuid"])})
 
@@ -88,6 +98,18 @@ class PostgresEntityRepo:
                 {"c": city_id, "t": entity_type},
             )
             return [_entity(dict(r)) for r in rows.mappings()]
+
+    async def with_fact_counts(self, city_id: str) -> list[tuple[Entity, int]]:
+        """Entities named by at least one fact of the city's latest run, with how many
+        (D3-1): an entity only an unconfirmed claim named is not shown."""
+        async with self._engine.connect() as conn:
+            rows = await conn.execute(text(_FACT_COUNTS), {"c": city_id})
+            out = []
+            for r in rows.mappings():
+                row = dict(r)
+                facts = int(row.pop("facts"))
+                out.append((_entity(row), facts))
+            return out
 
     async def get(self, entity_ids: list[str]) -> dict[str, Entity]:
         if not entity_ids:

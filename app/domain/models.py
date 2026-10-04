@@ -357,6 +357,33 @@ class Source(BaseModel):
     found_via: str
 
 
+class SourceRef(BaseModel):
+    """What a fact shows of its source (LLD-4 §2.1)."""
+
+    model_config = _FROZEN
+
+    source_id: str
+    url: str
+    title: str | None
+    publisher_class: PublisherClass
+    published_date: date | None
+    retrieved_at: datetime
+
+
+class StoredFact(BaseModel):
+    """A stored claim with what the read API shows beside it (D3-1): its statistic value,
+    verdict, source and, for a relation claim, the relation."""
+
+    model_config = _FROZEN
+
+    claim: Claim
+    value_as_written: str | None = None
+    indicator_code: str | None = None
+    verdict: Verdict | None = None
+    source: SourceRef
+    relation: Relation | None = None
+
+
 class CrawlDecision(BaseModel):
     model_config = _FROZEN
 

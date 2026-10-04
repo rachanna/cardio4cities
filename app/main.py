@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from app.api import errors
 from app.api.auth import AccessConfig
 from app.api.limits import FailureLimiter
-from app.api.routers import health, runs, session
+from app.api.routers import cities, facts, health, runs, session
 from app.api.routers.health import HealthService
 from app.container import ADAPTERS, AdapterRegistry, Container, build_container
 from app.ports.graph import GraphPort
@@ -194,6 +194,8 @@ def create_app(
     app.include_router(session.router, prefix="/api/v1")
     app.include_router(health.router, prefix="/api/v1")
     app.include_router(runs.router, prefix="/api/v1")
+    app.include_router(cities.router, prefix="/api/v1")
+    app.include_router(facts.router, prefix="/api/v1")
     web_dir = next((d for d in WEB_DIRS if d.is_dir()), None)
     if web_dir is not None:  # mounted last: API routes take precedence
         app.mount("/", StaticFiles(directory=web_dir, html=True), name="web")

@@ -67,6 +67,9 @@ class MemoryEntities:
     async def get(self, entity_ids: list[str]) -> dict[str, Entity]:
         return {i: self.by_id[i] for i in entity_ids if i in self.by_id}
 
+    async def with_fact_counts(self, city_id: str) -> list[tuple[Entity, int]]:
+        return []  # the read API's query (D3-1); resolution never reads it
+
     async def update_attributes(self, entity_id: str, change: Any) -> dict[str, Any] | None:
         old = self.by_id[entity_id]
         update = change(dict(old.attributes))

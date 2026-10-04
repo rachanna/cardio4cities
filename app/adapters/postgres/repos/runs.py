@@ -36,6 +36,42 @@ class PostgresRunRepo:
                 },
             )
 
+    async def city_row(self, city_id: str) -> dict[str, Any] | None:
+        """The city with its latest run (D3-1): None for an unknown city."""
+        async with self._engine.connect() as conn:
+            row = (
+                (
+                    await conn.execute(
+                        text(
+                            "SELECT c.city_id, c.gazetteer_id, c.identity, c.latest_run_id,"
+                            " r.status AS latest_run_status, r.started_at AS latest_run_started,"
+                            " r.finished_at AS latest_run_at FROM city c"
+                            " LEFT JOIN run r ON r.run_id = c.latest_run_id WHERE c.city_id = :c"
+                        ),
+                        {"c": city_id},
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+        return dict(row) if row else None
+
+    async def cities(self, limit: int, offset: int) -> list[dict[str, Any]]:
+        """Cities with a finished run, newest first ("Open existing", AT-25, AT-37)."""
+        async with self._engine.connect() as conn:
+            rows = await conn.execute(
+                text(
+                    "SELECT c.city_id, c.identity->>'name' AS name,"
+                    " c.identity->>'country_name' AS country_name, c.latest_run_id,"
+                    " coalesce(r.finished_at, r.started_at) AS latest_run_at,"
+                    " r.status AS latest_run_status FROM city c"
+                    " JOIN run r ON r.run_id = c.latest_run_id"
+                    " ORDER BY latest_run_at DESC NULLS LAST, c.city_id LIMIT :l OFFSET :o"
+                ),
+                {"l": limit, "o": offset},
+            )
+            return [dict(r) for r in rows.mappings()]
+
     async def city_identity(self, city_id: str) -> CityIdentity:
         async with self._engine.connect() as conn:
             row = (

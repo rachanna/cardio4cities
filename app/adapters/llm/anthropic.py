@@ -45,7 +45,7 @@ class AnthropicLLM:
             response = await client.messages.parse(**kwargs)
         except ValidationError as exc:
             raise LLMOutputValidationError(
-                f"{role}: output did not fit the schema", str(exc)
+                f"{role}: output did not fit the schema", str(exc), truncated=_cut_off(str(exc))
             ) from exc
         except (
             anthropic.APIConnectionError,
@@ -62,7 +62,8 @@ class AnthropicLLM:
             raise ProviderUnavailableError(f"anthropic: {role} request declined")
         parsed = response.parsed_output
         if parsed is None:
-            raise LLMOutputValidationError(f"{role}: no structured output", raw)
+            cut = response.stop_reason == "max_tokens"
+            raise LLMOutputValidationError(f"{role}: no structured output", raw, truncated=cut)
         usage = response.usage
         return LLMResult(
             parsed=parsed,
@@ -80,3 +81,8 @@ def make(settings: Settings) -> AnthropicLLM:
     if not provider.api_key_env:
         raise ValueError("llm.providers.anthropic.api_key_env is required")
     return AnthropicLLM(settings.secret(provider.api_key_env))
+
+
+def _cut_off(detail: str) -> bool:
+    """Pydantic's message for JSON that ends early: the output hit the token ceiling."""
+    return "EOF while parsing" in detail or "Unterminated string" in detail

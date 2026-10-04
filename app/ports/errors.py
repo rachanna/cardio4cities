@@ -10,11 +10,13 @@ class ProviderUnavailableError(PortError):
 
 
 class LLMOutputValidationError(PortError):
-    """The model's output did not validate against the requested schema."""
+    """The model's output did not validate against the requested schema. `truncated`:
+    the output was cut off at the token ceiling (BD-26), so a repair asks for less."""
 
-    def __init__(self, message: str, raw_text: str) -> None:
+    def __init__(self, message: str, raw_text: str, truncated: bool = False) -> None:
         super().__init__(message)
         self.raw_text = raw_text
+        self.truncated = truncated
 
 
 class FetchError(PortError):

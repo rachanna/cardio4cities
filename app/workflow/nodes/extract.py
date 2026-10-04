@@ -10,7 +10,12 @@ from langchain_core.runnables import RunnableConfig
 from app.domain.vocab import EventType
 from app.ports.errors import PortError
 from app.prompts.extractor import context
-from app.prompts.extractor.schema import ExtractorOutput, keep_claim, repair_problems
+from app.prompts.extractor.schema import (
+    MAX_CLAIMS,
+    ExtractorOutput,
+    keep_claim,
+    repair_problems,
+)
 from app.prompts.loader import load_prompt
 from app.workflow.budget import BudgetExhaustedError
 from app.workflow.ids import stable_id
@@ -80,7 +85,7 @@ async def extract(state: SlotState, config: RunnableConfig) -> dict[str, Any]:
                     skipped.append(_skip(source_id, n, exc))
                     await step_failed(d, state, "extract", f"{source_id}#{n}", exc)
                     continue
-            for claim in out.parsed.claims:
+            for claim in out.parsed.claims[:MAX_CLAIMS]:  # the most relevant first (BD-26)
                 key = normalise_text(claim.quote)
                 if not keep_claim(claim, {slot.slot_id}) or key in seen_quotes:
                     continue  # invalid, or the same quote from an overlapping window

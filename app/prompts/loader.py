@@ -19,7 +19,7 @@ class Prompt:
 
 
 # The version each role runs now; earlier files stay for the record (R-62).
-CURRENT = {"planner": 3, "extractor": 3, "checker": 3}  # v3: BD-22
+CURRENT = {"planner": 3, "extractor": 4, "checker": 4}  # v4: BD-26
 
 
 @cache
@@ -29,7 +29,13 @@ def load_prompt(role: str, version: int | None = None) -> Prompt:
     # Line endings are normalised so a checkout's CRLF or LF never changes the version
     text = _normalised((folder / f"v{version}.md").read_bytes())
     schema = _normalised((folder / "schema.py").read_bytes())
-    digest = hashlib.sha256(text + schema).hexdigest()[:8]
+    # What the model sees is built by context.py and escaped by safety.py: both count
+    # towards the version (BD-26; code review RV-065)
+    context = folder / "context.py"
+    built = _normalised(context.read_bytes()) if context.exists() else b""
+    shared = PROMPTS_DIR / "safety.py"
+    safety = _normalised(shared.read_bytes()) if shared.exists() else b""
+    digest = hashlib.sha256(text + schema + built + safety).hexdigest()[:8]
     return Prompt(role, version, text.decode("utf-8").strip(), f"{role}@v{version}+{digest}")
 
 

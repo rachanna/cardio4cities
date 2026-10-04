@@ -324,3 +324,64 @@
     hypertension.
   expect:
     - {value: "36.0%", subgroup: true, setting: health_facility, sample_size: 812}
+
+# --- BD-26: cases the review found missing --------------------------------------------
+
+- id: pdf-table-no-separators
+  trap: Space-separated PDF table; the row must be quoted as it runs
+  slots: [S03]
+  text: |
+    Table 4 Prevalence of raised blood pressure by district, adults 18-69, 2023
+    District n Men Women Total
+    Halden Bay 1 412 24.8 21.3 23.0
+    Kestrel Point 655 22.1 19.4 20.7
+  expect:
+    - {value: "23.0", geography_name: Halden Bay, period_year: 2023}
+
+- id: inline-reference-markers
+  trap: Reference numbers inside the sentence must be copied
+  slots: [S03]
+  text: |
+    Hypertension was measured in 26.2% of adults in Halden Bay in 2022 12,13 and was
+    higher among men 14.
+  expect:
+    - {value: "26.2%", geography_name: Halden Bay, period_year: 2022}
+
+- id: area-only-in-context
+  trap: The page never names the city; the context city must not become the label
+  slots: [S07]
+  text: |
+    The Directorate implements national and provincial programmes for non-communicable
+    diseases and provides screening through primary health centres across the country.
+  expect_none: true
+  forbid_geography: ["Halden Bay"]
+
+- id: case-definition-in-methods
+  slots: [S03]
+  text: |
+    Methods. Hypertension was defined as systolic pressure of 130 mmHg or more or
+    diastolic pressure of 80 mmHg or more, or current use of medicine for raised blood
+    pressure. Blood pressure was measured three times after five minutes of rest.
+    Results. In Halden Bay, 41.7% of adults aged 18 and over had hypertension in 2024.
+  expect:
+    - {value: "41.7%", period_year: 2024}
+  # A case definition stated only in the methods has no located passage, so code clears
+  # it (BD-22): not graded here.
+
+- id: european-sample-size
+  slots: [S03]
+  text: |
+    The 2023 Halden Bay survey examined 1.204 adults; 27.5% had high blood pressure.
+  expect:
+    - {value: "27.5%", sample_size: 1204}
+
+- id: many-figures-one-window
+  trap: Fourteen figures in one window; the call must not fail or be cut off
+  slots: [S06]
+  text: |
+    Halden Bay civil registration office. Deaths from cardiovascular disease per 100,000
+    population, by year: 2010 248.1; 2011 245.6; 2012 241.9; 2013 239.4; 2014 236.0;
+    2015 233.7; 2016 231.2; 2017 228.8; 2018 226.5; 2019 224.9; 2020 231.4; 2021 229.0;
+    2022 220.3; 2023 216.8.
+  expect:
+    - {value: "216.8", period_year: 2023}

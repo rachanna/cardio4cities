@@ -20,11 +20,14 @@ class CheckIssue(StrEnum):
 
 
 class CheckerOutput(BaseModel):
-    label: VerdictLabel
+    # Order matters (v4, BD-26): structured output is written field by field, and at low
+    # effort the checker spends almost no tokens reasoning (S-6: about 0 to 10 a call), so
+    # the evidence and the issues come before the verdict (code review RV-016).
     rationale: str
-    scope_verified: bool  # area and population confirmed by the passage
-    period_verified: bool
+    scope_verified: bool  # area and population confirmed by the passages
+    period_verified: bool  # the period confirmed by the passages
     issues: list[CheckIssue]
+    label: VerdictLabel
 
 
 def final_label(output: CheckerOutput) -> VerdictLabel:

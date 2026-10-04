@@ -8,12 +8,21 @@ from typing import Any
 
 from langchain_core.runnables import RunnableConfig
 
+from app.workflow.deps import RunDeps
 from app.workflow.nodes._deps import deps
 from app.workflow.rules.crawl_gate import canonicalise
 from app.workflow.rules.other_places import place_matcher
 from app.workflow.rules.selection import Candidate as Selected
 from app.workflow.rules.selection import select_urls
 from app.workflow.state import Candidate, SlotState
+
+
+async def seed_fetch_cache(d: RunDeps, run_id: str) -> None:
+    """A resumed run knows the pages stored before the stop, whichever step a slot
+    resumes at (BD-27; code review RV-029): only `select_sources` used to seed it, so a
+    slot resumed at `fetch_parse` fetched a stored page again."""
+    if not d.fetch_cache.seeded:
+        d.fetch_cache.seed(await d.relational.sources.fetched_sources(run_id))
 
 
 async def select_sources(state: SlotState, config: RunnableConfig) -> dict[str, Any]:
@@ -24,8 +33,7 @@ async def select_sources(state: SlotState, config: RunnableConfig) -> dict[str, 
         key = canonicalise(c.url)
         if key and key not in by_url:
             by_url[key] = c
-    if not d.fetch_cache.seeded:  # a resumed run: pages stored before the stop
-        d.fetch_cache.seed(await d.relational.sources.fetched_sources(state["run_id"]))
+    await seed_fetch_cache(d, state["run_id"])
     hits = [(c.url, c.rank) for c in raw]
     known = {u for u in by_url if d.fetch_cache.known(u)}
     if d.places is None:  # the country's places, once per run

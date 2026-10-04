@@ -123,6 +123,10 @@ class CountingBudget:
     def time_left_s(self) -> float:
         return self.left
 
+    @property
+    def stopped(self) -> bool:
+        return False
+
 
 def params(**overrides: object) -> CollectionParams:
     values: dict[str, object] = {

@@ -82,6 +82,10 @@ class Unlimited:
     def time_left_s(self) -> float:
         return float("inf")
 
+    @property
+    def stopped(self) -> bool:
+        return False
+
 
 @dataclass
 class Tally:

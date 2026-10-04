@@ -136,7 +136,13 @@ async def _getaddrinfo(host: str) -> list[str]:
         infos = await loop.getaddrinfo(host, None, type=socket.SOCK_STREAM)
     except (socket.gaierror, UnicodeError):  # UnicodeError: a label IDNA cannot encode
         return []
-    return sorted({str(info[4][0]) for info in infos})
+    return prefer_ipv4(str(info[4][0]) for info in infos)
+
+
+def prefer_ipv4(addresses: Iterable[str]) -> list[str]:
+    """The resolver's order without repeats, IPv4 first: sorted as strings, IPv6 came
+    before most IPv4 and failed on hosts without IPv6 egress (BD-36; code review RV-046)."""
+    return sorted(dict.fromkeys(addresses), key=lambda a: ":" in a)
 
 
 class PinnedFetcher:

@@ -44,6 +44,7 @@ class WebWorld:
         self.sites: dict[str, dict[str, Route]] = {}
         self.dns: dict[str, list[str]] = {}
         self.log: list[Hit] = []
+        self.dead: set[str] = set()  # addresses that refuse every connection
         self._lock = threading.Lock()
         self._server: http.server.ThreadingHTTPServer | None = None
         self.port = 0
@@ -63,7 +64,10 @@ class WebWorld:
         return list(self.dns.get(host, []))
 
     def dial(self, ip: str, port: int) -> tuple[str, int]:
-        """Every fake public address is served by the local server."""
+        """Every fake public address is served by the local server; a dead one dials a
+        port nothing listens on."""
+        if ip in self.dead:
+            return "127.0.0.1", 1
         if any(ip in ips for ips in self.dns.values()):
             return "127.0.0.1", self.port
         return ip, port  # anything else is dialled for real (and should never happen)

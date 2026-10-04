@@ -110,6 +110,8 @@ class GateDecision:
     pinned_ip: str | None = None
     crawl_delay: float | None = None
     usage_preferences: dict[str, str] = field(default_factory=dict)
+    # The host's other checked addresses: the one network retry dials the next (BD-36)
+    other_ips: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -195,17 +197,21 @@ class Collector:
         problem = check_addresses(addresses)
         if problem:
             return GateDecision(canonical, domain, CrawlOutcome.BLOCKED_PRIVATE_ADDRESS, problem)
-        return GateDecision(canonical, domain, CrawlOutcome.ALLOWED, "", None, None, addresses[0])
+        return GateDecision(
+            canonical, domain, CrawlOutcome.ALLOWED, "", None, None, addresses[0],
+            other_ips=tuple(addresses[1:]),
+        )  # fmt: skip
 
     async def gate(self, url: str) -> GateDecision:
         checked = await self._address(url)
         if checked.outcome is not CrawlOutcome.ALLOWED or checked.pinned_ip is None:
             return checked
         canonical, domain, pinned = checked.url, checked.domain, checked.pinned_ip
-        robots = await self._robots_for(canonical, pinned)
+        robots = await self._robots_for(canonical, pinned, checked.other_ips)
         base = GateDecision(
-            canonical, domain, CrawlOutcome.ALLOWED, "", None, robots.status, pinned
-        )
+            canonical, domain, CrawlOutcome.ALLOWED, "", None, robots.status, pinned,
+            other_ips=checked.other_ips,
+        )  # fmt: skip
         if robots.availability == "unreachable_server_error":
             answer = (
                 "asked us to slow down (429)" if robots.status == 429 else "returned a server error"
@@ -260,15 +266,15 @@ class Collector:
             usage_preferences=usage.preferences,
         )
 
-    async def _robots_for(self, url: str, pinned: str) -> _Robots:
+    async def _robots_for(self, url: str, pinned: str, others: tuple[str, ...]) -> _Robots:
         """One robots.txt request per origin per run, even when slots ask at once."""
         origin = origin_of(url)
         async with self._robots_locks[origin]:
             if origin not in self._robots:
-                self._robots[origin] = await self._fetch_robots(origin, pinned)
+                self._robots[origin] = await self._fetch_robots(origin, pinned, others)
         return self._robots[origin]
 
-    async def _fetch_robots(self, origin: str, pinned: str) -> _Robots:
+    async def _fetch_robots(self, origin: str, pinned: str, others: tuple[str, ...]) -> _Robots:
         limits = FetchLimits(
             max_bytes=ROBOTS_MAX_BYTES,
             connect_timeout_s=self._params.robots_timeout_s,
@@ -279,7 +285,7 @@ class Collector:
         url, ip = f"{origin}/robots.txt", pinned
         for _ in range(ROBOTS_MAX_REDIRECTS + 1):
             try:
-                result = await self._retrying(url, ip, limits, "robots", None)
+                result = await self._retrying(url, ip, limits, "robots", None, others)
             except FetchError as exc:
                 return _Robots("unreachable_network", None, detail=str(exc))
             location = result.headers.get("location")
@@ -296,7 +302,7 @@ class Collector:
                 addresses = [literal] if literal else await self._fetcher.resolve(host_of(target))
                 if check_addresses(addresses):  # never follow robots.txt to a private address
                     return _Robots("unreachable_network", result.status)
-                url, ip = target, addresses[0]
+                url, ip, others = target, addresses[0], tuple(addresses[1:])
                 continue
             availability = robots_availability(result.status)
             # Only the first 500 KiB is parsed (RFC 9309 §2.5): a cut-off file is still used.
@@ -434,11 +440,18 @@ class Collector:
                 self._last_request[domain] = self._clock()
 
     async def _retrying(
-        self, url: str, ip: str, limits: FetchLimits, kind: FetchKind, crawl_delay: float | None
+        self,
+        url: str,
+        ip: str,
+        limits: FetchLimits,
+        kind: FetchKind,
+        crawl_delay: float | None,
+        others: tuple[str, ...] = (),
     ) -> FetchResult:
         """`_request`, tried once more after 1 s when the connection failed (LLD-2 §17,
-        BD-21). A timeout has already used its whole time, and a certificate, a refused
-        wait or an undecodable body would fail the same way: none is retried."""
+        BD-21), at the host's next checked address when it has one (BD-36). A timeout has
+        already used its whole time, and a certificate, a refused wait or an undecodable
+        body would fail the same way: none is retried."""
         try:
             return await self._request(url, ip, limits, kind, crawl_delay)
         except FetchError as exc:
@@ -448,7 +461,7 @@ class Collector:
         if task is not None and task.cancelling():  # the run is stopping: no retry (BD-27)
             raise asyncio.CancelledError
         await self._sleep(NETWORK_RETRY_DELAY_S)
-        return await self._request(url, ip, limits, kind, crawl_delay)
+        return await self._request(url, others[0] if others else ip, limits, kind, crawl_delay)
 
     def _limits(self) -> FetchLimits:
         p = self._params
@@ -556,8 +569,9 @@ class Collector:
             raise FetchError("no checked address to dial")
         for attempt in range(2):
             result = await self._retrying(
-                decision.url, pinned, self._limits(), "fetch", decision.crawl_delay
-            )
+                decision.url, pinned, self._limits(), "fetch", decision.crawl_delay,
+                decision.other_ips,
+            )  # fmt: skip
             if result.status != 429:
                 return result
             retry_after = _retry_after(result.headers.get("retry-after"))

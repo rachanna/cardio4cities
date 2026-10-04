@@ -236,7 +236,8 @@ async def match_quotes(state: SlotState, config: RunnableConfig) -> dict[str, An
                 code = out.statistic.indicator_code
                 statistic = Statistic(
                     claim_id=claim.claim_id,
-                    indicator_code=code if code in d.indicators else "OTHER",
+                    # Only the slot's own indicators were offered (RV-056, BD-26)
+                    indicator_code=code if code in slot.indicator_codes else "OTHER",
                     value_as_written=out.statistic.value_as_written,
                     value_num=parsed.value_num,
                     unit=parsed.unit,

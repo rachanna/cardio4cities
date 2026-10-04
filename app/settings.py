@@ -264,7 +264,8 @@ class GeographySection(_Section):
 
 
 class EvalSection(_Section):
-    checker_agreement_min: float  # LLD-3 §9 pass bar for the golden set [tunable]
+    checker_agreement_min: float
+    recall_min: float  # owner, BD-26: share of expected claims found [tunable]
 
 
 class StructuredProvider(_Section):

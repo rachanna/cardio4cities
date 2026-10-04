@@ -110,8 +110,6 @@ class ExtractorOutput(BaseModel):
 def repair_problems(output: ExtractorOutput) -> list[str]:
     """Problems that warrant one repair request (§4.4 'Repair')."""
     problems = []
-    if len(output.claims) > MAX_CLAIMS:
-        problems.append(f"return at most {MAX_CLAIMS} claims")
     for n, c in enumerate(output.claims, 1):
         if (c.kind is ClaimKind.STATISTIC) != (c.statistic is not None):
             problems.append(f"claim {n}: kind statistic needs a statistic block, and only then")

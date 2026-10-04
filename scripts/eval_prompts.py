@@ -6,15 +6,19 @@ the active profile (APP_ENV) and the same role calls the workflow uses: budget r
 first, one repair, the labelled checker fallback. Spend stops at `--max-usd`.
 
 Pass bar: checker agreement with the expected verdicts of at least
-`eval.checker_agreement_min`, and no trap claim that the extractor mislabelled and the
-checker then supported. Writes `tests/prompts/golden/results/<profile>-latest.md`.
+`eval.checker_agreement_min`; recall (expected claims found) of at least
+`eval.recall_min` (owner, BD-26); no trap claim that the extractor mislabelled and the
+checker then supported; and a planner plan that passes the structural check. Writes
+`tests/prompts/golden/results/<profile>-latest.md`, whose header names each prompt
+version measured; a unit test fails when that is not the committed version (RV-019).
 
-    uv run poe eval [--max-usd 1.0] [--only extractor|checker]
+    uv run poe eval [--max-usd 1.0] [--only extractor|checker|planner]
 """
 
 import argparse
 import asyncio
 import importlib
+import re
 import sys
 from dataclasses import dataclass, field
 from datetime import date
@@ -41,6 +45,8 @@ from app.prompts.extractor.schema import (
     to_labels,
 )
 from app.prompts.loader import load_prompt
+from app.prompts.planner import context as planner_context
+from app.prompts.planner.schema import PlannerOutput, validate
 from app.settings import Settings, load_settings
 from app.workflow.budget import BudgetExhaustedError, BudgetLedger, BudgetLimits
 from app.workflow.deps import RoleBinding, RunDeps
@@ -48,10 +54,12 @@ from app.workflow.llm import call_checker, call_role
 from app.workflow.rules.label_evidence import locate_label_quotes
 from app.workflow.rules.numbers import read_sample_size
 from app.workflow.rules.quotes import QuoteDrop, match_quote, normalise_text
+from app.workflow.rules.selection import government_sites, publisher_table
 from app.workflow.runner import role_bindings
 from scripts.reference.yaml_reference import read_indicators, read_slots
 
 GOLDEN = Path(__file__).resolve().parents[1] / "tests" / "prompts" / "golden"
+REFERENCE = Path(__file__).resolve().parents[1] / "reference"
 SOURCE_ID = "src_golden"
 CITY = CityIdentity(
     city_id="city_golden", gazetteer_id="9000001", name="Halden Bay", ascii_name="Halden Bay",
@@ -83,6 +91,8 @@ class Tally:
     checker_ok: int = 0
     checker_all: int = 0
     failures: int = 0
+    planner_problems: list[str] = field(default_factory=list)
+    versions: dict[str, str] = field(default_factory=dict)  # role -> prompt version measured
 
 
 def llm_adapters(settings: Settings) -> dict[str, LLMPort]:
@@ -120,6 +130,7 @@ def _field(out: ClaimOut, name: str, want: Any, text: str, quote: QuoteParams) -
         "representativeness": lambda: lab.representativeness.value == want,
         "setting": lambda: (lab.setting.value if lab.setting else None) == want,
         "subgroup": lambda: lab.population.subgroup is want,
+        "case_definition_contains": lambda: str(want) in (lab.case_definition or ""),
         "population_group": lambda: str(want).casefold() in (lab.population.group or "").casefold(),
         "relation_type": lambda: rel is not None and rel.relation_type.value == want,
         "programme_status": lambda: (
@@ -169,6 +180,7 @@ async def run_extractor(d: RunDeps, quote: QuoteParams, tally: Tally) -> None:
     slots = {s.slot_id: s for s in read_slots()}
     indicators = read_indicators()
     prompt = load_prompt("extractor")
+    tally.versions["extractor"] = prompt.prompt_version
     tally.lines += ["", f"## Extractor ({prompt.prompt_version})", ""]
     for case in yaml.safe_load((GOLDEN / "extractor.yaml").read_text(encoding="utf-8")):
         chosen = [slots[s] for s in case.get("slots", ["S04"])]
@@ -199,6 +211,15 @@ async def run_extractor(d: RunDeps, quote: QuoteParams, tally: Tally) -> None:
                 if value and bad in value:
                     notes.append(f"forbidden value {bad} extracted")
                     tally.traps_accepted.append(f"{case['id']}: extracted {bad}")
+        for place in case.get("forbid_geography", []):  # the context city is not evidence
+            if any(place.casefold() in c.labels.geography_name.casefold() for c in claims):
+                notes.append(f"forbidden area {place} labelled")
+                tally.traps_accepted.append(f"{case['id']}: labelled {place}")
+        if (least := case.get("expect_min_claims")) is not None:
+            tally.expected += 1
+            ok = len(claims) >= least
+            tally.found += ok
+            notes.append(f"{len(claims)} claims" + ("" if ok else f", expected at least {least}"))
         if case.get("expect_none"):
             tally.expected += 1
             ok = not any(c.kind is ClaimKind.STATISTIC for c in claims)
@@ -257,6 +278,7 @@ def _labels(raw: dict[str, Any]) -> Labels:
 
 async def run_checker(d: RunDeps, tally: Tally) -> None:
     prompt = load_prompt("checker")
+    tally.versions["checker"] = prompt.prompt_version
     tally.lines += ["", f"## Checker ({prompt.prompt_version})", ""]
     for case in yaml.safe_load((GOLDEN / "checker.yaml").read_text(encoding="utf-8")):
         user = checker_context.build_user_message(
@@ -284,6 +306,46 @@ async def run_checker(d: RunDeps, tally: Tally) -> None:
         )
 
 
+YEAR = re.compile(r"(19|20)\d{2}")
+
+
+async def run_planner(d: RunDeps, settings: Settings, tally: Tally) -> None:
+    """One live planner call for the fictional city, checked for structure (BD-26): every
+    slot gets exactly `plan.queries_per_slot` queries, at least one in the city's primary
+    language, `site:` only from the list given, and no numbers but years."""
+    prompt = load_prompt("planner")
+    tally.versions["planner"] = prompt.prompt_version
+    tally.lines += ["", f"## Planner ({prompt.prompt_version})", ""]
+    slots = read_slots()
+    indicators = {i.code: i for i in read_indicators()}
+    table = publisher_table(yaml.safe_load((REFERENCE / "publishers.yaml").read_text("utf-8")))
+    sites = government_sites(table, CITY.country_iso2)
+    per_slot = settings.config.plan.queries_per_slot
+    user = planner_context.build_user_message(CITY, slots, indicators, 0, [], sites, per_slot)
+    slot_ids = {s.slot_id for s in slots}
+    try:
+        out = await call_role(
+            d, "planner", prompt.system, user, PlannerOutput,
+            problems=lambda o: validate(o, slot_ids, CITY.languages, set(), set(sites), per_slot),
+        )  # fmt: skip
+    except PortError as exc:
+        tally.failures += 1
+        tally.planner_problems.append(f"model call failed ({type(exc).__name__})")
+        tally.lines.append(f"- model call failed ({type(exc).__name__}: {str(exc)[:160]})")
+        return
+    primary = CITY.languages[0]
+    for slot in out.parsed.slots:
+        problems = []
+        if not any(q.lang == primary for q in slot.queries):
+            problems.append(f"no query in {primary}")
+        for q in slot.queries:
+            numbers = re.findall(r"\d+", q.text)
+            if any(not YEAR.fullmatch(n) for n in numbers):
+                problems.append(f"a number that is not a year in {q.text!r}")
+        tally.planner_problems += [f"{slot.slot_id}: {p}" for p in problems]
+        tally.lines.append(f"- {slot.slot_id}: {'; '.join(problems) or 'ok'}")
+
+
 async def main(max_usd: float, only: str | None) -> int:
     load_dotenv(".env", override=False)
     settings = load_settings()
@@ -299,24 +361,36 @@ async def main(max_usd: float, only: str | None) -> int:
             await run_extractor(d, quote, tally)
         if only in (None, "checker"):
             await run_checker(d, tally)
+        if only in (None, "planner"):
+            await run_planner(d, settings, tally)
     except BudgetExhaustedError:
         tally.lines.append(f"\nStopped: spend reached ${max_usd:.2f}.")
     agreement = tally.checker_ok / tally.checker_all if tally.checker_all else 0.0
     bar = settings.config.eval.checker_agreement_min
-    passed = (only == "extractor" or agreement >= bar) and not tally.traps_accepted
+    recall = tally.found / tally.expected if tally.expected else 0.0
+    recall_bar = settings.config.eval.recall_min
+    passed = (
+        (only in ("extractor", "planner") or agreement >= bar)
+        and (only in ("checker", "planner") or recall >= recall_bar)
+        and not tally.traps_accepted
+        and not tally.planner_problems
+    )
     roles = settings.config.llm.roles
     summary = [
         f"# Prompt golden set: {settings.env} profile",
         "",
         f"- extractor {roles.extractor.model}; checker {roles.checker.model}"
         f" ({roles.checker.effort or roles.checker.temperature})",
-        f"- expected claims found: {tally.found}/{tally.expected}",
+        *[f"- prompt {role}: {version}" for role, version in tally.versions.items()],
+        f"- expected claims found: {tally.found}/{tally.expected} ({recall:.0%};"
+        f" bar {recall_bar:.0%})",
         f"- expected fields correct: {tally.fields_ok}/{tally.fields_all}",
         f"- quotes located exactly: {tally.quotes_ok}/{tally.quotes_all}",
         f"- checker agreement: {tally.checker_ok}/{tally.checker_all} ({agreement:.0%};"
         f" bar {bar:.0%})",
         f"- trap claims mislabelled and then supported: {len(tally.traps_accepted)}"
         + (f" ({'; '.join(tally.traps_accepted)})" if tally.traps_accepted else ""),
+        f"- planner problems: {len(tally.planner_problems)}",
         f"- failed model calls: {tally.failures}",
         f"- cost: ${ledger.cost_micro_usd / 1e6:.4f} in {ledger.model_calls} calls",
         f"- **{'PASS' if passed else 'FAIL'}**",
@@ -332,7 +406,7 @@ async def main(max_usd: float, only: str | None) -> int:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--max-usd", type=float, default=1.0)
-    parser.add_argument("--only", choices=["extractor", "checker"])
+    parser.add_argument("--only", choices=["extractor", "checker", "planner"])
     args = parser.parse_args()
     sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
     sys.exit(asyncio.run(main(args.max_usd, args.only)))

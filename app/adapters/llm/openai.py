@@ -46,7 +46,7 @@ class OpenAILLM:
             response = await client.responses.parse(**kwargs)
         except ValidationError as exc:
             raise LLMOutputValidationError(
-                f"{role}: output did not fit the schema", str(exc)
+                f"{role}: output did not fit the schema", str(exc), truncated=_cut_off(str(exc))
             ) from exc
         except openai.RateLimitError as exc:  # includes insufficient_quota (no credit left)
             raise ProviderUnavailableError(
@@ -61,7 +61,8 @@ class OpenAILLM:
         parsed = response.output_parsed
         raw = response.output_text or ""
         if parsed is None:
-            raise LLMOutputValidationError(f"{role}: no structured output", raw)
+            cut = getattr(response, "status", None) == "incomplete"
+            raise LLMOutputValidationError(f"{role}: no structured output", raw, truncated=cut)
         usage = response.usage
         tokens_in = usage.input_tokens if usage else 0
         tokens_out = usage.output_tokens if usage else 0
@@ -81,3 +82,8 @@ def make(settings: Settings) -> OpenAILLM:
     if not provider.api_key_env:
         raise ValueError("llm.providers.openai.api_key_env is required")
     return OpenAILLM(settings.secret(provider.api_key_env))
+
+
+def _cut_off(detail: str) -> bool:
+    """Pydantic's message for JSON that ends early: the output hit the token ceiling."""
+    return "EOF while parsing" in detail or "Unterminated string" in detail

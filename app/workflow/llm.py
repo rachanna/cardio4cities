@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from app.ports.errors import LLMOutputValidationError, PortError, ProviderUnavailableError
 from app.ports.llm import LLMParams
+from app.prompts.safety import escape_untrusted
 from app.workflow.deps import Binding, RunDeps
 
 # API output ceilings (LLD-3 §2.3, BD-04): they also cover thinking or reasoning tokens;
@@ -23,7 +24,8 @@ OUTPUT_CEILING = {
     "answerer": 16000,
     "reporter": 16000,
 }
-HAIKU_EXTRACTOR_CEILING = 4000
+HAIKU_EXTRACTOR_CEILING = 8000  # 12 claims need about 3.8k to 5.5k tokens (BD-26, RV-053)
+PREVIOUS_OUTPUT_CHARS = 4000  # how much of a failed output a repair shows back
 
 
 @dataclass(frozen=True)
@@ -67,6 +69,16 @@ async def _call_once[T: BaseModel](
     return result.parsed, result.model_id
 
 
+def _repair(user: str, problem: str, previous: str) -> str:
+    """The repair request (LLD-3 §2.3): the problem, and the previous output inside an
+    escaped tag, since it quotes the page (BD-26; code review RV-059)."""
+    return (
+        f"{user}\n\n{problem}\n<previous_output>\n"
+        f"{escape_untrusted(previous[:PREVIOUS_OUTPUT_CHARS])}\n</previous_output>\n"
+        "Return a corrected output only."
+    )
+
+
 async def call_role[T: BaseModel](
     deps: RunDeps,
     role: str,
@@ -88,19 +100,18 @@ async def call_role[T: BaseModel](
         except LLMOutputValidationError as exc:
             if attempt == attempts - 1:
                 raise
-            message = (
-                f"{user}\n\nYour previous output was invalid: {exc}. "
-                "Return a corrected output only."
-            )
+            hint = "it was cut off: return fewer, shorter items" if exc.truncated else str(exc)
+            message = _repair(user, f"Your previous output was invalid ({hint}).", exc.raw_text)
             continue
         issues = problems(parsed)
         if not issues:
             return RoleOutput(parsed, model_id, chosen.family, False)
         if attempt == attempts - 1:
             raise LLMOutputValidationError(f"{role}: {'; '.join(issues)}", parsed.model_dump_json())
-        message = (
-            f"{user}\n\nYour previous output had these problems: {'; '.join(issues)}. "
-            f"Previous output: {parsed.model_dump_json()}\nReturn a corrected output only."
+        message = _repair(
+            user,
+            f"Your previous output had these problems: {'; '.join(issues)}.",
+            parsed.model_dump_json(),
         )
     raise AssertionError("unreachable")  # pragma: no cover
 

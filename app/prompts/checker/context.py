@@ -8,7 +8,8 @@ from collections.abc import Sequence
 from datetime import date
 
 from app.domain.models import Labels
-from app.domain.vocab import DatePrecision, GeographyLevel
+from app.domain.vocab import DatePrecision, GeographyLevel, MeasureType
+from app.prompts.safety import escape_untrusted as _e
 from app.prompts.safety import wrap_source
 
 PASSAGE_MARGIN_CHARS = 600  # LLD-3 §5.1: the quote plus up to 600 characters either side
@@ -77,6 +78,25 @@ LEVEL_WORDS = {
     GeographyLevel.GLOBAL: "the world",
 }
 
+# Plain words, not codes (code review RV-096): "cascade_control" read as jargon
+MEASURE_WORDS = {
+    MeasureType.MEASURED_PREVALENCE: "prevalence, measured",
+    MeasureType.SELF_REPORTED_PREVALENCE: "prevalence, self-reported",
+    MeasureType.SCREENING_POSITIVITY: "share of people screened who tested positive",
+    MeasureType.CASCADE_AWARENESS: "share of people with the condition who know they have it",
+    MeasureType.CASCADE_TREATMENT: "share of people with the condition who are treated",
+    MeasureType.CASCADE_CONTROL: "share of people with the condition who have it controlled",
+    MeasureType.SHARE_OF_SUBGROUP: "share of a subgroup",
+    MeasureType.INCIDENCE: "incidence (new cases)",
+    MeasureType.MORTALITY_RATE: "death rate",
+    MeasureType.PROGRAMME_OUTPUT: "programme output (a count of services or people reached)",
+    MeasureType.MODELLED_ESTIMATE: "modelled estimate",
+    MeasureType.TARGET: "target",
+    MeasureType.BUDGET: "budget",
+    MeasureType.POPULATION_COUNT: "population count",
+    MeasureType.QUALITATIVE: "a statement, not a figure",
+}
+
 LABEL_PASSAGE_TITLES = {
     "period": "passage stating the period",
     "geography": "passage stating the area",
@@ -99,16 +119,18 @@ def build_user_message(
     lines = [
         "<task>Decide whether the passages support the claim exactly as labelled.</task>",
         "<context>",
-        f"claim: {statement}",
-        f"value as written: {value_as_written or 'n/a'}",
+        # Every claim field was written by the extractor from fetched text: escaped like
+        # the source itself (BD-26; code review RV-018)
+        f"claim: {_e(statement)}",
+        f"value as written: {_e(value_as_written or 'n/a')}",
         "labels:",
-        f"  describes: {labels.geography_name} ({LEVEL_WORDS[labels.geography_level]})",
-        f"  population: {population(labels)}",
-        f"  measure: {labels.measure_type.value}",
+        f"  describes: {_e(labels.geography_name)} ({LEVEL_WORDS[labels.geography_level]})",
+        f"  population: {_e(population(labels))}",
+        f"  measure: {MEASURE_WORDS[labels.measure_type]}",
         f"  period: {_period(labels)}",
-        f"  denominator: {labels.denominator_text or 'not stated'}",
+        f"  denominator: {_e(labels.denominator_text or 'not stated')}",
         # checker v3 (BD-22): the labels that set the threshold and the sample
-        f"  case definition: {labels.case_definition or 'not stated'}",
+        f"  case definition: {_e(labels.case_definition or 'not stated')}",
         f"  sample size: {labels.sample_size if labels.sample_size is not None else 'not stated'}",
         f"source: publisher {publisher_class}; "
         f"published {published.isoformat() if published else 'unknown'}",

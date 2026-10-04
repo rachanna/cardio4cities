@@ -21,6 +21,7 @@ from app.ports.errors import FetchError, TLSCertificateError
 from app.ports.fetch import FetchLimits, FetchPort, FetchResult
 from app.ports.parse import ParsedDocument, ParserPort
 from app.ports.robots import RobotsParser
+from app.workflow.budget import BudgetExhaustedError
 from app.workflow.rules import content_usage
 from app.workflow.rules.crawl_gate import (
     canonicalise,
@@ -72,6 +73,11 @@ class FetchBudget(Protocol):
 
     def time_left_s(self) -> float:
         """Seconds left on the run's wall clock: no spacing wait may go past it."""
+        ...
+
+    @property
+    def stopped(self) -> bool:
+        """The run's task was cancelled: no request may start (BD-27)."""
         ...
 
 
@@ -410,6 +416,8 @@ class Collector:
             await self._budget.reserve(kind)
             if wait > 0:
                 await self._sleep(wait)
+            if self._budget.stopped:  # the run stopped during the wait (BD-27)
+                raise BudgetExhaustedError("stopped")
             # A whole download is bounded, never past the run's time left (BD-27; code
             # review RV-047): only each read had a timeout, so a large file streamed on
             deadline = max(min(self._params.total_timeout_s, self._budget.time_left_s()), 1.0)
@@ -436,6 +444,9 @@ class Collector:
         except FetchError as exc:
             if not exc.retryable:
                 raise
+        task = asyncio.current_task()
+        if task is not None and task.cancelling():  # the run is stopping: no retry (BD-27)
+            raise asyncio.CancelledError
         await self._sleep(NETWORK_RETRY_DELAY_S)
         return await self._request(url, ip, limits, kind, crawl_delay)
 

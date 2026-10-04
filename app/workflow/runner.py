@@ -14,6 +14,7 @@ import asyncio
 import logging
 import uuid
 from collections.abc import Sequence
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
@@ -111,6 +112,34 @@ def _binding(ref: ModelRef | RoleConfig, family: str | None = None) -> Binding:
         effort=ref.effort,
         temperature=ref.temperature,
     )
+
+
+# The run a task belongs to: set in the run's task, inherited by every task it starts
+RUN_ID: ContextVar[str | None] = ContextVar("c4c_run_id", default=None)
+
+
+# Only the run's own work is cancelled: database pools also start tasks lazily inside a
+# run's context, and cancelling those would break the pool for everything after
+OWN_WORK = ("langgraph", "app.")
+
+
+def _module(task: asyncio.Task[Any]) -> str:
+    frame = getattr(task.get_coro(), "cr_frame", None)
+    return str(frame.f_globals.get("__name__", "")) if frame is not None else ""
+
+
+def _cancel_run_tasks(run_id: str) -> None:
+    """Cancel every unfinished task running LangGraph or app code for `run_id`, except
+    the caller."""
+    me = asyncio.current_task()
+    for task in asyncio.all_tasks():
+        if (
+            task is not me
+            and not task.done()
+            and task.get_context().get(RUN_ID) == run_id
+            and _module(task).startswith(OWN_WORK)
+        ):
+            task.cancel()
 
 
 def _need[T](port: T | None, name: str) -> T:
@@ -222,6 +251,7 @@ class RunManager:
     async def _run(self, deps: RunDeps, state: RunState | None) -> None:
         """`state` None: resume the run from its last checkpoint. A cancelled run (the
         process is stopping) stays `running`, so another process resumes it (BD-25)."""
+        RUN_ID.set(deps.run_id)  # every task the run starts copies this context (BD-27)
         try:
             saver = await self._saver()
             deps.checkpointed = saver is not None  # shown in the run summary (BD-25)
@@ -235,6 +265,13 @@ class RunManager:
                     "max_concurrency": max(len(deps.slots), 1),
                 },
             )
+        except asyncio.CancelledError:
+            # LangGraph can leave sibling nodes running after a cancel (seen when the
+            # cancel lands during a node's call): refuse their external calls and cancel
+            # every task this run started, so a stopped run stops (BD-27)
+            deps.ledger.stop()
+            _cancel_run_tasks(deps.run_id)
+            raise
         except Exception as exc:  # the run fails visibly, never silently
             log.exception("run %s failed", deps.run_id)
             await self._fail(deps.run_id, type(exc).__name__)

@@ -306,6 +306,7 @@ class PinnedFetcher:
         # The custom transport bypasses httpx's own error mapping, so httpcore errors are
         # caught here too; every network failure surfaces as FetchError, never a crash.
         except (httpx.TimeoutException, httpcore.TimeoutException) as exc:
+            _reraise_cancellation(exc)
             raise FetchError(f"timeout: {type(exc).__name__}", timeout=True) from exc
         except (
             httpx.HTTPError,
@@ -315,7 +316,17 @@ class PinnedFetcher:
             OSError,
             ssl.SSLError,
         ) as exc:
+            _reraise_cancellation(exc)
             raise FetchError(f"network error: {type(exc).__name__}", retryable=True) from exc
+
+
+def _reraise_cancellation(exc: BaseException) -> None:
+    """A cancel that lands during a connect can surface as a connection error. When the
+    task is being cancelled (a run stopping), stop: never a FetchError the collector
+    would retry, which kept a stopped run fetching (BD-27)."""
+    task = asyncio.current_task()
+    if task is not None and task.cancelling():
+        raise asyncio.CancelledError from exc
 
 
 def _verify_error(exc: BaseException) -> ssl.SSLCertVerificationError | None:

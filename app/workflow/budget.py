@@ -45,6 +45,7 @@ class BudgetLedger:
     robots: int = 0
     certificates: int = 0  # issuer certificates fetched from AIA URLs (BD-15)
     indexing: int = 0  # embedding calls for confirmed claims (BD-19)
+    stopped: bool = False  # the run's task was cancelled (BD-27)
     model_calls: int = 0
     tokens_in: int = 0
     tokens_out: int = 0
@@ -86,7 +87,14 @@ class BudgetLedger:
             return "exhausted"
         return "winding_down" if worst >= self.limits.wind_down_at else "normal"
 
+    def stop(self) -> None:
+        """The run's task was cancelled (a shutdown or a crash): refuse every further
+        external call, so work LangGraph left running does not go on (BD-27)."""
+        self.stopped = True
+
     async def reserve(self, kind: Kind, est_tokens: int = 0) -> None:
+        if self.stopped:  # not a budget refusal: the run is not finishing here
+            raise BudgetExhaustedError("stopped")
         try:
             async with self._lock:
                 self._reserve(kind)

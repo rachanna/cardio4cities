@@ -21,6 +21,7 @@ from app.workflow.deps import RunDeps
 from app.workflow.ids import stable_id
 from app.workflow.nodes._deps import deps
 from app.workflow.nodes.crawl_gate import record_decision
+from app.workflow.nodes.select_sources import seed_fetch_cache
 from app.workflow.problems import step_failed
 from app.workflow.rules.chunking import chunk_text
 from app.workflow.state import Candidate, SlotState
@@ -187,6 +188,7 @@ async def fetch_parse(state: SlotState, config: RunnableConfig) -> dict[str, Any
     """The slot's pages side by side (BD-27): the collector's global and per-domain
     limits pace them, so nothing waits on one slow page."""
     d = deps(config)
+    await seed_fetch_cache(d, state["run_id"])  # a slot may resume here (BD-27)
     candidates = [*state.get("reused", []), *state.get("allowed", [])]
     results = await asyncio.gather(*(_candidate(d, state, c) for c in candidates))
     source_ids: list[str] = []

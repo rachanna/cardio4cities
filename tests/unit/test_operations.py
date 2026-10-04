@@ -174,3 +174,51 @@ async def test_the_stream_sends_run_finished_even_when_it_lands_late() -> None:
     relational = type("R", (), {"runs": RacingRuns()})()
     frames = [f async for f in event_frames(relational, "run_t", 6, 0.01, 15.0)]
     assert frames[-1].startswith("id: 7\nevent: run_finished")
+
+
+# --- a stopped run stops (BD-28) -----------------------------------------------------------
+
+
+async def test_a_stopped_ledger_refuses_every_call_without_counting_a_refusal() -> None:
+    from app.workflow.budget import BudgetExhaustedError, BudgetLedger, BudgetLimits
+
+    ledger = BudgetLedger(BudgetLimits(420, 64, 60, 0, 0, 0.85))
+    ledger.stop()
+    for kind in ("fetch", "model", "indexing"):
+        with pytest.raises(BudgetExhaustedError):
+            await ledger.reserve(kind)
+    assert ledger.refused == set()  # not a budget stop: the run is not finishing here
+
+
+async def test_cancelling_a_run_cancels_the_tasks_it_started(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """LangGraph can leave a sibling node running when a cancel lands mid-call; every
+    task the run started carries its run ID and is cancelled with it."""
+    from app.workflow import runner as runner_module
+    from app.workflow.runner import RUN_ID, _cancel_run_tasks
+
+    monkeypatch.setattr(runner_module, "OWN_WORK", ("tests.unit.test_operations",))
+
+    started: list[asyncio.Task[None]] = []
+
+    async def run() -> None:
+        RUN_ID.set("run_t")
+        started.append(asyncio.create_task(_app_work()))  # inherits the run ID
+        await _app_work()
+
+    other = asyncio.create_task(_app_work())  # another run's or a request's task
+    runner = asyncio.create_task(run())
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+    _cancel_run_tasks("run_t")
+    await asyncio.sleep(0)
+    assert started[0].cancelled()
+    assert not other.cancelled()
+    other.cancel()
+    runner.cancel()
+
+
+async def _app_work() -> None:
+    """Stands in for a node's coroutine: the cancel only touches LangGraph and app code."""
+    await asyncio.sleep(3600)

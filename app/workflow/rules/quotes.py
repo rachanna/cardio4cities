@@ -5,6 +5,7 @@ case-sensitive. No fuzzy matching under any circumstance: a quote that is not
 found drops its claim, and a high drop rate means a parsing problem to fix.
 """
 
+import re
 import unicodedata
 from dataclasses import dataclass
 from typing import Literal
@@ -110,6 +111,13 @@ def normalise_text(text: str) -> str:
     return normalise(text).text
 
 
+def _stands_in(value: str, quote: str) -> bool:
+    """`value` occurs in `quote` with no digit, or decimal part, run on at either end: "7%"
+    is not in "17%" or "7.5%" (BD-33; code review RV-021). Still exact, never fuzzy."""
+    pattern = rf"(?<!\d)(?<!\d[.,]){re.escape(value)}(?!\d)(?![.,]\d)"
+    return re.search(pattern, quote) is not None
+
+
 def match_quote(
     quote: str,
     parsed_text: str,
@@ -134,6 +142,6 @@ def match_quote(
     # taking the first of several occurrences could anchor a value to the wrong row (BD-08).
     if words < params.min_words and source.text.find(nq, at + 1) >= 0:
         return QuoteDrop("quote_not_unique")
-    if value_as_written is not None and normalise_text(value_as_written) not in nq:
+    if value_as_written is not None and not _stands_in(normalise_text(value_as_written), nq):
         return QuoteDrop("value_not_in_quote")
     return QuoteMatch(span_start=source.starts[at], span_end=source.ends[at + len(nq) - 1])

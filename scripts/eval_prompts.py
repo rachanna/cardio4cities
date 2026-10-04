@@ -13,7 +13,12 @@ checker then supported; and a planner plan that passes the structural check. Wri
 run of one role), whose header names each prompt
 version measured; a unit test fails when that is not the committed version (RV-019).
 
-    uv run poe eval [--max-usd 1.0] [--only extractor|checker|planner]
+Classifier and answerer (BD-38): each classifier case passes when its classification
+holds what the case expects; each answerer bundle passes when what survives the real
+post-check is what the case expects (`scripts/eval_answers.py`). Pass bars:
+`eval.classifier_min` and `eval.answerer_min`.
+
+    uv run poe eval [--max-usd 1.0] [--only extractor|checker|planner|classifier|answerer]
 """
 
 import argparse
@@ -29,14 +34,17 @@ from typing import Any, cast
 import yaml
 from dotenv import load_dotenv
 
+from app.api.asking import roles_for
 from app.container import ADAPTERS
 from app.domain.models import CityIdentity, Labels
-from app.domain.params import QuoteParams
+from app.domain.params import BadgeParams, ConfidenceParams, QuoteParams
 from app.domain.vocab import ClaimKind, PeriodType, VerdictLabel
 from app.ports.errors import PortError
 from app.ports.llm import LLMPort
+from app.prompts.answerer.schema import AnswererOutput
 from app.prompts.checker import context as checker_context
 from app.prompts.checker.schema import CheckerOutput, final_label
+from app.prompts.classifier.schema import ClassifierOutput
 from app.prompts.extractor import context as extractor_context
 from app.prompts.extractor.schema import (
     ClaimOut,
@@ -48,6 +56,8 @@ from app.prompts.extractor.schema import (
 from app.prompts.loader import load_prompt
 from app.prompts.planner import context as planner_context
 from app.prompts.planner.schema import PlannerOutput, validate
+from app.query.llm import call as query_call
+from app.query.types import AskDeps, ModelRole
 from app.settings import Settings, load_settings
 from app.workflow.budget import BudgetExhaustedError, BudgetLedger, BudgetLimits
 from app.workflow.deps import RoleBinding, RunDeps
@@ -57,6 +67,7 @@ from app.workflow.rules.numbers import read_sample_size
 from app.workflow.rules.quotes import QuoteDrop, match_quote, normalise_text
 from app.workflow.rules.selection import government_sites, publisher_table
 from app.workflow.runner import role_bindings
+from scripts import eval_answers
 from scripts.reference.yaml_reference import read_indicators, read_slots
 
 GOLDEN = Path(__file__).resolve().parents[1] / "tests" / "prompts" / "golden"
@@ -93,6 +104,11 @@ class Tally:
     checker_all: int = 0
     failures: int = 0
     planner_problems: list[str] = field(default_factory=list)
+    classifier_ok: int = 0
+    classifier_all: int = 0
+    answerer_ok: int = 0
+    answerer_all: int = 0
+    survival: list[float] = field(default_factory=list)  # post-check first-pass survival
     versions: dict[str, str] = field(default_factory=dict)  # role -> prompt version measured
 
 
@@ -349,6 +365,60 @@ async def run_planner(d: RunDeps, settings: Settings, tally: Tally) -> None:
         tally.lines.append(f"- {slot.slot_id}: {'; '.join(problems) or 'ok'}")
 
 
+@dataclass
+class QaDeps:
+    """The parts of AskDeps that `app/query/llm.call` uses."""
+
+    ledger: BudgetLedger
+    llm: dict[str, LLMPort]
+    roles: dict[str, ModelRole]
+
+
+async def run_classifier(q: AskDeps, tally: Tally) -> None:
+    prompt = load_prompt("classifier")
+    tally.versions["classifier"] = prompt.prompt_version
+    tally.lines += ["", f"## Classifier ({prompt.prompt_version})", ""]
+    slots, indicators = read_slots(), read_indicators()
+    slot_ids, codes = [s.slot_id for s in slots], [i.code for i in indicators]
+    for case in eval_answers.load("classifier.yaml"):
+        user = eval_answers.classifier_user(case, slots, indicators)
+        try:
+            out, _ = await query_call(q, "classifier", prompt.system, user, ClassifierOutput)
+        except PortError as exc:
+            tally.failures += 1
+            tally.lines.append(f"- {case['id']}: model call failed ({type(exc).__name__})")
+            continue
+        problems = eval_answers.classifier_problems(case, out, slot_ids, codes)
+        tally.classifier_all += 1
+        tally.classifier_ok += not problems
+        tally.lines.append(f"- {case['id']}: {'; '.join(problems) or 'ok'}")
+
+
+async def run_answerer(q: AskDeps, settings: Settings, tally: Tally) -> None:
+    prompt = load_prompt("answerer")
+    tally.versions["answerer"] = prompt.prompt_version
+    tally.lines += ["", f"## Answerer ({prompt.prompt_version})", ""]
+    slots = {s.slot_id: s for s in read_slots()}
+    badge = BadgeParams(**settings.config.badge.model_dump())
+    confidence = ConfidenceParams(**settings.config.confidence.model_dump())
+    for case in eval_answers.load("answerer.yaml"):
+        b = eval_answers.bundle(case, slots, badge, confidence)
+        user = eval_answers.answerer_user(case, b)
+        try:
+            out, _ = await query_call(q, "answerer", prompt.system, user, AnswererOutput)
+        except PortError as exc:
+            tally.failures += 1
+            tally.lines.append(f"- {case['id']}: model call failed ({type(exc).__name__})")
+            continue
+        checked = eval_answers.post_check(out, b)
+        problems = eval_answers.answer_problems(case, checked)
+        tally.answerer_all += 1
+        tally.answerer_ok += not problems
+        tally.survival.append(checked.first_pass_survival)
+        actions = f"; post-check removed {len(checked.removed)}, repaired {len(checked.repaired)}"
+        tally.lines.append(f"- {case['id']}: {'; '.join(problems) or 'ok'}{actions}")
+
+
 async def main(max_usd: float, only: str | None) -> int:
     load_dotenv(".env", override=False)
     settings = load_settings()
@@ -358,6 +428,7 @@ async def main(max_usd: float, only: str | None) -> int:
     ))  # fmt: skip
     d = cast(RunDeps, EvalDeps(ledger, llm_adapters(settings), role_bindings(settings)))
     quote = QuoteParams(**settings.config.quote.model_dump())
+    q = cast(AskDeps, QaDeps(ledger, llm_adapters(settings), roles_for(settings)))
     tally = Tally()
     try:
         if only in (None, "extractor"):
@@ -366,15 +437,25 @@ async def main(max_usd: float, only: str | None) -> int:
             await run_checker(d, tally)
         if only in (None, "planner"):
             await run_planner(d, settings, tally)
+        if only in (None, "classifier"):
+            await run_classifier(q, tally)
+        if only in (None, "answerer"):
+            await run_answerer(q, settings, tally)
     except BudgetExhaustedError:
         tally.lines.append(f"\nStopped: spend reached ${max_usd:.2f}.")
     agreement = tally.checker_ok / tally.checker_all if tally.checker_all else 0.0
     bar = settings.config.eval.checker_agreement_min
     recall = tally.found / tally.expected if tally.expected else 0.0
     recall_bar = settings.config.eval.recall_min
+    classified = tally.classifier_ok / tally.classifier_all if tally.classifier_all else 0.0
+    answered = tally.answerer_ok / tally.answerer_all if tally.answerer_all else 0.0
+    survival = sum(tally.survival) / len(tally.survival) if tally.survival else 0.0
+    eval_cfg = settings.config.eval
     passed = (
-        (only in ("extractor", "planner") or agreement >= bar)
-        and (only in ("checker", "planner") or recall >= recall_bar)
+        (only not in (None, "checker") or agreement >= bar)
+        and (only not in (None, "extractor") or recall >= recall_bar)
+        and (only not in (None, "classifier") or classified >= eval_cfg.classifier_min)
+        and (only not in (None, "answerer") or answered >= eval_cfg.answerer_min)
         and not tally.traps_accepted
         and not tally.planner_problems
     )
@@ -394,6 +475,11 @@ async def main(max_usd: float, only: str | None) -> int:
         f"- trap claims mislabelled and then supported: {len(tally.traps_accepted)}"
         + (f" ({'; '.join(tally.traps_accepted)})" if tally.traps_accepted else ""),
         f"- planner problems: {len(tally.planner_problems)}",
+        f"- classifier cases passed: {tally.classifier_ok}/{tally.classifier_all}"
+        f" ({classified:.0%}; bar {eval_cfg.classifier_min:.0%})",
+        f"- answerer cases passed: {tally.answerer_ok}/{tally.answerer_all} ({answered:.0%};"
+        f" bar {eval_cfg.answerer_min:.0%}); first-pass survival {survival:.0%}"
+        " (monitored: below 80% means revisit the prompt, LLD-5 §12.3)",
         f"- failed model calls: {tally.failures}",
         f"- cost: ${ledger.cost_micro_usd / 1e6:.4f} in {ledger.model_calls} calls",
         f"- **{'PASS' if passed else 'FAIL'}**",
@@ -411,7 +497,9 @@ async def main(max_usd: float, only: str | None) -> int:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--max-usd", type=float, default=1.0)
-    parser.add_argument("--only", choices=["extractor", "checker", "planner"])
+    parser.add_argument(
+        "--only", choices=["extractor", "checker", "planner", "classifier", "answerer"]
+    )
     args = parser.parse_args()
     sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
     sys.exit(asyncio.run(main(args.max_usd, args.only)))

@@ -7,7 +7,9 @@ from pathlib import Path
 import yaml
 
 from app.domain.vocab import VerdictLabel
+from app.prompts.answerer.schema import AnswererOutput, AnswerSentence
 from app.prompts.loader import load_prompt
+from scripts import eval_answers
 from scripts.eval_prompts import GOLDEN, _labels
 
 GRADED = {
@@ -61,3 +63,61 @@ def test_recorded_results_are_for_the_committed_prompts() -> None:
         assert named, f"{path.name} names no prompt version"
         for role, version in named:
             assert version == load_prompt(role).prompt_version, (path.name, role, version)
+
+
+# --- classifier and answerer (BD-38) --------------------------------------------------------
+
+
+def test_classifier_cases_name_known_types_and_slots() -> None:
+    from scripts.reference.yaml_reference import read_slots
+
+    slot_ids = {s.slot_id for s in read_slots()}
+    types = {"figure", "relationship", "change_over_time", "open", "out_of_scope"}
+    cases = eval_answers.load("classifier.yaml")
+    assert len({c["id"] for c in cases}) == len(cases)
+    for case in cases:
+        assert set(case["types"]) <= types, case["id"]
+        assert set(case.get("slots") or []) <= slot_ids, case["id"]
+
+
+def _ideal(case: dict[str, object], b: eval_answers.Bundle) -> AnswererOutput:
+    """What a faultless answerer would write for the case."""
+    sentences = []
+    for ref, e in b.evidence.items():
+        text = e.fact.claim.statement
+        if case["expect"] == "wider_area":
+            text = f"No city-level figure was found for Halden Bay; nationally: {text}"
+        sentences.append(
+            AnswerSentence(text=text, refs=[ref], kind="fact", slot_id=e.fact.claim.slot_id)
+        )
+    for m in b.mentions:
+        if case["expect"] == "abstain_or_mention":
+            sentences.append(
+                AnswerSentence(
+                    text="A news report says camps ran, but this is not confirmed.",
+                    refs=[m.ref_id],
+                    kind="mention",
+                    slot_id=None,
+                )
+            )
+    asked = list(case.get("asked") or [])  # type: ignore[call-overload]
+    for slot in asked:
+        if not any(s.slot_id == slot for s in sentences):
+            sentences.append(
+                AnswerSentence(text="Not found.", refs=[], kind="abstain", slot_id=slot)
+            )
+    return AnswererOutput(sentences=sentences)
+
+
+def test_every_answerer_case_can_be_passed() -> None:
+    """An ideal answer to every bundle passes the grader, through the real post-check."""
+    from app.domain.params import BadgeParams, ConfidenceParams
+    from scripts.reference.yaml_reference import read_slots
+
+    slots = {s.slot_id: s for s in read_slots()}
+    badge = BadgeParams(stale_years=5, stale_years_people=2, small_sample=300)
+    for case in eval_answers.load("answerer.yaml"):
+        b = eval_answers.bundle(case, slots, badge, ConfidenceParams(recent_years=5))
+        checked = eval_answers.post_check(_ideal(case, b), b)
+        assert eval_answers.answer_problems(case, checked) == [], case["id"]
+        assert "<question>" in eval_answers.answerer_user(case, b)

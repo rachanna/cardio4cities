@@ -290,6 +290,8 @@ class GeographySection(_Section):
 class EvalSection(_Section):
     checker_agreement_min: float
     recall_min: float  # owner, BD-26: share of expected claims found [tunable]
+    classifier_min: float  # BD-38: share of classifier golden cases passed [tunable]
+    answerer_min: float  # BD-38: share of answerer golden cases passed [tunable]
 
 
 class StructuredProvider(_Section):

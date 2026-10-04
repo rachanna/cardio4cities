@@ -3,6 +3,7 @@ API calls), a links-only search, deterministic embeddings and an in-memory vecto
 Everything else in a test run is real: Postgres, the gate, pinned fetching, parsing."""
 
 import hashlib
+import math
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -111,7 +112,27 @@ class MemoryVector:
     async def search(
         self, name: str, vector: list[float], filters: dict[str, Any], limit: int
     ) -> list[VectorHit]:
-        return []
+        """Cosine similarity, filtered as the Qdrant adapter filters: a list matches any
+        of its values (question answering, D3-2)."""
+
+        def matches(point: VectorPoint) -> bool:
+            return all(
+                point.payload.get(k) in v if isinstance(v, (list, tuple, set))
+                else point.payload.get(k) == v
+                for k, v in filters.items()
+            )  # fmt: skip
+
+        def cosine(a: list[float], b: list[float]) -> float:
+            dot = sum(x * y for x, y in zip(a, b, strict=False))
+            norm = math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b))
+            return dot / norm if norm else 0.0
+
+        scored = [
+            VectorHit(id=p.id, score=cosine(vector, p.vector), payload=p.payload)
+            for p in self.points.get(name, [])
+            if matches(p)
+        ]
+        return sorted(scored, key=lambda h: -h.score)[:limit]
 
     async def delete_by_filter(self, name: str, filters: dict[str, Any]) -> None:
         def matches(point: VectorPoint) -> bool:

@@ -115,7 +115,14 @@ async def answer_question(
         and runs_graph(u)
     ):
         why = GRAPH_OFF if not deps.graph_on else GRAPH_UNAVAILABLE
-        blocked = {c for c, f in stored.items() if f.claim.kind is ClaimKind.RELATION}
+        # Only mentions remain (LLD-2 §15.3), except facts of a slot asked about that is
+        # not a relationship slot (a compound question's figure part)
+        figure_slots = {s for s in u.slot_ids if not deps.slots[s].relation_types}
+        blocked = {
+            c
+            for c, f in stored.items()
+            if f.claim.kind is ClaimKind.RELATION or f.claim.slot_id not in figure_slots
+        }
         unavailable = {s: why for s in u.slot_ids if deps.slots[s].relation_types}
 
     removed: Counter[str] = Counter()
@@ -204,14 +211,12 @@ async def _evidence(
     return out
 
 
-async def _draft(
-    deps: AskDeps,
-    question: str,
-    bundle: Bundle,
-    evidence: Mapping[str, Evidence],
-    gaps: Sequence[context.GapLine],
-) -> tuple[list[Any], str]:
-    lines = [
+def fact_lines(
+    evidence: Mapping[str, Evidence], partners: Mapping[str, str]
+) -> list[context.FactLine]:
+    """The bundle's facts as the answerer sees them (LLD-3 §7.1); the golden set uses it
+    too, so it measures exactly what runs."""
+    return [
         context.FactLine(
             ref_id=c,
             statement=e.fact.claim.statement,
@@ -222,10 +227,20 @@ async def _draft(
             badge=e.card.main_badge.label if e.card.main_badge else None,
             confidence=e.card.confidence.label if e.card.confidence else "not rated",
             slot_id=e.fact.claim.slot_id,
-            contested_with=bundle.partners.get(c),
+            contested_with=partners.get(c),
         )
         for c, e in evidence.items()
     ]
+
+
+async def _draft(
+    deps: AskDeps,
+    question: str,
+    bundle: Bundle,
+    evidence: Mapping[str, Evidence],
+    gaps: Sequence[context.GapLine],
+) -> tuple[list[Any], str]:
+    lines = fact_lines(evidence, bundle.partners)
     mentions = [context.MentionLine(m.ref_id, m.text, m.publisher_class) for m in bundle.mentions]
     prompt = load_prompt("answerer")
     user = context.build_user_message(deps.city.name, question, lines, mentions, gaps)

@@ -65,5 +65,5 @@ structured:
   providers:
     who_gho:    { base_url: https://ghoapi.azureedge.net/api }
     world_bank: { base_url: https://api.worldbank.org/v2 }
-eval:       { checker_agreement_min: 0.9, recall_min: 0.85 }   # LLD-3 §9 golden-set pass bar; recall: BD-26
+eval:       { checker_agreement_min: 0.9, recall_min: 0.85, classifier_min: 0.9, answerer_min: 0.9 }   # LLD-3 §9 pass bars; recall: BD-26; classifier, answerer: BD-38
 geography:  { nearby_km: 75 }   # figures from places this close may answer for the city (BD-10)

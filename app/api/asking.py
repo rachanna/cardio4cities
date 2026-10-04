@@ -15,6 +15,7 @@ from app.api.errors import dependency_unavailable
 from app.domain.params import BadgeParams, ConfidenceParams
 from app.ports.llm import LLMParams
 from app.query.types import AskDeps, AskParams, ModelRole
+from app.settings import Settings
 from app.workflow.budget import BudgetLedger, BudgetLimits
 from app.workflow.deps import chunk_collection, claim_collection
 from app.workflow.llm import OUTPUT_CEILING
@@ -44,17 +45,12 @@ def question_ledger(wall_clock_s: float, max_cost_micro_usd: int) -> BudgetLedge
     )
 
 
-async def ask_deps(request: Request, city_row: dict[str, object], graph_on: bool) -> AskDeps:
-    container = request.app.state.container
-    settings = container.settings
-    cfg = settings.config
-    store = reading.relational(request)
+def roles_for(settings: Settings) -> dict[str, ModelRole]:
+    """The classifier and answerer bindings of the profile (also used by the golden set)."""
     bindings = role_bindings(settings)
     roles = {}
     for role in ROLES:
         binding = bindings[role].primary
-        if binding.provider not in container.llm:
-            raise dependency_unavailable("llm", "Question answering is not available right now.")
         roles[role] = ModelRole(
             provider=binding.provider,
             family=binding.family,
@@ -65,8 +61,21 @@ async def ask_deps(request: Request, city_row: dict[str, object], graph_on: bool
                 temperature=binding.temperature,
             ),
         )
+    return roles
+
+
+async def ask_deps(request: Request, city_row: dict[str, object], graph_on: bool) -> AskDeps:
+    container = request.app.state.container
+    settings = container.settings
+    cfg = settings.config
+    store = reading.relational(request)
+    roles = roles_for(settings)
+    if any(role.provider not in container.llm for role in roles.values()):
+        raise dependency_unavailable("llm", "Question answering is not available right now.")
     r = cfg.retrieval
     city_id = str(city_row["city_id"])
+    # Collections are named after the embeddings adapter's key, as a run names them
+    key = container.embeddings.key if container.embeddings else cfg.embeddings.key
     return AskDeps(
         relational=store,
         vector=container.vector,
@@ -95,8 +104,8 @@ async def ask_deps(request: Request, city_row: dict[str, object], graph_on: bool
         city=await store.runs.city_identity(city_id),
         city_id=city_id,
         run_id=str(city_row["latest_run_id"]),
-        claim_collection=claim_collection(cfg.embeddings.key),
-        chunk_collection=chunk_collection(cfg.embeddings.key),
+        claim_collection=claim_collection(key),
+        chunk_collection=chunk_collection(key),
         today=datetime.now(UTC).date(),
         graph_on=graph_on,
     )

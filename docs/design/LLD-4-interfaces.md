@@ -55,20 +55,24 @@ Record in `DECISIONS.md` as ID-01, superseding the hosting part of HD-10.
   "value_as_written": "18.4%",
   "geography": { "level": "national", "level_word": "national", "name": "Norvania" },
   "period": { "start": "2021", "end": "2021", "type": "period", "stated": true },
+  "population": { "age_min": 30, "age_max": 79, "sex": "all", "group": null, "subgroup": false },
   "status": "supported", "status_word": "Confirmed",
   "main_badge": { "code": "not_city_level", "label": "Not city-level" },
   "other_badges": [],
   "confidence": {
-    "label": "medium",
+    "label": "medium", "label_word": "Medium confidence", "capped_by": null,
     "points": 6,
     "reasons": [
       { "component": "source_tier", "points": 2, "note": "Multilateral source" },
       { "component": "geography_fit", "points": 0, "note": "National figure for a city question" }
     ]
   },
-  "source": { "source_id": "src_01J9Z3", "publisher_class": "multilateral", "title": "…", "url": "https://…" }
+  "source": { "source_id": "src_01J9Z3", "publisher_class": "multilateral", "title": "…", "url": "https://…",
+              "published_date": null, "retrieved_at": "2026-10-03T09:10:00+00:00" }
 }
 ```
+
+As built (D3-1, BD-37): `population` is added, because AT-14 needs a sub-population figure shown with its population; `confidence` is `null` for a claim that is not supported or contested (the evidence view of a rejected claim); the period is written to its stated precision (`"2021"`, `"2021-03"` or a full date). FactCards are built in `app/domain/cards.py`, shared with answers and the report.
 
 **SlotRow**, used by the coverage grid:
 
@@ -163,6 +167,18 @@ The `city` row is created on first research of a place and reused afterwards; ev
 | `GET /api/v1/snapshots/{source_id}` | The raw stored bytes with their original content type, header `X-Snapshot-SHA256`, and `Content-Disposition: inline` |
 
 Only facts in `v_city_facts` (LLD-1 §4.6) are returned as FactCards. A request for the evidence of a refuted or dropped claim returns it with `"status_word": "Reported, not confirmed"`, so the panel can inspect rejected claims during DS-3.
+
+**As built (D3-1, BD-37):**
+
+| Endpoint | Detail |
+|---|---|
+| `GET /cities` | Cities whose latest run finished, newest first; `?limit=` and `?cursor=`. A city with no finished run is not listed, and its brief is 404 `no_finished_run` |
+| `/brief` | `summary`: per dimension, each slot's first `best_claim_ids` entry with High or Medium confidence, the headline slot first, up to 3. `handle_with_care` follows LLD-2 §16.6: summary facts badged "Not city-level" or "Outdated", LEADS facts resting on one source, and both claims of every contested pair. `run.finished_at` is the "as of" date (AT-25) |
+| `/findings` | Filters `dimension`, `slot`, `status` (`supported`, `contested`), `badge` (main or other); paged. When a filter keeps one claim of a contested pair, the other is added: both sides always appear together. `slots` returns the matching SlotRows, whose gap notes say when no city-level figure was found (AT-13) |
+| `/entities` | `by_type`: entities named by at least one fact of the latest run, with `facts`, the number of those facts. An entity only an unconfirmed claim named is not shown |
+| `/entities/{id}` | Edges from the knowledge graph (`GraphPort.neighbours`, non-negotiable 5); every claim behind an edge is checked again in Postgres, and only claims of the latest run that are supported, contested or superseded (ended) with a supported verdict keep it. `graph_used: true`. When Neo4j is down, 503 `dependency_unavailable` (`component: neo4j`); the other read endpoints do not use the graph (owner, BD-37) |
+| `/facts/{id}/evidence` | `card` (a FactCard, any status), `quote`, `passage` (300 characters each side of the quote, with `highlight_start` and `highlight_end`), `label_passages` (period, population or area stated outside the quote, BD-10), `geography_fit`, `verdict`, `snapshot` (sha256, size, type, URL), `consistency` |
+| `/snapshots/{id}` | Served with `X-Snapshot-SHA256`, `nosniff` and a sandboxing Content-Security-Policy: a stored page is shown, never run |
 
 ### 3.4 Questions and reports
 
@@ -551,8 +567,8 @@ Not built (BD-36): `ollama`, `tavily`, `browser_print`, `otel` and `langsmith`; 
 | AT-07, AT-08 | `tests/acceptance/test_checker.py` | Automated |
 | AT-09 | `tests/unit/test_quote_match.py` + acceptance | Automated |
 | AT-10, AT-11 | `tests/acceptance/test_graph_used.py` | Automated |
-| AT-12, AT-27 | `tests/acceptance/test_evidence.py` | Automated |
-| AT-13, AT-14, AT-21, AT-31 | `tests/acceptance/test_scope_and_badges.py` | Automated |
+| AT-12, AT-27 | `tests/acceptance/test_read_api.py` | Automated (thin slice, real stores; D3-1) |
+| AT-13, AT-14, AT-21, AT-31 | `tests/acceptance/test_scope_and_badges.py`; for findings `tests/unit/test_cards.py` and `tests/acceptance/test_read_api.py` (D3-1); for answers with D3-2 | Automated |
 | AT-15, AT-28 | `tests/acceptance/test_answers.py` | Automated |
 | AT-16, AT-32 | `tests/acceptance/test_breadth.py` | Automated (sparse fictional web; BD-14) |
 | AT-17, AT-29 | `tests/smoke/test_deployed.py` | Automated against the deployed URL |
@@ -561,7 +577,7 @@ Not built (BD-36): `ollama`, `tavily`, `browser_print`, `otel` and `langsmith`; 
 | AT-20 | `tests/acceptance/test_conflicts.py` | Automated |
 | AT-22 | `tests/acceptance/test_injection.py` | Automated |
 | AT-24 | `tests/acceptance/test_resolve.py` (API half, real place search); the UI half with D3-4 | Automated |
-| AT-25, AT-37 | `tests/acceptance/test_reuse_and_fresh.py` | Automated |
+| AT-25, AT-37 | `tests/acceptance/test_read_api.py` (open existing, brief from storage); a fresh run with logged fetches in `test_live_run.py` (AT-01) | Automated |
 | AT-26 | `tests/unit/test_entity_resolution.py` | Automated |
 | AT-30 | `tests/acceptance/test_event_replay.py` | Automated |
 | AT-34 | `tests/architecture/test_import_lint.py` | Automated |

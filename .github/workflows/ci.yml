@@ -12,7 +12,7 @@ permissions:
 jobs:
   lint-test:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     services:
       postgres:
         image: postgres:16.15
@@ -45,6 +45,7 @@ jobs:
       TEST_NEO4J_URI: bolt://127.0.0.1:7687
       TEST_NEO4J_PASSWORD: ci-neo4j-password  # throwaway CI container, not a secret
       C4C_REQUIRE_DB: "1"  # store tests fail instead of skipping
+      C4C_REQUIRE_WEB: "1"  # the browser smoke test fails instead of skipping (BD-41)
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
@@ -61,6 +62,17 @@ jobs:
             reference/geonames/countryInfo.txt
           key: geonames-${{ steps.month.outputs.value }}
       - run: uv run poe geonames  # gazetteer for the AT-02 scan; no-op when cached
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+        with:
+          node-version: "22.20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: uv run poe web
+      - run: npm run typecheck
+        working-directory: web
+      - name: API types match the API (run `uv run poe types` and commit when this fails)
+        run: uv run poe types && git diff --exit-code web/lib/api-types.ts
+      - run: uv run playwright install --with-deps chromium
       - run: uv run poe lint
       - run: uv run poe test
 

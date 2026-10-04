@@ -6,8 +6,6 @@ can be read between nodes is checked on a checkpointed run
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-import pytest
-
 from app.workflow.graph import build_graph
 
 SLOT = "slot_subgraph:"
@@ -57,7 +55,7 @@ def test_the_sufficiency_loop_re_plans_or_moves_on() -> None:
     } <= conditional_edges()
 
 
-def test_the_diagram_endpoint_serves_the_compiled_graphs(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_the_diagram_endpoint_serves_the_compiled_graphs() -> None:
     """AT-03 for the demo (DS-2): the API returns Mermaid text generated from the code."""
     from fastapi.testclient import TestClient
 

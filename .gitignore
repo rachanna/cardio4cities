@@ -21,3 +21,7 @@ spike_results/
 # local
 .DS_Store
 *.log
+web/lib/openapi.json
+tests/e2e/screenshots/
+web/tsconfig.tsbuildinfo
+web/next-env.d.ts

@@ -24,7 +24,7 @@ cardio4cities/
 ├── .gitattributes                # * text=auto eol=lf (BD-01)
 ├── .pre-commit-config.yaml       # gitleaks, ruff, import-linter
 ├── .github/workflows/ci.yml      # lint and tests, secret scan, image build; actions pinned to SHAs (BD-36)
-├── Dockerfile                    # Python image; the web build stage arrives with D3-4
+├── Dockerfile                    # Node stage builds web/out, then the Python image (BD-41)
 ├── .dockerignore
 ├── docker-compose.yml            # local: postgres, qdrant, neo4j, searxng, app
 ├── render.yaml                   # deployed: web service, private services, Postgres, keep-alive job
@@ -120,12 +120,13 @@ cardio4cities/
 │       ├── tracing/              # events are written by the workflow; langsmith.py, otel.py (not built, BD-36)
 │       └── postgres/             # db.py, relational.py, repos/, migrations/ (Alembic), checkpointer.py
 │
-├── web/                          # (D3-4) Next.js, static export to web/out; web/placeholder until then
-│   ├── app/                      # routes: / (access + start), /city/[id], /city/[id]/explore, /city/[id]/ask
-│   ├── components/               # FactCard, Badge, ConfidenceReasons, CoverageGrid, EvidencePanel,
-│   │                             # ProgressStream, EntityPage, EntityNeighbours, AnswerView, AdminOverlay
-│   ├── lib/api.ts                # client; types generated from OpenAPI (web/lib/api-types.ts)
-│   └── styles/
+├── web/                          # Next.js, static export to web/out (BD-41); placeholder/ when not built
+│   ├── app/                      # routes (query string, BD-41): / (access + start), /city/?id=,
+│   │                             # /city/explore/?id=&entity=, /city/ask/?id=, /admin/; globals.css
+│   ├── components/               # Session, TopBar, FactCardView, Badges, Evidence (drawer), CoverageGrid,
+│   │                             # RunProgress (event stream), EntityNetwork (SVG), CityHeader, CityNav
+│   ├── lib/api.ts                # client; types generated from OpenAPI (api-types.ts, committed)
+│   └── package.json              # npm, with package-lock.json
 │
 ├── scripts/
 │   ├── reference/                # load_geonames.py, load_yaml_reference.py
@@ -142,6 +143,7 @@ cardio4cities/
 │   ├── eval_prompts.py           # LLD-3 §9
 │   ├── eval_answers.py           # classifier and answerer golden sets (BD-38)
 │   ├── eval_rag.py               # retrieval evaluation, `poe eval-rag` (LLD-5 §12, BD-39)
+│   ├── openapi.py, web.py, dev.py # `poe types`, `poe web`, `poe dev` (BD-41)
 │   ├── predeploy.sh, start.sh    # Render pre-deploy (migrations, reference data) and start
 │   └── keepalive.sh              # calls /api/v1/health
 │
@@ -152,6 +154,7 @@ cardio4cities/
 │   ├── architecture/             # import-lint (AT-34), purity of domain and rules
 │   ├── support/                  # webworld.py: local fictional web for gate and fetch tests
 │   ├── smoke/                    # deployed URL (AT-17, AT-29)
+│   ├── e2e/                      # Playwright browser smoke of the built web app (BD-41); screenshots/ git-ignored
 │   ├── prompts/golden/           # fictional snippets and expected outputs; results/ per profile (BD-10)
 │   └── fixtures/                 # fictional city "Halden Bay, Norvania"; recorded provider responses;
 │                                 # retrieval/halden_bay/: claims, entities, edges, questions with gold answers (CHG-01)
@@ -179,7 +182,7 @@ cardio4cities/
 | Validation | Pydantic v2 |
 | Quality | ruff (lint and format), mypy (strict on `app/domain` and `app/workflow/rules`), pytest with pytest-asyncio |
 | Architecture checks | import-linter contracts in `pyproject.toml` |
-| Front end | Node 20, pnpm, Next.js with `output: 'export'`, TypeScript, `openapi-typescript` for API types |
+| Front end | Node 22 (Mermaid 12 needs 22.12), npm (BD-41), Next.js with `output: 'export'`, TypeScript, `openapi-typescript` for API types, Mermaid for the workflow diagram; Playwright (Python) for the browser smoke test |
 | Containers | One application image; official images for Postgres 16, Qdrant, Neo4j 5 Community, SearXNG |
 
 Libraries named in the LLD with `[verify]` (Protego, trafilatura, pdfplumber, WeasyPrint, graphiti-core, python-ulid) are confirmed on day 1 and pinned in `uv.lock`.
@@ -218,13 +221,13 @@ Run as `uv run poe <task>`; tasks are defined in `pyproject.toml` under `[tool.p
 | `poe migrate` | Run Alembic migrations; needs `DATABASE_URL` only |
 | `poe reference` | Download GeoNames (if missing) and load all reference data; needs `DATABASE_URL` only |
 | `poe geonames` | Download GeoNames only (the AT-02 scan reads it) |
-| `poe dev` | API with reload on :8000, plus `web` dev server on :3000 proxying `/api` (added by D3-4) |
-| `poe web` | Build the static export into `web/out` (added by D3-4) |
+| `poe dev` | API with reload on :8000, plus the `next dev` server on :3000 proxying `/api` (BD-41) |
+| `poe web` | `npm ci`, then build the static export into `web/out` (BD-41); the browser smoke test needs it |
 | `poe test` | Unit, contract, architecture and acceptance tests (recorded responses) |
 | `poe lint` | ruff, mypy, import-linter |
 | `poe fmt` | ruff format and auto-fix |
 | `poe down` | Stop local stores |
-| `poe types` | Regenerate `web/lib/api-types.ts` from the OpenAPI document (added by D3-4) |
+| `poe types` | Regenerate `web/lib/api-types.ts` from the OpenAPI document; CI fails when the committed file differs (BD-41) |
 | `poe spike NAME` | Run one script in `scripts/spikes/` |
 | `poe eval` | Prompt golden set against real models (costs money) |
 | `poe eval-rag` | Retrieval evaluation with real models (costs money; ask the owner first; CHG-01, BD-39); `--real FILE` for a researched city |
@@ -236,7 +239,7 @@ Run as `uv run poe <task>`; tasks are defined in `pyproject.toml` under `[tool.p
 
 ## 5. Deployment files
 
-**Dockerfile** (multi-stage): stage 1 builds `web/out` with Node (D3-4; until then FastAPI serves `web/placeholder`); stage 2 is a slim Python 3.12 image with system libraries for WeasyPrint `[verify]`, installs with `uv`, downloads GeoNames during the build, and copies `app/`, `config/`, `reference/*.yaml`, `scripts/reference` and the web files. The start command (`scripts/start.sh`) runs Uvicorn only; migrations and reference loading run as Render's pre-deploy command (`scripts/predeploy.sh`) (BD-04).
+**Dockerfile** (multi-stage): stage 1 builds `web/out` with Node 22 (`npm ci`, `npm run build`; BD-41); stage 2 is a slim Python 3.12 image (no system libraries: the PDF renderer is fpdf2, BD-40), installs with `uv`, downloads GeoNames during the build, and copies `app/`, `config/`, `reference/*.yaml`, `scripts/reference` and the web files. The start command (`scripts/start.sh`) runs Uvicorn only; migrations and reference loading run as Render's pre-deploy command (`scripts/predeploy.sh`) (BD-04).
 
 **render.yaml** (blueprint; all services in `singapore`; plan IDs are Render's compute plans, BD-04):
 

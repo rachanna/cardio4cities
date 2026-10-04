@@ -37,6 +37,7 @@ dev = [
     "httpx2>=2.13.1",
     "import-linter",
     "mypy",
+    "playwright>=1.50",
     "poethepoet",
     "pytest",
     "pytest-asyncio",
@@ -76,6 +77,9 @@ eval = { cmd = "python -m scripts.eval_prompts", help = "Prompt golden set again
 eval-rag = { cmd = "python -m scripts.eval_rag", help = "Retrieval evaluation with real models (costs money: ask the owner first; --real FILE for a researched city)" }
 migrate = { cmd = "alembic upgrade head", help = "Run database migrations (needs DATABASE_URL only)" }
 geonames = { cmd = "python -m scripts.reference.load_geonames --download-only", help = "Download GeoNames dumps if missing" }
+web = { cmd = "python -m scripts.web build", help = "Build the web app's static export into web/out (served by the API at /)" }
+types = { cmd = "python -m scripts.web types", help = "Regenerate the web app's API types from the OpenAPI document" }
+dev = { cmd = "python -m scripts.dev", help = "API on :8000 and the web app on :3000 (next dev, proxying /api)" }
 purge-graph = { cmd = "python -m scripts.purge_graph", help = "Delete the local Neo4j graph and its embedding marker (refuses when APP_ENV=deployed)" }
 reference = { sequence = [
     "python -m scripts.reference.load_geonames",

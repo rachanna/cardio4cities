@@ -726,7 +726,7 @@ Contested claims appear in `v_city_facts` with the "Sources disagree" badge; ref
 | Content | Rule |
 |---|---|
 | Prose | About 400 tokens with about 60 overlap `[tunable]`, split on sentence boundaries |
-| Tables | One chunk per table, header row included; a table longer than about 1,200 tokens is split by rows with the header repeated in each chunk |
+| Tables | One chunk per table, header row included; a table longer than about 1,200 tokens is split by rows with the header repeated in each chunk. Each piece's span covers its own rows, and a prose chunk's span is exactly its text (BD-29). Tokens are estimated from characters by script, and a sentence longer than the chunk size (a script without spaces, a page without full stops) is cut by characters. Rendered PDF tables drop rows and columns that are empty throughout |
 | PDF pages | Page boundaries kept in offsets so the evidence panel can show the page number |
 
 Qdrant never holds verdicts or anything shown as a fact. A chunk reaches the user only as "mentioned in a source but not confirmed" (R-63).

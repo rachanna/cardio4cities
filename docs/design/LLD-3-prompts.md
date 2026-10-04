@@ -192,6 +192,8 @@ source: title "{title}"; publisher {publisher_class}; published {published_date 
 
 Long sources are split by code into windows of about 12,000 tokens with 500 tokens of overlap `[tunable]`; duplicate claims across windows (same normalised quote) are merged.
 
+**Since BD-29.** Tokens are estimated from characters, by script (about 4 characters a token for ASCII, 2 for other alphabets, 1 for scripts without spaces), so a window is about its size in every language; counting words had made "12,000-token" windows 18.5k to 28k tokens, up to about 48k on non-Latin pages. Windows are cut between words where the script has spaces, and by characters where it has none. At most `extract.max_windows_per_source` (4, owner) windows are read per slot and source: those with the most whole-word hits for the city's names and the slot's words, in document order. The chosen windows of all the slot's sources are extracted side by side under the model gate. No new window starts with less than `extract.stop_windows_below_s` (60 s, owner) left, since its drafts could not be located and checked in time. A slot never re-reads a source it extracted in an earlier round of the same run.
+
 ### 4.2 System prompt (v1)
 
 ```text
@@ -325,7 +327,7 @@ Code accepts an `indicator_code` only from the slot's own list, else `OTHER`.
 | Quote and value found in the source (LLD-2 §4.1) | `dropped`, counted |
 | Period strings parse as dates | Field set to empty, flag `period_not_stated` |
 
-Escalation to the stronger model happens when the whole output fails validation twice, or when the window contains a table that the parser marked complex (more than 8 columns or merged cells) `[tunable]`.
+Escalation to the stronger model happens when the whole output fails validation twice, or when the window contains a table that the parser marked complex (more than 8 columns or merged cells) `[tunable]`. *Owner decision (BD-29): complex-table escalation is not built in this version (about $0.46 a run more on a dense PDF); escalation happens only after a failed call. The table clean-up and the extractor v4 table rules are the fix; revisit if the golden set or a run shows table recall problems.*
 
 ---
 
@@ -639,6 +641,6 @@ Pass bar before the demo: no golden trap mislabelled by the extractor in a way t
 | Item | Resolve by |
 |---|---|
 | Checker model ID and its structured-output mode | Day 1 |
-| Window size and overlap on real PDFs | Day-1 PDF spike |
+| Window size and overlap on real PDFs | Closed by BD-29: sized by characters with script factors, capped at 4 windows per slot and source |
 | Golden-set content (fictional snippets) | Day 2, alongside the extractor |
 | Agreement bar for the checker | Rehearsal |

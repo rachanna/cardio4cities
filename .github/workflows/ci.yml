@@ -7,9 +7,12 @@ on:
 permissions:
   contents: read
 
+# Actions are pinned to commit SHAs, with the tag in a comment (BD-36; code review RV-075)
+
 jobs:
   lint-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:16.15
@@ -43,14 +46,14 @@ jobs:
       TEST_NEO4J_PASSWORD: ci-neo4j-password  # throwaway CI container, not a secret
       C4C_REQUIRE_DB: "1"  # store tests fail instead of skipping
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10.2.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
         with:
           enable-cache: true
       - run: uv sync --locked
       - id: month
         run: echo "value=$(date +%Y-%m)" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6
         with:
           path: |
             reference/geonames/cities15000.zip
@@ -60,3 +63,25 @@ jobs:
       - run: uv run poe geonames  # gazetteer for the AT-02 scan; no-op when cached
       - run: uv run poe lint
       - run: uv run poe test
+
+  secrets:
+    # The same scanner as the local pre-commit hook (docs/GIT.md §5), over the whole history
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7  # v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_VERSION: 8.30.1  # as .pre-commit-config.yaml
+          GITLEAKS_ENABLE_COMMENTS: "false"  # read-only token: report in the job log only
+
+  image:
+    # Build only, never pushed or deployed (auto-deploy stays off, R-91)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - run: docker build --pull -t cardio4cities:ci .

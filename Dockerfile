@@ -17,12 +17,16 @@ WORKDIR /srv
 COPY pyproject.toml uv.lock .python-version ./
 RUN uv sync --locked --no-dev
 
-COPY scripts/__init__.py ./scripts/
-COPY scripts/reference ./scripts/reference
-COPY reference/geonames/README.md ./reference/geonames/
-COPY app ./app
 # GeoNames is downloaded at build time (BD-04): deploys never depend on download.geonames.org.
-RUN python -m scripts.reference.load_geonames --download-only
+# Before the app code, with the standard-library helper only, so a code change does not
+# download it again (BD-36); the helper checks each file is whole and logs its SHA-256.
+COPY scripts/__init__.py ./scripts/
+COPY scripts/reference/__init__.py scripts/reference/geonames.py ./scripts/reference/
+COPY reference/geonames/README.md ./reference/geonames/
+RUN python -c "from scripts.reference.geonames import download; download()"
+
+COPY scripts/reference ./scripts/reference
+COPY app ./app
 
 COPY config ./config
 COPY reference/*.yaml ./reference/

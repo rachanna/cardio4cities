@@ -3,6 +3,7 @@
 GeoNames data is licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/).
 """
 
+import hashlib
 import io
 import urllib.request
 import zipfile
@@ -43,11 +44,31 @@ def download(directory: Path = GEONAMES_DIR, force: bool = False) -> list[Path]:
         request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})  # noqa: S310
         with urllib.request.urlopen(request, timeout=60) as response:  # noqa: S310
             data = response.read()
+        check_download(name, data)
+        print(f"{name}: {len(data)} bytes, sha256 {hashlib.sha256(data).hexdigest()}")
         partial = target.with_suffix(target.suffix + ".part")
         partial.write_bytes(data)
         partial.replace(target)
         fetched.append(target)
     return fetched
+
+
+def check_download(name: str, data: bytes) -> None:
+    """A dump file is whole before it is kept (BD-36; code review RV-076). GeoNames
+    republishes daily, so no checksum can be pinned: the archive must test clean and
+    hold its table, and a text file must be tab-separated rows."""
+    if name.endswith(".zip"):
+        try:
+            with zipfile.ZipFile(io.BytesIO(data)) as archive:
+                member = name.removesuffix(".zip") + ".txt"
+                if archive.testzip() is not None or member not in archive.namelist():
+                    raise ValueError(f"{name}: damaged or without {member}")
+        except zipfile.BadZipFile as exc:
+            raise ValueError(f"{name}: not a zip archive") from exc
+        return
+    rows = [line for line in data.decode("utf-8").splitlines() if line and line[0] != "#"]
+    if not rows or not all("\t" in line for line in rows):
+        raise ValueError(f"{name}: not GeoNames rows")
 
 
 def read_cities_text(directory: Path = GEONAMES_DIR) -> str:

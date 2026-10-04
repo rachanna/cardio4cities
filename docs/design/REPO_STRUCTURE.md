@@ -100,7 +100,7 @@ cardio4cities/
 │   ├── query/                    # LLD-5 (CHG-01, BD-38): understand.py, routes/ (structured.py, keyword.py,
 │   │                             #   semantic.py, graph.py), revalidate.py, fuse.py (fusion, anchors),
 │   │                             #   bundle.py, postcheck.py, pipeline.py, llm.py, types.py
-│   ├── report/                   # (D3-3) assemble, render, templates/report.{md,html}.j2 (LLD-2 §16)
+│   ├── report/                   # assemble.py, render.py, templates/report.{md,html}.j2 (LLD-2 §16, BD-40)
 │   ├── prompts/
 │   │   ├── loader.py             # loads text, computes prompt_version (LLD-3 §2.5)
 │   │   ├── safety.py             # <source> wrapping and escaping (LLD-3 §2.2)
@@ -116,7 +116,7 @@ cardio4cities/
 │       ├── vector/               # qdrant.py, qdrant_probe.py
 │       ├── graph/                # graphiti.py (direct-save path, BD-11), neo4j_probe.py
 │       ├── snapshots/            # postgres.py
-│       ├── renderer/             # (D3-3) weasyprint.py; browser_print.py (not built)
+│       ├── renderer/             # fpdf2.py and fonts/ (DejaVu, open licence) (BD-40); browser_print.py (not built)
 │       ├── tracing/              # events are written by the workflow; langsmith.py, otel.py (not built, BD-36)
 │       └── postgres/             # db.py, relational.py, repos/, migrations/ (Alembic), checkpointer.py
 │
@@ -202,7 +202,7 @@ container, main → everything                 (composition root)
 
 The fetch adapter uses `httpx`, chosen over `httpx2` for the security-critical path (BD-07); `httpx2` is a test-only dependency.
 
-**Vendor packages allowed only under `app/adapters/`:** `anthropic`, `openai`, `ollama`, `sentence_transformers`, `qdrant_client`, `graphiti_core`, `neo4j`, `httpx`, `httpx2`, `httpcore`, `httpcore2`, `protego`, `trafilatura`, `lxml`, `pdfplumber`, `weasyprint`, `langsmith`, `opentelemetry`, `asyncpg`, `sqlalchemy`, `alembic`, `psycopg`, `psycopg_pool` (the LangGraph checkpointer's driver, BD-14), `cryptography` (reading a certificate's issuer URL, BD-15; verifying a completed chain, BD-16), `certifi` (the trusted roots for that check, BD-16).
+**Vendor packages allowed only under `app/adapters/`:** `anthropic`, `openai`, `ollama`, `sentence_transformers`, `qdrant_client`, `graphiti_core`, `neo4j`, `httpx`, `httpx2`, `httpcore`, `httpcore2`, `protego`, `trafilatura`, `lxml`, `pdfplumber`, `weasyprint`, `fpdf` (PDF rendering, BD-40), `langsmith`, `opentelemetry`, `asyncpg`, `sqlalchemy`, `alembic`, `psycopg`, `psycopg_pool` (the LangGraph checkpointer's driver, BD-14), `cryptography` (reading a certificate's issuer URL, BD-15; verifying a completed chain, BD-16), `certifi` (the trusted roots for that check, BD-16).
 
 Expressed as import-linter `layers` and `forbidden` contracts. The architecture test fails the build on any violation.
 

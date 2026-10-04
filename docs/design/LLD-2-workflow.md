@@ -658,6 +658,8 @@ With the admin parameter `graph=off`, retrieval for `relationship` and `change_o
 8. **Run details:** run ID, date, status, models per role, counts from the run summary.
 9. Render Markdown and HTML from templates; PDF through the renderer port. Store in `report`.
 
+**As built (D3-3, BD-40):** `app/report/assemble.py` (pure) and `render.py` with Jinja2 templates; `app/api/reporting.py` writes the prose and `app/api/routers/reports.py` serves the download. Citations number sources by first appearance; a fact cites its source's number. A dimension with no slot researched in the run says so. Prose sentences are checked as answers are (cited facts of the section only, numbers and names from them; a gap sentence names no number its gap notes lack), cut at `report.intro_max_words`, and omitted under `report.min_paragraph_words`; analysis points must rest on summary facts. The report has its own budget ledger (`report.wall_clock_s`, `report.max_cost_micro_usd`, owner). On the first download of a run all three formats are generated and stored; later downloads serve them. The PDF is the same HTML without its head, laid out by fpdf2 with bundled DejaVu fonts (owner, BD-40).
+
 ---
 
 ## 17. Errors, retries and idempotency

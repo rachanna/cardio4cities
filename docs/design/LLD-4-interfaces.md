@@ -212,6 +212,8 @@ As built (D3-2, BD-38): each sentence carries `text`, `kind`, `refs`, `main_badg
 
 **`GET /api/v1/cities/{city_id}/report?format=md|html|pdf`**: generates on first request per run and format, then serves the stored copy. `Content-Disposition: attachment; filename="<city>-research-<date>.<ext>"`.
 
+As built (D3-3, BD-40): the default format is `pdf`; the first request for a run generates all three formats together (one set of model calls) under a per-run lock and stores them; the file name is the city name in ASCII and the run's date. 404 `no_finished_run` before a run finishes; 503 `dependency_unavailable` (`component: renderer`) for a PDF when no renderer is configured.
+
 ### 3.5 Operations and demonstration
 
 | Endpoint | Role | Returns |
@@ -293,7 +295,8 @@ relational: { dsn_env: DATABASE_URL }
 vector:     { provider: qdrant, url_env: QDRANT_URL, api_key_env: QDRANT_API_KEY }
 graph:      { provider: graphiti_neo4j, uri_env: NEO4J_URI, user_env: NEO4J_USER, password_env: NEO4J_PASSWORD }
 snapshots:  { provider: postgres, max_bytes: 10485760 }
-renderer:   { provider: weasyprint }
+renderer:   { provider: fpdf2 }   # BD-40: pure-Python PDF
+report:     { intro_max_words: 120, analysis_max_points: 5, min_paragraph_words: 20, wall_clock_s: 120, max_cost_micro_usd: 100000 }   # BD-40
 tracing:    { providers: [events] }   # langsmith only once its adapter exists (BD-36)
 budget:     { wall_clock_s: 420, searches: 64, fetches: 60, tokens: 1500000, cost_micro_usd: 3000000, wind_down_at: 0.85 }   # BD-15
 limits:     { runs_per_day: 20, ask_per_min: 20, resolve_per_min: 30 }
@@ -507,7 +510,7 @@ Relational access uses repository classes per aggregate (`RunRepo`, `ClaimRepo`,
 
 ### 8.1 Adapters for the PoC
 
-Not built (BD-36): `ollama`, `tavily`, `browser_print`, `otel` and `langsmith`; `weasyprint` arrives with D3-3. A workflow port whose adapter is not built is refused at start-up (§5.2, BD-25), so no profile selects one of these for the LLM or search; the renderer and tracing are not workflow ports, and start-up lists the deployed profile's `weasyprint` as not built yet until D3-3.
+Not built (BD-36): `ollama`, `tavily`, `browser_print`, `otel` and `langsmith`; `weasyprint` is replaced by `fpdf2` (BD-40). A workflow port whose adapter is not built is refused at start-up (§5.2, BD-25), so no profile selects one of these for the LLM or search; the renderer and tracing are not workflow ports, and start-up lists the deployed profile's `weasyprint` as not built yet until D3-3.
 
 | Port | Deployed default | Local or alternative |
 |---|---|---|
@@ -519,7 +522,7 @@ Not built (BD-36): `ollama`, `tavily`, `browser_print`, `otel` and `langsmith`; 
 | Vector | `qdrant` | same |
 | Graph | `graphiti_neo4j` | same |
 | Snapshots | `postgres` | `s3` (COULD) |
-| Renderer | `weasyprint` `[verify on host]` | `browser_print` (returns HTML with print styles) |
+| Renderer | `fpdf2` (BD-40: pure Python, bundled DejaVu fonts; WeasyPrint needed Pango system libraries) | `browser_print` (not built) |
 | Tracing | `events` (`langsmith` once its adapter exists, BD-36) | `events` + `otel` |
 
 ### 8.2 Contract-test highlights
@@ -576,7 +579,7 @@ Not built (BD-36): `ollama`, `tavily`, `browser_print`, `otel` and `langsmith`; 
 | AT-15, AT-28 | `tests/acceptance/test_ask.py`, `tests/unit/test_query_rules.py` (D3-2) | Automated |
 | AT-16, AT-32 | `tests/acceptance/test_breadth.py` | Automated (sparse fictional web; BD-14) |
 | AT-17, AT-29 | `tests/smoke/test_deployed.py` | Automated against the deployed URL |
-| AT-18 | `tests/acceptance/test_report.py` | Automated |
+| AT-18 | `tests/acceptance/test_report.py` (D3-3; thin slice, scripted reporter, real fpdf2) | Automated |
 | AT-19 | `tests/acceptance/test_breadth.py` (tiny budget), `tests/unit/test_budget.py` | Automated |
 | AT-20 | `tests/acceptance/test_conflicts.py` | Automated |
 | AT-22 | `tests/acceptance/test_injection.py` | Automated |

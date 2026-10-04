@@ -361,7 +361,7 @@ flowchart LR
 
 **Sections:** Summary · six dimensions (D1–D6) · Analysis (opportunities and risks, labelled, linked to source facts) · What we could not find · Handle with care · Numbered sources (URL, publisher, published, retrieved) · Run details (date, run ID, models used, counts).
 
-**Formats:** Markdown and HTML; PDF rendered on the server through a renderer adapter `[verify library on host; fallback: print stylesheet]`.
+**Formats:** Markdown and HTML; PDF rendered on the server through a renderer adapter (fpdf2, pure Python, BD-40).
 
 ---
 

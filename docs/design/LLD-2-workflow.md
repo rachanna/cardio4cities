@@ -298,11 +298,11 @@ Claims beyond the per-slot cap stay `extracted`: kept, never shown, still search
 
 ### 5.2 Ranking key (used everywhere a "best" claim is chosen)
 
-Sort ascending by this tuple; the first element wins:
+Sort ascending by this tuple; the first element wins. Geography comes first since BD-36 (owner): with source tier first, five national government figures pushed a city survey out of the five checks per slot, and a WHO national figure headlined over an academic city survey.
 
-1. Source tier: `government, multilateral` = 0, `academic` = 1, `ngo` = 2, `news` = 3, `other` = 4
-2. Representativeness: `census` 0, `representative_sample` 1, `modelled` 2, `non_representative` 3, `not_applicable` 1
-3. Geography fit: 0 if `geography_level` is in the slot's `accepted_levels`, else the distance in the `GeographyLevel` order
+1. Geography fit: 0 if the claim's effective `geography_level` is in the slot's `accepted_levels`, else the distance in the `GeographyLevel` order
+2. Source tier: `government, multilateral` = 0, `academic` = 1, `ngo` = 2, `news` = 3, `other` = 4
+3. Representativeness: `census` 0, `representative_sample` 1, `modelled` 2, `not_stated` and `not_applicable` 3, `non_representative` 4 (BD-22)
 4. Recency: `-reference_end` (newer first; `NULL` last)
 5. `claim_id` (determinism)
 

@@ -28,6 +28,7 @@ from tests.unit.builders import (
 )
 
 GOV, MULTI, NEWS = PublisherClass.GOVERNMENT, PublisherClass.MULTILATERAL, PublisherClass.NEWS
+ACADEMIC = PublisherClass.ACADEMIC
 
 
 def _verdict(**overrides: object) -> Verdict:
@@ -48,7 +49,8 @@ def _verdict(**overrides: object) -> Verdict:
 # --- ranking ------------------------------------------------------------------------
 
 
-def test_ranking_order_tier_then_representativeness_then_fit_then_recency_then_id() -> None:
+def test_ranking_order_fit_then_tier_then_representativeness_then_recency_then_id() -> None:
+    """BD-36 (owner): geography fit first."""
     news = Candidate(claim("clm_1"), NEWS)
     gov_modelled = Candidate(claim("clm_2", labels={"representativeness": "modelled"}), GOV)
     gov_national = Candidate(claim("clm_3", labels={"geography_level": "national"}), GOV)
@@ -65,7 +67,30 @@ def test_ranking_order_tier_then_representativeness_then_fit_then_recency_then_i
         )
     ]
 
-    assert order == ["clm_5", "clm_6", "clm_4", "clm_3", "clm_2", "clm_1"]
+    assert order == ["clm_5", "clm_6", "clm_4", "clm_2", "clm_1", "clm_3"]
+
+
+def test_a_city_survey_is_checked_before_five_national_government_figures() -> None:
+    """RV-024: with source tier first, the city survey was the sixth and never checked."""
+    national = [
+        Candidate(claim(f"clm_n{n}", labels={"geography_level": "national"}), GOV) for n in range(5)
+    ]
+    survey = Candidate(claim("clm_survey"), ACADEMIC)
+
+    chosen = select_for_verification([*national, survey], CITY_SLOT, verify_params("deployed"))
+
+    assert chosen[0].claim.claim_id == "clm_survey"
+
+
+def test_an_academic_city_figure_is_the_best_answer_over_a_national_one() -> None:
+    """RV-024: the slot's best claim is the city's own figure; the national one still
+    ranks, behind it."""
+    who_national = Candidate(claim("clm_who", labels={"geography_level": "national"}), MULTI)
+    city = Candidate(claim("clm_city"), ACADEMIC)
+
+    assert [c.claim.claim_id for c in ranked([who_national, city], CITY_SLOT)] == [
+        "clm_city", "clm_who",
+    ]  # fmt: skip
 
 
 def test_undated_claims_rank_last_on_recency() -> None:

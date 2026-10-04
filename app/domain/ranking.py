@@ -49,13 +49,15 @@ def geography_distance(level: GeographyLevel, accepted: Iterable[GeographyLevel]
 def rank_key(
     candidate: Candidate, accepted: Sequence[GeographyLevel]
 ) -> tuple[int, int, int, int, int, str]:
-    """Sort ascending; the first claim wins."""
+    """Sort ascending; the first claim wins. Geography comes first (owner, BD-36): a
+    figure for the city is checked and preferred before any wider-area one, whatever
+    its source; wider-area figures still show, with their badge."""
     labels = candidate.claim.labels
     end = labels.reference_end
     return (
+        geography_distance(effective_level(candidate.claim), accepted),
         SOURCE_TIER[candidate.publisher_class],
         REPRESENTATIVENESS_RANK[labels.representativeness],
-        geography_distance(effective_level(candidate.claim), accepted),
         0 if end is not None else 1,  # NULL last
         -end.toordinal() if end is not None else 0,  # newer first
         candidate.claim.claim_id,  # determinism

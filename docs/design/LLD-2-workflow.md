@@ -104,11 +104,14 @@ Parallel slot branches would race on counters held in graph state. Budget lives 
 ### 3.1 Main graph
 
 ```text
-START → resolve_city → wave0 → plan_slots → [fan_out: Send(slot_subgraph) per slot in slots_to_work]
+START → resolve_city ─┬→ wave0 → END (this branch only)
+                      └→ plan_slots → [fan_out: Send(slot_subgraph) per slot in slots_to_work]
       → coverage ─┬─(needs_replan)→ plan_slots
                   └─(done)→ analytics → brief_ready → END
 (plan_slots → coverage directly when no slot has a plan for the round)
 ```
+
+**Wave 0 alongside planning (BD-27).** `wave0` and `plan_slots` run in the same step, so Wave 0's official-API calls overlap the planner call; the slot subgraphs start only when both are done, and coverage meets Wave 0's figures from the first round. Within a slot, `fetch_parse` fetches its pages side by side and `verify` checks its claims side by side (one claim per checker call), paced by the global fetch and model limits.
 
 | Edge | Condition (code) |
 |---|---|
@@ -432,8 +435,8 @@ Checked against RFC 9309 when implementing (BD-07): §2.3.1.3 (4xx: crawlers MAY
 | Per-domain spacing | `max(crawl_delay, fetch.min_interval_s = 1)` `[tunable]`. The budget is reserved before any wait, and only the domain is held while waiting, so one slow site never holds the global permits (BD-20) |
 | Crawl-delay cap | A crawl-delay above `fetch.crawl_delay_cap_s = 30` `[tunable]` → `rate_limited` at the gate, no request; a wait that would run past the run's time left → `rate_limited`, nothing reserved (owner, BD-20) |
 | Global fetch concurrency | `fetch.concurrency = 6` `[tunable]`, held only for the request itself |
-| Timeouts | connect 5 s, read 20 s |
-| Size | stop at 10 MB → `parse_outcome = too_large`, no snapshot. Counted on the decoded body as it streams in, and on the bytes received: we ask for `gzip, deflate` only and inflate a bounded amount at a time, so a compressed body never inflates past the cap; any other encoding is refused unread (BD-20) |
+| Timeouts | connect 5 s, read 20 s; a whole download at most `fetch.total_timeout_s` (60 s) and never past the run's time left (at least 1 s), else a timeout recorded as `unreachable_network` (BD-27) |
+| Size | A `Content-Length` above 10 MB is refused before the body is read (BD-27); otherwise stop at 10 MB → `parse_outcome = too_large`, no snapshot. Counted on the decoded body as it streams in, and on the bytes received: we ask for `gzip, deflate` only and inflate a bounded amount at a time, so a compressed body never inflates past the cap; any other encoding is refused unread (BD-20) |
 | Types | `text/html`, `application/xhtml+xml`, `application/pdf`, `text/plain`; JSON only for structured adapters |
 | Redirects | Up to 5; **each new host goes through the gate again**; the connection uses the IP checked in step 3 (prevents DNS rebinding) |
 | 401, 402, 403 on the page | `blocked_login_or_paywall`; body discarded unread |
@@ -446,7 +449,7 @@ Checked against RFC 9309 when implementing (BD-07): §2.3.1.3 (4xx: crawlers MAY
 | Type | Parser | Notes |
 |---|---|---|
 | HTML | Main-content extraction (trafilatura default `[verify]`) | Tables kept as text tables with headers. Decoded by `domain.charset` (BD-21): byte order mark, then the server's `charset`, then `<meta>`, then UTF-8 if valid, then windows-1252. `text/plain` the same, without `<meta>` |
-| PDF | Text with page markers; table extraction (pdfplumber default `[verify]`) only on pages whose text contains target keywords for the slot | Page number kept in offsets |
+| PDF | Text with page markers; table extraction (pdfplumber default `[verify]`) only on pages whose text contains target keywords for the slot | Page number kept in offsets. Read up to `fetch.pdf_max_pages` (200) pages. Parsing runs in a worker thread, off the event loop (BD-27) |
 | Failure or under 200 characters of text | `parse_outcome = unreadable`, event `source_unreadable` | A parser never raises: a malformed or encrypted PDF, or HTML the libraries cannot read, gives empty text. The PDF `[page N]` markers do not count toward the 200 characters, so a scanned PDF is unreadable (BD-21) |
 
 `parsed_text` is what offsets refer to. The snapshot holds the raw bytes.

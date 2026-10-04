@@ -1,13 +1,25 @@
-"""AT-02: no city-specific facts or per-city URL lists in runtime prompts, config,
-reference data, seed scripts or fixtures (R-01, A-09).
+"""AT-02: no city-specific facts or per-city URL lists anywhere in the repository (R-01, A-09).
 
-Looks for the name or ASCII name of every gazetteer place with population of at
-least MIN_POPULATION: whole words and case-sensitive in text; inside URLs as a
-whole token, ignoring case. Justified exceptions go in no_seeding_allowlist.yaml
-with a reason; an entry that no longer matches anything fails the test.
+Scans every text file git tracks or would track (BD-35): code, tests, fixtures, scripts
+(spike summaries included), config, reference data, prompts and deploy files are strict;
+`docs/` may name a real place only through ALLOWLIST, one reviewed entry per name with a
+reason, because decision rows may name the countries or cities a spike tested.
+
+Looks for the name or ASCII name of every gazetteer place with population of at least
+MIN_POPULATION and at least MIN_NAME_LENGTH characters: whole words and case-sensitive in
+text; inside URLs as a whole token, ignoring case, built from ASCII names only (an accented
+name folded to ASCII leaves fragments that match ordinary URLs). COMMON_WORDS are place
+names that are also ordinary words or identifiers. An allow-list entry that no longer
+matches anything fails the test.
+
+Places below the threshold that were used in spikes or rehearsals can be listed, one per
+line, in EXTRA_NAMES: it is git-ignored, so the names never enter the repository, and the
+scan looks for them too wherever the file exists.
 """
 
 import re
+import shutil
+import subprocess
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,11 +30,14 @@ import yaml
 from scripts.reference.geonames import GEONAMES_DIR, large_place_names, read_cities_text
 
 ROOT = Path(__file__).resolve().parents[2]
-MIN_POPULATION = 300_000
-SCAN_DIRS = ("app/prompts", "config", "tests/fixtures", "tests/prompts", "scripts/reference")
-SCAN_GLOBS = ("reference/*.yaml",)  # never reference/geonames/: that is the gazetteer itself
-TEXT_SUFFIXES = {".py", ".md", ".yaml", ".yml", ".json", ".txt", ".j2", ".html", ".csv", ".toml"}
-ALLOWLIST = Path(__file__).with_name("no_seeding_allowlist.yaml")
+MIN_POPULATION = 50_000
+MIN_NAME_LENGTH = 4
+# Place names that are also English words or code identifiers; never a city in this repo
+COMMON_WORDS = frozenset({"Date", "Most", "Reading", "Split", "Union", "Upland"})
+ALLOWLIST = ROOT / "docs" / "no_seeding_allowlist.yaml"
+ALLOWED_PREFIX = "docs/"  # only documents may be allow-listed; everything else is strict
+EXTRA_NAMES = ROOT / "spike_results" / "scan_names.txt"  # git-ignored, optional
+SKIPPED = ("reference/geonames/",)  # the gazetteer itself (git-ignored dumps)
 URL = re.compile(r"https?://[^\s\"'<>)\]]+")
 
 
@@ -40,9 +55,11 @@ class PlaceScanner:
         self._text = re.compile(r"(?<!\w)(" + "|".join(map(re.escape, ordered)) + r")(?!\w)")
         self._url_forms: dict[str, str] = {}
         for name in ordered:
+            if not name.isascii():
+                continue
             words = re.findall(r"[a-z0-9]+", name.lower())
             for joiner in ("-", "_", ""):
-                if words:
+                if words and len(joiner.join(words)) >= MIN_NAME_LENGTH:
                     self._url_forms.setdefault(joiner.join(words), name)
         self._url = re.compile(
             r"(?<![a-z0-9])("
@@ -65,51 +82,106 @@ class PlaceScanner:
         return hits
 
 
-def scanned_files() -> list[Path]:
-    files = [p for d in SCAN_DIRS for p in (ROOT / d).rglob("*") if p.is_file()]
-    files += [p for g in SCAN_GLOBS for p in ROOT.glob(g)]
-    return sorted(p for p in files if p.suffix in TEXT_SUFFIXES and "__pycache__" not in p.parts)
+def git(*args: str) -> subprocess.CompletedProcess[str]:
+    """git with fixed arguments from this module, never from input."""
+    executable = shutil.which("git")
+    assert executable, "AT-02 lists the repository's files with git"
+    return subprocess.run(  # noqa: S603 - fixed arguments, resolved executable
+        [executable, *args], cwd=ROOT, capture_output=True, text=True, encoding="utf-8"
+    )
+
+
+def repository_files() -> list[str]:
+    """Tracked files plus new files git would track: what a commit would carry."""
+    listed = git("ls-files", "--cached", "--others", "--exclude-standard")
+    assert listed.returncode == 0, listed.stderr
+    return sorted(
+        {
+            p
+            for p in listed.stdout.splitlines()
+            if (ROOT / p).is_file() and not p.startswith(SKIPPED)
+        }
+    )
+
+
+def read_text(path: str) -> str | None:
+    """The file's text, or None for a binary file."""
+    data = (ROOT / path).read_bytes()
+    if b"\0" in data:
+        return None
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+
+
+def scanned_files() -> dict[str, str]:
+    texts = {
+        p: read_text(p) for p in repository_files() if p != ALLOWLIST.relative_to(ROOT).as_posix()
+    }
+    return {p: t for p, t in texts.items() if t is not None}
 
 
 def load_allowlist() -> set[tuple[str, str]]:
     entries = yaml.safe_load(ALLOWLIST.read_text(encoding="utf-8")) or []
+    allowed = set()
     for entry in entries:
         assert entry.get("reason", "").strip(), f"allow-list entry needs a reason: {entry}"
-    return {(e["path"], e["name"]) for e in entries}
+        for path in entry["paths"]:
+            assert path.startswith(ALLOWED_PREFIX), f"only documents may be allow-listed: {path}"
+            allowed.add((path, entry["name"]))
+    return allowed
 
 
 @pytest.fixture(scope="module")
 def scanner() -> PlaceScanner:
     if not (GEONAMES_DIR / "cities15000.zip").exists():
         pytest.fail("AT-02 needs the gazetteer: run `uv run poe geonames` (downloads, no database)")
-    return PlaceScanner(large_place_names(read_cities_text(GEONAMES_DIR), MIN_POPULATION))
+    large = large_place_names(read_cities_text(GEONAMES_DIR), MIN_POPULATION)
+    names = [n for n in large if len(n) >= MIN_NAME_LENGTH and n not in COMMON_WORDS]
+    return PlaceScanner([*names, *extra_names()])
 
 
-def test_no_city_names_or_city_urls_in_seeded_content(scanner: PlaceScanner) -> None:
-    """AT-02: prompts, config, reference YAML, seed scripts and fixtures name no real city."""
+def extra_names() -> list[str]:
+    """Spike and rehearsal places from the git-ignored EXTRA_NAMES, when it exists."""
+    if not EXTRA_NAMES.exists():
+        return []
+    lines = EXTRA_NAMES.read_text(encoding="utf-8").splitlines()
+    return [n.strip() for n in lines if n.strip() and not n.lstrip().startswith("#")]
+
+
+def test_no_city_names_or_city_urls_in_the_repository(scanner: PlaceScanner) -> None:
+    """AT-02: no file names a real city, except reviewed mentions in the documents."""
     allowed = load_allowlist()
-    hits = [
-        hit
-        for path in scanned_files()
-        for hit in scanner.scan(
-            path.relative_to(ROOT).as_posix(), path.read_text(encoding="utf-8", errors="replace")
-        )
-    ]
+    hits = [hit for path, text in scanned_files().items() for hit in scanner.scan(path, text)]
     unexplained = sorted(h for h in hits if (h.path, h.name) not in allowed)
     stale = allowed - {(h.path, h.name) for h in hits}
 
-    assert not unexplained, "city names found (fix, or allow-list with a reason):\n" + "\n".join(
-        f"  {h.path}:{h.line}: {h.name!r}{' in a URL' if h.in_url else ''}" for h in unexplained
+    assert not unexplained, (
+        "city names found (remove; in docs/ only, allow-list with a reason):\n"
+        + "\n".join(
+            f"  {h.path}:{h.line}: {h.name!r}{' in a URL' if h.in_url else ''}" for h in unexplained
+        )
     )
     assert not stale, f"allow-list entries that no longer match anything: {sorted(stale)}"
 
 
-def test_scan_covers_the_seeded_content() -> None:
-    """AT-02: the scan reaches the reference YAML and config, and skips the gazetteer dumps."""
-    scanned = {p.relative_to(ROOT).as_posix() for p in scanned_files()}
+def test_scan_covers_the_whole_repository() -> None:
+    """AT-02: code, tests, scripts, config, reference data, prompts and deploy files are
+    scanned; the gazetteer dumps are not."""
+    scanned = set(scanned_files())
 
-    assert {"reference/slots.yaml", "reference/sources.yaml", "config/local.yaml"} <= scanned
-    assert not any(p.startswith("reference/geonames/") for p in scanned)
+    assert {
+        "reference/slots.yaml", "config/local.yaml", "render.yaml", "README.md",
+        "app/prompts/safety.py", "app/workflow/graph.py", "tests/support/gazetteer.py",
+        "scripts/reference/geonames.py", "docs/DECISIONS.md", "Dockerfile",
+    } <= scanned  # fmt: skip
+    assert not any(p.startswith(SKIPPED) for p in scanned)
+
+
+def test_the_extra_names_file_is_never_committed() -> None:
+    """The spike and rehearsal list names real places: it must stay git-ignored."""
+    assert git("check-ignore", "-q", EXTRA_NAMES.relative_to(ROOT).as_posix()).returncode == 0
 
 
 # --- the scanner itself, on a fictional gazetteer ---------------------------
@@ -117,11 +189,11 @@ def test_scan_covers_the_seeded_content() -> None:
 
 @pytest.fixture
 def fictional() -> PlaceScanner:
-    return PlaceScanner(["Halden Bay", "Port Ostra"])
+    return PlaceScanner(["Halden Bay", "Port Ostra", "Hålby", "Vik"])
 
 
 def test_whole_word_case_sensitive_match(fictional: PlaceScanner) -> None:
-    hits = fictional.scan("f.md", "Clinics in Halden Bay.\nhalden bay\nHalden Bayside\n")
+    hits = fictional.scan("f.md", "Clinics in Halden Bay.\nhalden bay\nHalden Bayfront\n")
 
     assert [(h.name, h.line) for h in hits] == [("Halden Bay", 1)]
 
@@ -137,3 +209,10 @@ def test_city_in_url_matched_as_token(fictional: PlaceScanner) -> None:
 
 def test_url_substring_is_not_a_match(fictional: PlaceScanner) -> None:
     assert fictional.scan("f.yaml", "https://example.org/haldenbayside/\n") == []
+
+
+def test_url_forms_come_from_ascii_names_of_four_or_more_letters(fictional: PlaceScanner) -> None:
+    """A folded accented name ("hlby") or a short one ("vik") is not looked for in URLs;
+    both are still found as words in text."""
+    assert fictional.scan("f.md", "https://example.org/hlby/vik/\n") == []
+    assert {h.name for h in fictional.scan("f.md", "Hålby and Vik\n")} == {"Hålby", "Vik"}

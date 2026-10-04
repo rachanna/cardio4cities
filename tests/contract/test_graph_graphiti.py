@@ -183,7 +183,11 @@ async def test_the_embedding_marker_round_trips_and_is_restored(
     graph: tuple[GraphitiGraph, str],
 ) -> None:
     """R-82 (BD-14): the graph records the key of the model that made its embeddings.
-    The developer's own marker is put back afterwards."""
+    The marker is global to the graph, so the test runs only on a named test instance
+    (TEST_NEO4J_URI, as CI sets): a developer's running app never sees it change (RV-104).
+    The marker held before is put back afterwards."""
+    if "TEST_NEO4J_URI" not in os.environ:
+        pytest.skip("rewrites the graph's global marker: set TEST_NEO4J_URI to a test graph")
     g, _ = graph
     held = await g.embedding_marker()
     try:

@@ -92,3 +92,37 @@ async def test_distant_place_is_dropped_before_checking(thin_slice: Slice) -> No
     assert drop["place"] == "Port Ostra"
     assert drop["distance_km"] > 75
     assert all(ELSEWHERE_STATEMENT not in c.user for c in thin_slice.openai.calls)
+
+
+async def test_every_fact_carries_its_evidence_from_the_store(thin_slice: Slice) -> None:
+    """Non-negotiable 7 (code review RV-110): `evidence()` against Postgres gives the
+    source, the exact passage at its span, dates, geography, verdict and snapshot."""
+    s = thin_slice
+    (row,) = await query_rows(
+        s.store, "SELECT claim_id FROM claim WHERE run_id = :r AND statement = :t",
+        r=s.run_id, t=TRUE_STATEMENT,
+    )  # fmt: skip
+    evidence = await s.store.research.evidence(row["claim_id"])
+    assert evidence is not None
+    assert (evidence["url"], evidence["verdict"], evidence["status"]) == (
+        URL,
+        "supported",
+        "supported",
+    )
+    (source,) = await query_rows(
+        s.store, "SELECT parsed_text FROM source WHERE source_id = :s", s=evidence["source_id"]
+    )
+    assert source["parsed_text"][evidence["span_start"] : evidence["span_end"]] == evidence["quote"]
+    assert (str(evidence["reference_start"]), str(evidence["reference_end"])) == (
+        "2024-01-01", "2024-12-31",
+    )  # fmt: skip
+    assert evidence["retrieved_at"] is not None
+    assert evidence["geography_fit"]["relation"] == "city"
+    assert evidence["rationale"]
+    assert evidence["verifier_model"]
+    snapshots = await query_rows(
+        s.store, "SELECT count(*) AS n FROM snapshot WHERE source_id = :s AND sha256 = :h",
+        s=evidence["source_id"], h=evidence["content_sha256"],
+    )  # fmt: skip
+    assert snapshots[0]["n"] == 1
+    assert await s.store.research.evidence("clm_missing") is None

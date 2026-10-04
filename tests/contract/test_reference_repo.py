@@ -119,7 +119,7 @@ async def test_gazetteer_stores_parsed_fields(relational: PostgresRelational) ->
         country = (await conn.execute(text("SELECT * FROM ref_country"))).one()
 
     assert place.alternate_names == ["Haldenbukt", "HB"]
-    assert (place.admin1_code, place.population, place.timezone) == ("01", 420000, "Europe/Oslo")
+    assert (place.admin1_code, place.population, place.timezone) == ("01", 420000, "Etc/UTC")
     assert country.languages == ["nv", "en"]
 
 
@@ -150,10 +150,10 @@ async def test_places_are_found_by_the_same_key_claims_use(relational: PostgresR
     "Halden Bay City" is that place, never the city."""
     extra = _line(
         "9000020", "St. Ostra", "St. Ostra", "", "60.2", "5.3", "P", "PPL", "XN", "",
-        "01", "", "", "", "20000", "", "5", "Europe/Oslo", "2026-01-01",
+        "01", "", "", "", "20000", "", "5", "Etc/UTC", "2026-01-01",
     ) + _line(
         "9000021", "Halden Bay City", "Halden Bay City", "", "61.9", "5.2", "P", "PPL", "XN",
-        "", "02", "", "", "", "30000", "", "5", "Europe/Oslo", "2026-01-01",
+        "", "02", "", "", "", "30000", "", "5", "Etc/UTC", "2026-01-01",
     )  # fmt: skip
     await _sync_gazetteer(relational, PLACE + extra)
 

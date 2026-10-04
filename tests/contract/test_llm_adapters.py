@@ -4,7 +4,7 @@
 import http.server
 import json
 import threading
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from app.adapters.llm.anthropic import AnthropicLLM
 from app.adapters.llm.openai import OpenAILLM
 from app.ports.errors import LLMOutputValidationError, ProviderUnavailableError
-from app.ports.llm import LLMParams
+from app.ports.llm import LLMParams, LLMPort
 
 
 class Verdict(BaseModel):
@@ -249,3 +249,70 @@ async def test_a_call_that_returns_no_output_still_reports_its_usage(stub: Stub)
         await claude(stub).complete("checker", "s", "u", Verdict, HAIKU)
     assert declined.value.usage is not None
     assert declined.value.usage.tokens_in == 1200
+
+
+# --- the shared LLMPort contract: every adapter, the same tests (AT-35, RV-102) -------------
+
+
+@dataclass(frozen=True)
+class Vendor:
+    make: Callable[[Stub], LLMPort]
+    answer: Callable[[str], dict[str, Any]]
+    error: dict[str, Any]
+    params: LLMParams
+    family: str
+
+
+VENDORS = {
+    "anthropic": Vendor(
+        claude, claude_message,
+        {"type": "error", "error": {"type": "overloaded_error", "message": "busy"}},
+        HAIKU, "anthropic",
+    ),
+    "openai": Vendor(
+        gpt, openai_response,
+        {"error": {"type": "server_error", "code": None, "message": "busy"}},
+        LUNA, "openai",
+    ),
+}  # fmt: skip
+
+
+@pytest.fixture(params=sorted(VENDORS))
+def vendor(request: pytest.FixtureRequest) -> Vendor:
+    return VENDORS[request.param]
+
+
+async def test_every_adapter_returns_parsed_output_with_usage_and_cost(
+    stub: Stub, vendor: Vendor
+) -> None:
+    stub.body = vendor.answer(GOOD)
+    result = await vendor.make(stub).complete("checker", "s", "u", Verdict, vendor.params)
+    assert result.parsed == Verdict(label="supported", reason="Halden Bay figure stated")
+    assert (result.model_id, result.family) == (vendor.params.model, vendor.family)
+    assert result.tokens_in > 0
+    assert result.tokens_out > 0
+    assert result.cost_micro_usd > 0
+
+
+async def test_every_adapter_reports_output_outside_the_schema(stub: Stub, vendor: Vendor) -> None:
+    stub.body = vendor.answer(json.dumps({"label": "supported"}))
+    with pytest.raises(LLMOutputValidationError):
+        await vendor.make(stub).complete("checker", "s", "u", Verdict, vendor.params)
+
+
+@pytest.mark.parametrize("status", [429, 500, 503])
+async def test_every_adapter_maps_overload_and_outages_to_provider_unavailable(
+    stub: Stub, vendor: Vendor, status: int
+) -> None:
+    stub.status, stub.body = status, vendor.error
+    with pytest.raises(ProviderUnavailableError):
+        await vendor.make(stub).complete("checker", "s", "u", Verdict, vendor.params)
+
+
+async def test_every_adapter_sends_a_structured_output_schema(stub: Stub, vendor: Vendor) -> None:
+    stub.body = vendor.answer(GOOD)
+    await vendor.make(stub).complete("checker", "s", "u", Verdict, vendor.params)
+    (body,) = stub.requests
+    schema = json.dumps(body)
+    assert "json_schema" in schema
+    assert '"label"' in schema

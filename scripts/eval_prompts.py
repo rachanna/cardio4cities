@@ -9,7 +9,8 @@ Pass bar: checker agreement with the expected verdicts of at least
 `eval.checker_agreement_min`; recall (expected claims found) of at least
 `eval.recall_min` (owner, BD-26); no trap claim that the extractor mislabelled and the
 checker then supported; and a planner plan that passes the structural check. Writes
-`tests/prompts/golden/results/<profile>-latest.md`, whose header names each prompt
+`tests/prompts/golden/results/<profile>-latest.md` (`<profile>-<role>-latest.md` for a
+run of one role), whose header names each prompt
 version measured; a unit test fails when that is not the committed version (RV-019).
 
     uv run poe eval [--max-usd 1.0] [--only extractor|checker|planner]
@@ -312,7 +313,7 @@ YEAR = re.compile(r"(19|20)\d{2}")
 async def run_planner(d: RunDeps, settings: Settings, tally: Tally) -> None:
     """One live planner call for the fictional city, checked for structure (BD-26): every
     slot gets exactly `plan.queries_per_slot` queries, all in English (BD-31), `site:`
-    only from the list given, and no numbers but years."""
+    only from the list given, and no numbers but years and those the context gave it."""
     prompt = load_prompt("planner")
     tally.versions["planner"] = prompt.prompt_version
     tally.lines += ["", f"## Planner ({prompt.prompt_version})", ""]
@@ -333,13 +334,16 @@ async def run_planner(d: RunDeps, settings: Settings, tally: Tally) -> None:
         tally.planner_problems.append(f"model call failed ({type(exc).__name__})")
         tally.lines.append(f"- model call failed ({type(exc).__name__}: {str(exc)[:160]})")
         return
+    given = set(re.findall(r"\d+", user))
     for slot in out.parsed.slots:
         problems = []
         if any(q.lang != "en" for q in slot.queries):  # English only (BD-31)
             problems.append("a query not in English")
         for q in slot.queries:
             numbers = re.findall(r"\d+", q.text)
-            if any(not YEAR.fullmatch(n) for n in numbers):
+            # A year, or a number the context gave it (an indicator's age band such as
+            # "30-70"), is fine; any other number may be a figure the planner made up
+            if any(not YEAR.fullmatch(n) and n not in given for n in numbers):
                 problems.append(f"a number that is not a year in {q.text!r}")
         tally.planner_problems += [f"{slot.slot_id}: {p}" for p in problems]
         tally.lines.append(f"- {slot.slot_id}: {'; '.join(problems) or 'ok'}")
@@ -397,7 +401,9 @@ async def main(max_usd: float, only: str | None) -> int:
     report = "\n".join(summary + tally.lines) + "\n"
     results = GOLDEN / "results"
     results.mkdir(exist_ok=True)
-    (results / f"{settings.env}-latest.md").write_text(report, encoding="utf-8")
+    # A run of one role writes its own file, so it never replaces the full run's record
+    name = f"{settings.env}-latest.md" if only is None else f"{settings.env}-{only}-latest.md"
+    (results / name).write_text(report, encoding="utf-8")
     print(report)
     return 0 if passed else 1
 

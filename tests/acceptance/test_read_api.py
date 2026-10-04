@@ -275,3 +275,10 @@ async def test_researching_a_stored_city_again_starts_a_new_live_run(
         assert all(hit.at >= requested for hit in again.world.log)
         (item,) = (await get(api, "/cities"))["items"]
         assert item["latest_run_id"] == again.run_id
+
+
+async def test_the_sixteen_slots_are_listed_for_the_coverage_grid(api: httpx.AsyncClient) -> None:
+    """D3-4 (BD-41): the live grid names every slot before the run reports on it."""
+    slots = await get(api, "/slots")
+    assert [s["slot_id"] for s in slots] == [f"S{n:02d}" for n in range(1, 17)]
+    assert [s["slot_id"] for s in slots if s["headline"]] == ["S04"]

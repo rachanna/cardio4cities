@@ -24,6 +24,7 @@ from app.api.schemas import (
     EntityResponse,
     FindingsResponse,
     OtherEntity,
+    SlotInfo,
 )
 from app.domain.cards import FactCard, handle_with_care, slot_row, summary
 from app.domain.vocab import Badge, ClaimStatus, VerdictLabel
@@ -34,6 +35,19 @@ router = APIRouter(tags=["cities"])
 SessionDep = Annotated[Session, Depends(current_session)]
 # Claims whose edges the entity page shows: facts, and facts a newer claim ended (BD-19)
 EDGE_STATUSES = frozenset({ClaimStatus.SUPPORTED, ClaimStatus.CONTESTED, ClaimStatus.SUPERSEDED})
+
+
+@router.get("/slots", response_model=list[SlotInfo])
+async def slots(request: Request, _: SessionDep) -> list[SlotInfo]:
+    """The 16 questions every run answers, for the live coverage grid (D3-4, BD-41)."""
+    defs = await reading.relational(request).reference.slots()
+    return [
+        SlotInfo(
+            slot_id=s.slot_id, dimension=s.dimension, question=s.question,
+            short_label=s.short_label, headline=s.headline,
+        )
+        for s in sorted(defs, key=lambda s: s.slot_id)
+    ]  # fmt: skip
 
 
 @router.get("/cities", response_model=CitiesResponse)

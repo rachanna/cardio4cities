@@ -234,3 +234,23 @@ class AnswerTraceResponse(BaseModel):
     answer_id: str
     question: str
     trace: dict[str, Any]
+
+
+class DiagramResponse(BaseModel):
+    """Mermaid text of the compiled graphs (LLD-4 §3.5, AT-03)."""
+
+    main: str  # the main graph, the slot subgraph drawn inside it
+    slot: str  # the slot subgraph on its own
+
+
+class SessionInfo(BaseModel):
+    role: Literal["viewer", "admin"]
+    expires_at: int  # Unix time
+
+
+class SlotInfo(BaseModel):
+    slot_id: str
+    dimension: str
+    question: str
+    short_label: str
+    headline: bool

@@ -225,3 +225,12 @@ def test_root_serves_the_web_page(client: TestClient) -> None:
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
     assert "CARDIO4Cities" in response.text
+
+
+def test_the_session_says_who_is_signed_in(client: TestClient, valid_env: dict[str, str]) -> None:
+    """D3-4 (BD-41): the web app shows the presenter's overlay to admins only."""
+    assert client.get("/api/v1/session").status_code == 401
+    client.post("/api/v1/session", json={"access_code": valid_env["ACCESS_CODE"]})
+    assert client.get("/api/v1/session").json()["role"] == "viewer"
+    client.post("/api/v1/session", json={"access_code": valid_env["ADMIN_CODE"]})
+    assert client.get("/api/v1/session").json()["role"] == "admin"

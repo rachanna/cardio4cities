@@ -62,9 +62,9 @@ async def extract(state: SlotState, config: RunnableConfig) -> dict[str, Any]:
             continue
         model_id, claims = result
         for claim in claims[:MAX_CLAIMS]:  # the most relevant first (BD-26)
-            key = normalise_text(claim.quote)
+            key = claim_key(claim)
             if not keep_claim(claim, {slot.slot_id}) or key in seen_quotes:
-                continue  # invalid, or the same quote from an overlapping window
+                continue  # invalid, or the same claim from an overlapping window
             seen_quotes.add(key)
             draft = Draft(
                 claim_id=stable_id("clm", state["run_id"], job.source_id, slot.slot_id, key),
@@ -87,6 +87,24 @@ async def extract(state: SlotState, config: RunnableConfig) -> dict[str, Any]:
                 },
             )
     return {"drafts": drafts, **_skipped(skipped)}
+
+
+def claim_key(claim: ClaimOut) -> str:
+    """What makes two drafts one claim: the quote and what is claimed from it. One quote
+    can state two figures (for men and for women) or two relations; keyed by the quote
+    alone, the second was dropped silently (BD-36; code review RV-088). A repeat from an
+    overlapping window has the same key."""
+    parts = [normalise_text(claim.quote), claim.kind.value]
+    if claim.statistic is not None:
+        parts += [claim.statistic.indicator_code, normalise_text(claim.statistic.value_as_written)]
+    if claim.relation is not None:
+        r = claim.relation
+        parts += [
+            r.relation_type.value,
+            normalise_text(r.subject_name),
+            normalise_text(r.object_name),
+        ]
+    return "\x1f".join(parts)
 
 
 @dataclass(frozen=True)

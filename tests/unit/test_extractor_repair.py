@@ -16,8 +16,8 @@ from app.ports.llm import LLMParams, LLMResult
 from app.prompts.extractor import context
 from app.prompts.extractor.schema import ExtractorOutput
 from app.workflow.deps import Binding, RoleBinding
-from app.workflow.nodes.extract import Window, _extract_window
-from tests.support.thin_slice import claim
+from app.workflow.nodes.extract import Window, _extract_window, claim_key
+from tests.support.thin_slice import claim, statistic
 
 PRIMARY = Binding("openai", "gpt-6-luna", "openai")
 STRONGER = Binding("openai", "gpt-6.1-sol", "openai")
@@ -151,3 +151,20 @@ async def test_without_a_stronger_model_a_failed_repair_skips_the_window() -> No
     assert await _extract_window(d, STATE, JOB) == "LLMOutputValidationError"
     assert len(model.calls) == 2
     assert [k for k, _ in d.events.emitted] == ["step_failed"]
+
+
+# --- RV-088: one quote, two claims -------------------------------------------------------------
+
+
+def test_one_quote_stating_two_figures_keeps_both_claims() -> None:
+    quote = "31.5% of men and 27.0% of women in Halden Bay had hypertension"
+    men = claim(
+        "31.5% of men had it.", quote, kind=ClaimKind.STATISTIC, statistic=statistic("31.5%")
+    )
+    women = claim(
+        "27.0% of women had it.", quote, kind=ClaimKind.STATISTIC, statistic=statistic("27.0%")
+    )
+    again = claim("Men: 31.5%.", quote, kind=ClaimKind.STATISTIC, statistic=statistic("31.5%"))
+
+    assert claim_key(men) != claim_key(women)
+    assert claim_key(men) == claim_key(again)  # an overlapping window's repeat is one claim

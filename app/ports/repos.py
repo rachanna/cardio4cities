@@ -19,8 +19,10 @@ from app.domain.models import (
     Source,
     SourceProvider,
     Statistic,
+    StoredFact,
     Verdict,
 )
+from app.ports.snapshots import SnapshotRef
 
 
 class ReferenceRepo(Protocol):
@@ -75,6 +77,10 @@ class SourceRepo(Protocol):
 
     async def fetched_urls(self, run_id: str) -> set[str]:
         """Canonical URLs already fetched in the run (HD-01)."""
+        ...
+
+    async def snapshot_ref(self, source_id: str) -> SnapshotRef | None:
+        """The stored snapshot's hash, size and type, without its bytes (D3-1)."""
         ...
 
     async def fetched_sources(self, run_id: str) -> dict[str, str | None]:
@@ -139,6 +145,14 @@ class RunRepo(Protocol):
 
     async def slot_results(self, run_id: str) -> list[dict[str, Any]]: ...
 
+    async def city_row(self, city_id: str) -> dict[str, Any] | None:
+        """The city, its identity and its latest run's status and dates (D3-1)."""
+        ...
+
+    async def cities(self, limit: int, offset: int) -> list[dict[str, Any]]:
+        """Cities with a finished run, newest first (D3-1, "Open existing")."""
+        ...
+
     async def save_budget_used(self, run_id: str, used: dict[str, Any]) -> None: ...
 
     async def stranded_runs(self) -> list[dict[str, Any]]:
@@ -186,6 +200,26 @@ class ResearchRepo(Protocol):
     async def claim_statuses(self, run_id: str) -> dict[str, int]: ...
 
     async def evidence(self, claim_id: str) -> dict[str, Any] | None: ...
+
+    async def city_facts(self, city_id: str) -> list[StoredFact]:
+        """The facts of the city's latest run: exactly the claims in `v_city_facts` (D3-1)."""
+        ...
+
+    async def stored_fact(self, claim_id: str) -> StoredFact | None:
+        """Any stored claim, whatever its status (D3-1: the evidence view)."""
+        ...
+
+    async def stored_facts(self, claim_ids: list[str]) -> dict[str, StoredFact]: ...
+
+    async def contested_pairs(self, run_id: str) -> list[tuple[str, str]]:
+        """The run's contested pairs as (headline claim, other claim) (D3-1)."""
+        ...
+
+    async def consistency(self, claim_id: str) -> dict[str, Any] | None: ...
+
+    async def source_text(self, source_id: str, start: int, end: int) -> str | None:
+        """`parsed_text[start:end]` of a source (D3-1: the evidence passage)."""
+        ...
 
     async def claim_with_statistic(self, claim_id: str) -> tuple[Claim, Statistic | None]: ...
 
@@ -268,6 +302,10 @@ class EntityRepo(Protocol):
     async def entities(self, city_id: str, entity_type: str) -> list[Entity]: ...
 
     async def get(self, entity_ids: list[str]) -> dict[str, Entity]: ...
+
+    async def with_fact_counts(self, city_id: str) -> list[tuple[Entity, int]]:
+        """Entities named by facts of the city's latest run, with how many (D3-1)."""
+        ...
 
     async def update_attributes(
         self, entity_id: str, change: Callable[[dict[str, Any]], dict[str, Any] | None]

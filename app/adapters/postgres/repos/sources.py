@@ -4,11 +4,32 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.domain.models import CrawlDecision, Source
+from app.ports.snapshots import SnapshotRef
 
 
 class PostgresSourceRepo:
     def __init__(self, engine: AsyncEngine) -> None:
         self._engine = engine
+
+    async def snapshot_ref(self, source_id: str) -> SnapshotRef | None:
+        """The stored snapshot's hash and size, without its bytes (D3-1, LLD-1 §7.1)."""
+        async with self._engine.connect() as conn:
+            row = (
+                (
+                    await conn.execute(
+                        text(
+                            "SELECT source_id, sha256, size_bytes, content_type FROM snapshot"
+                            " WHERE source_id = :s"
+                        ),
+                        {"s": source_id},
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+        if row is None:
+            return None
+        return SnapshotRef(**{**row, "content_type": row["content_type"] or ""})
 
     async def add_crawl_decision(self, decision: CrawlDecision) -> None:
         async with self._engine.begin() as conn:

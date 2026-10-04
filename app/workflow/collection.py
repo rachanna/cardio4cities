@@ -90,6 +90,7 @@ class CollectionParams:
     read_timeout_s: float
     robots_timeout_s: float  # fetch.robots_timeout_s
     crawl_delay_cap_s: float  # fetch.crawl_delay_cap_s (BD-20)
+    total_timeout_s: float  # fetch.total_timeout_s: a whole download, never past the run (BD-27)
 
 
 @dataclass(frozen=True)
@@ -409,9 +410,18 @@ class Collector:
             await self._budget.reserve(kind)
             if wait > 0:
                 await self._sleep(wait)
+            # A whole download is bounded, never past the run's time left (BD-27; code
+            # review RV-047): only each read had a timeout, so a large file streamed on
+            deadline = max(min(self._params.total_timeout_s, self._budget.time_left_s()), 1.0)
             try:
                 async with self._global:
-                    return await self._fetcher.fetch(url, ip, limits, intermediates)
+                    return await asyncio.wait_for(
+                        self._fetcher.fetch(url, ip, limits, intermediates), deadline
+                    )
+            except TimeoutError as exc:
+                raise FetchError(
+                    f"timeout: the download took longer than {deadline:.0f} s", timeout=True
+                ) from exc
             finally:
                 self._last_request[domain] = self._clock()
 
@@ -524,7 +534,9 @@ class Collector:
             if 300 <= result.status < 400 and location:
                 current = urljoin(decision.url, location)
                 continue
-            return self._finish(url, decisions, result, table_keywords)
+            # Parsing a large PDF takes seconds: off the event loop, so every other slot,
+            # model call and event write goes on meanwhile (BD-27; code review RV-048)
+            return await asyncio.to_thread(self._finish, url, decisions, result, table_keywords)
         return Collected(url, tuple(decisions), "http_error", http_status=None)
 
     async def _fetch_with_retry(self, decision: GateDecision) -> FetchResult | None:

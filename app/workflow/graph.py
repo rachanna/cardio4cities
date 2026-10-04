@@ -142,8 +142,11 @@ def build_graph(
     g.add_node("analytics", analytics)
     g.add_node("brief_ready", brief_ready)  # writes the summary: not timed by it
     g.add_edge(START, "resolve_city")
+    # Wave 0 runs alongside planning, in the same step (BD-27): its official-API calls
+    # need no plan, and coverage meets its figures from the first round
     g.add_edge("resolve_city", "wave0")
-    g.add_edge("wave0", "plan_slots")
+    g.add_edge("resolve_city", "plan_slots")
+    g.add_edge("wave0", END)
     g.add_conditional_edges("plan_slots", fan_out, ["slot_subgraph", "coverage"])
     g.add_edge("slot_subgraph", "coverage")
     g.add_conditional_edges("coverage", route_after_coverage, ["plan_slots", "analytics"])

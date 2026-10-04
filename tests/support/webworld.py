@@ -135,6 +135,7 @@ def params(**overrides: object) -> CollectionParams:
         "read_timeout_s": 3.0,
         "robots_timeout_s": 3.0,
         "crawl_delay_cap_s": 30.0,
+        "total_timeout_s": 30.0,
     }
     values.update(overrides)
     return CollectionParams(**values)  # type: ignore[arg-type]

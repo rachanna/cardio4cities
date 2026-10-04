@@ -276,6 +276,21 @@ class PinnedFetcher:
                 ) as client,
                 client.stream("GET", url) as response,
             ):
+                declared = response.headers.get("content-length", "")
+                if (
+                    declared.isdigit()
+                    and int(declared) > limits.max_bytes
+                    and not limits.keep_partial
+                ):
+                    # Too large as sent: refused before a byte of the body is read (BD-27)
+                    return FetchResult(
+                        url=url,
+                        status=response.status_code,
+                        headers={k.lower(): v for k, v in response.headers.items()},
+                        content=b"",
+                        content_type=response.headers.get("content-type"),
+                        truncated=True,
+                    )
                 body, truncated = await _read_capped(response, limits.max_bytes)
                 if truncated:
                     body = body[: limits.max_bytes] if limits.keep_partial else b""

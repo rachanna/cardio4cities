@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from app.domain.models import LabelKind, Labels
 from app.domain.params import QuoteParams
 from app.domain.vocab import PeriodType, Sex
-from app.workflow.rules.quotes import QuoteDrop, match_quote, normalise_text
+from app.workflow.rules.quotes import Normalised, QuoteDrop, match_quote, normalise_text
 
 CLEARABLE: frozenset[LabelKind] = frozenset({"period", "population"})
 
@@ -38,6 +38,7 @@ def locate_label_quotes(
     window_start: int,
     labels: Labels,
     params: QuoteParams,
+    normalised: Normalised | None = None,
 ) -> LabelEvidence:
     """`window` is the text the extractor read; it starts at `window_start` in the
     document. A period quote must also contain each year of the labelled period."""
@@ -46,7 +47,7 @@ def locate_label_quotes(
     for kind, quote in quotes.items():
         if not quote or not quote.strip():
             continue
-        found = match_quote(quote, window, params)
+        found = match_quote(quote, window, params, normalised=normalised)
         located = not isinstance(found, QuoteDrop)
         if located and kind == "period":
             stated = normalise_text(window[found.span_start : found.span_end])  # type: ignore[union-attr]

@@ -5,6 +5,7 @@ One fetch per URL per run (BD-14): the first slot to reach a URL fetches it; ano
 that wants it waits for that fetch, or reuses the stored source, and extracts it for its
 own question."""
 
+import asyncio
 from datetime import UTC, datetime
 from hashlib import sha256
 from typing import Any
@@ -183,23 +184,30 @@ async def _owned(
 
 
 async def fetch_parse(state: SlotState, config: RunnableConfig) -> dict[str, Any]:
+    """The slot's pages side by side (BD-27): the collector's global and per-domain
+    limits pace them, so nothing waits on one slow page."""
     d = deps(config)
+    candidates = [*state.get("reused", []), *state.get("allowed", [])]
+    results = await asyncio.gather(*(_candidate(d, state, c) for c in candidates))
     source_ids: list[str] = []
     decision_ids: list[str] = []
-    for candidate in [*state.get("reused", []), *state.get("allowed", [])]:
-        pending = d.fetch_cache.claim(candidate.url)
-        if pending is not None:  # fetched, or being fetched, by another slot
-            if (source_id := await pending) is not None and source_id not in source_ids:
-                source_ids.append(source_id)
-            continue
-        try:
-            source_id, ids = await _owned(d, state, candidate)
-        except BudgetExhaustedError:
-            break
-        except Exception as exc:  # one page never costs the slot its round (BD-21)
-            await step_failed(d, state, "fetch_parse", candidate.url, exc)
-            continue
+    for source_id, ids in results:  # in candidate order
         decision_ids += ids
         if source_id and source_id not in source_ids:  # two URLs, one page (BD-21)
             source_ids.append(source_id)
     return {"source_ids": source_ids, "crawl_decision_ids": decision_ids}
+
+
+async def _candidate(
+    d: RunDeps, state: SlotState, candidate: Candidate
+) -> tuple[str | None, list[str]]:
+    pending = d.fetch_cache.claim(candidate.url)
+    if pending is not None:  # fetched, or being fetched, by another slot or candidate
+        return await pending, []
+    try:
+        return await _owned(d, state, candidate)
+    except BudgetExhaustedError:
+        return None, []
+    except Exception as exc:  # one page never costs the slot its round (BD-21)
+        await step_failed(d, state, "fetch_parse", candidate.url, exc)
+        return None, []

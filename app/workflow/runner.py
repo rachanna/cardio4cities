@@ -372,6 +372,7 @@ class RunManager:
                 read_timeout_s=f.read_timeout_s,
                 robots_timeout_s=f.robots_timeout_s,
                 crawl_delay_cap_s=f.crawl_delay_cap_s,
+                total_timeout_s=f.total_timeout_s,
             ),
         )
         reference = self.relational.reference

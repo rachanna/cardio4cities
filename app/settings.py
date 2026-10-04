@@ -194,6 +194,8 @@ class FetchSection(_Section):
     allowed_ports: list[int]  # LLD-2 §9.1 step 2 [tunable] (BD-07)
     robots_timeout_s: float  # LLD-2 §9.1 step 4: 15 s, raised from 5 after spike S-5 (BD-07)
     crawl_delay_cap_s: float  # LLD-2 §9.3: a longer crawl-delay is rate_limited (BD-20)
+    total_timeout_s: float  # LLD-2 §9.3: one whole download, capped by the time left (BD-27)
+    pdf_max_pages: int  # LLD-2 §9.4: pages of a PDF that are read (BD-27)
 
 
 class VerifySection(_Section):

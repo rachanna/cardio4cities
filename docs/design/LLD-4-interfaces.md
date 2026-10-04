@@ -275,7 +275,7 @@ vector:     { provider: qdrant, url_env: QDRANT_URL, api_key_env: QDRANT_API_KEY
 graph:      { provider: graphiti_neo4j, uri_env: NEO4J_URI, user_env: NEO4J_USER, password_env: NEO4J_PASSWORD }
 snapshots:  { provider: postgres, max_bytes: 10485760 }
 renderer:   { provider: weasyprint }
-tracing:    { providers: [events, langsmith], langsmith_api_key_env: LANGSMITH_API_KEY }
+tracing:    { providers: [events] }   # langsmith only once its adapter exists (BD-36)
 budget:     { wall_clock_s: 420, searches: 64, fetches: 60, tokens: 1500000, cost_micro_usd: 3000000, wind_down_at: 0.85 }   # BD-15
 limits:     { runs_per_day: 20, ask_per_min: 20, resolve_per_min: 30 }
 fetch:      { concurrency: 6, min_interval_s: 1, max_bytes: 10485760, connect_timeout_s: 5, read_timeout_s: 20,
@@ -492,7 +492,7 @@ Relational access uses repository classes per aggregate (`RunRepo`, `ClaimRepo`,
 | Graph | `graphiti_neo4j` | same |
 | Snapshots | `postgres` | `s3` (COULD) |
 | Renderer | `weasyprint` `[verify on host]` | `browser_print` (returns HTML with print styles) |
-| Tracing | `events` + `langsmith` | `events` + `otel` |
+| Tracing | `events` (`langsmith` once its adapter exists, BD-36) | `events` + `otel` |
 
 ### 8.2 Contract-test highlights
 

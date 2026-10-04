@@ -21,7 +21,7 @@ def build_user_message(
         "<task>Write web search queries to research the questions below for one city.</task>",
         "<context>",
         f"city: {place}",
-        f"languages: {', '.join(city.languages) or 'en'}",
+        "language: en (this version searches in English only, BD-31)",
         f"round: {round_no}",
         f"queries_per_slot: {queries_per_slot}",
         f"government_sites: {', '.join(government_sites) or 'none'}",
@@ -48,6 +48,9 @@ def previous_attempt(slot_id: str, status: str, queries: Sequence[str], note: st
 
 
 def fallback_queries(city: CityIdentity, slot: SlotDef) -> list[tuple[str, str]]:
-    """LLD-2 §3.4: template queries when the planner fails twice; invents nothing."""
-    queries = [(f"{slot.short_label} {city.name} {city.country_name}", "en")]
-    return queries
+    """LLD-2 §3.4: two template queries, in English (BD-31), when the planner gives the
+    slot no usable plan; invents nothing."""
+    return [
+        (f"{slot.short_label} {city.name} {city.country_name}", "en"),
+        (f"{city.name} {slot.short_label} survey report", "en"),
+    ]

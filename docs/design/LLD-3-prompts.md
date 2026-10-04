@@ -143,6 +143,10 @@ and the re-plan rule names `previous_attempts` and a government site filter as o
 
 v2 with one change: "For each slot, write exactly queries_per_slot search queries (given in the context)". The context gains `queries_per_slot: {n}` (`plan.queries_per_slot`, 2), and code requires exactly that many new queries per slot in every round.
 
+### 3.2c System prompt (v4, BD-31)
+
+v3 with English only (owner, PoC scope): every query is in English with `"lang": "en"`, which code checks; the local-language rule and "another language" as a re-plan change are gone; the context says `language: en`. The length rule now matches the code: a query of at most 120 characters and a purpose of at most 80 (it said 15 words).
+
 ### 3.3 Output schema
 
 ```python

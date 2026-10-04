@@ -95,9 +95,9 @@ def output(*texts: str) -> PlannerOutput:
 def test_a_site_filter_must_be_one_the_planner_was_given() -> None:
     sites = {"site:gov.xn"}
     fine = output("Halden Bay hypertension programme site:gov.xn", "Halden Bay survey")
-    assert validate(fine, {"S04"}, ["en"], set(), sites) == []
+    assert validate(fine, {"S04"}, set(), sites) == []
     made_up = output("Halden Bay hypertension site:health.example", "Halden Bay survey")
-    assert validate(made_up, {"S04"}, ["en"], set(), sites) == [
+    assert validate(made_up, {"S04"}, set(), sites) == [
         "S04: site:health.example is not in government_sites"
     ]
 

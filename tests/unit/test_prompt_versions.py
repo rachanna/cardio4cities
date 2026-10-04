@@ -27,7 +27,7 @@ def test_crlf_and_lf_checkouts_give_the_same_version(
 def test_current_versions_are_the_bd26_prompts() -> None:
     assert loader.load_prompt("extractor").version == 4  # BD-26: new examples, field rules
     assert loader.load_prompt("checker").version == 4  # BD-26: evidence before the verdict
-    assert loader.load_prompt("planner").version == 3  # BD-15: queries per slot from config
+    assert loader.load_prompt("planner").version == 4  # BD-31: English only
 
 
 def test_the_version_changes_when_the_context_builder_changes(

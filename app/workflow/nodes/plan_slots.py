@@ -11,10 +11,10 @@ from typing import Any
 from langchain_core.runnables import RunnableConfig
 
 from app.domain.vocab import EventType
-from app.ports.errors import PortError
+from app.ports.errors import LLMOutputValidationError, PortError
 from app.prompts.loader import load_prompt
 from app.prompts.planner import context
-from app.prompts.planner.schema import PlannerOutput, validate
+from app.prompts.planner.schema import PlannerOutput, usable_slots, validate
 from app.workflow.budget import BudgetExhaustedError
 from app.workflow.llm import call_role
 from app.workflow.nodes._deps import deps
@@ -47,6 +47,7 @@ async def plan_slots(state: RunState, config: RunnableConfig) -> dict[str, Any]:
         city, slots, d.indicators, round_no, previous, sites, d.queries_per_slot
     )
     plans: dict[str, SlotPlan] = {}
+    accepted = []
     try:
         out = await call_role(
             d,
@@ -54,11 +55,15 @@ async def plan_slots(state: RunState, config: RunnableConfig) -> dict[str, Any]:
             prompt.system,
             user,
             PlannerOutput,
-            problems=lambda o: validate(
-                o, slot_ids, city.languages, earlier, set(sites), d.queries_per_slot
-            ),
+            problems=lambda o: validate(o, slot_ids, earlier, set(sites), d.queries_per_slot),
         )
-        for s in out.parsed.slots:
+        accepted = out.parsed.slots
+    except LLMOutputValidationError as exc:  # repaired once and still not all usable
+        accepted = usable_slots(exc.raw_text, slot_ids, earlier, set(sites), d.queries_per_slot)
+    except (PortError, BudgetExhaustedError):
+        pass  # every slot without a plan gets the template below
+    if accepted:
+        for s in accepted:
             plans[s.slot_id] = SlotPlan(
                 slot_id=s.slot_id,
                 round=round_no,
@@ -66,8 +71,6 @@ async def plan_slots(state: RunState, config: RunnableConfig) -> dict[str, Any]:
                     PlannedQuery(text=q.text, lang=q.lang, purpose=q.purpose) for q in s.queries
                 ],
             )
-    except (PortError, BudgetExhaustedError):
-        pass  # every slot without a plan gets the template below
     tried = {_key(q) for q in earlier}
     for slot in slots:
         if slot.slot_id not in plans:

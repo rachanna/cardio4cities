@@ -61,10 +61,10 @@ RUNNING_QUOTE = (
 
 
 def queries_for(slot_id: str, round_no: int) -> list[tuple[str, str]]:
-    """The scripted planner's queries: new ones every round, one in the primary language."""
+    """The scripted planner's queries: two new ones every round, in English (BD-31)."""
     return [
         (f"Halden Bay {slot_id} evidence round {round_no}", "en"),
-        (f"Halden Bay {slot_id} kilder runde {round_no}", "nv"),
+        (f"Halden Bay {slot_id} sources round {round_no}", "en"),
     ]
 
 

@@ -13,8 +13,8 @@ from tests.support.thin_slice import (
     METHODS,
     NEARBY_STATEMENT,
     NEW_GOV_STATEMENT,
-    NV_GOV_QUERY,
-    NV_QUERY,
+    SECOND_GOV_QUERY,
+    SECOND_QUERY,
     TRUE_SENTENCE,
     TRUE_STATEMENT,
     URL,
@@ -48,7 +48,7 @@ async def test_thin_slice_writes_verified_cited_facts(thin_slice: Slice) -> None
         "place_name": "Halden Bay",
         "distance_km": 0,
     }
-    planned = [EN_QUERY, NV_QUERY, EN_GOV_QUERY, NV_GOV_QUERY]
+    planned = [EN_QUERY, SECOND_QUERY, EN_GOV_QUERY, SECOND_GOV_QUERY]
     assert sorted(s.search.queries) == sorted(planned)  # the planner's, not the template
 
 

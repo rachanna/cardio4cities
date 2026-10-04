@@ -311,8 +311,8 @@ YEAR = re.compile(r"(19|20)\d{2}")
 
 async def run_planner(d: RunDeps, settings: Settings, tally: Tally) -> None:
     """One live planner call for the fictional city, checked for structure (BD-26): every
-    slot gets exactly `plan.queries_per_slot` queries, at least one in the city's primary
-    language, `site:` only from the list given, and no numbers but years."""
+    slot gets exactly `plan.queries_per_slot` queries, all in English (BD-31), `site:`
+    only from the list given, and no numbers but years."""
     prompt = load_prompt("planner")
     tally.versions["planner"] = prompt.prompt_version
     tally.lines += ["", f"## Planner ({prompt.prompt_version})", ""]
@@ -326,18 +326,17 @@ async def run_planner(d: RunDeps, settings: Settings, tally: Tally) -> None:
     try:
         out = await call_role(
             d, "planner", prompt.system, user, PlannerOutput,
-            problems=lambda o: validate(o, slot_ids, CITY.languages, set(), set(sites), per_slot),
+            problems=lambda o: validate(o, slot_ids, set(), set(sites), per_slot),
         )  # fmt: skip
     except PortError as exc:
         tally.failures += 1
         tally.planner_problems.append(f"model call failed ({type(exc).__name__})")
         tally.lines.append(f"- model call failed ({type(exc).__name__}: {str(exc)[:160]})")
         return
-    primary = CITY.languages[0]
     for slot in out.parsed.slots:
         problems = []
-        if not any(q.lang == primary for q in slot.queries):
-            problems.append(f"no query in {primary}")
+        if any(q.lang != "en" for q in slot.queries):  # English only (BD-31)
+            problems.append("a query not in English")
         for q in slot.queries:
             numbers = re.findall(r"\d+", q.text)
             if any(not YEAR.fullmatch(n) for n in numbers):

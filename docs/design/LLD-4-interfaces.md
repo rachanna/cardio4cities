@@ -282,7 +282,7 @@ fetch:      { concurrency: 6, min_interval_s: 1, max_bytes: 10485760, connect_ti
 chunk:      { prose_tokens: 400, overlap_tokens: 60, table_max_tokens: 1200 }   # BD-07
 verify:     { max_claims_per_slot: 5, label_margin_chars: 200 }   # BD-10
 geography:  { nearby_km: 75 }   # BD-10
-eval:       { checker_agreement_min: 0.9 }   # LLD-3 §9
+eval:       { checker_agreement_min: 0.9, recall_min: 0.85 }   # LLD-3 §9; recall: BD-26
 stream:     { poll_interval_s: 0.5, heartbeat_s: 15 }   # BD-09
 runs:       { heartbeat_s: 10, stale_after_s: 45, shutdown_grace_s: 15 }   # BD-25
 select:     { max_new_urls_per_slot_round: 3, max_reused_per_slot_round: 2, other_place_min_population: 15000 }   # BD-14, BD-15

@@ -10,9 +10,15 @@ BATCH = 128
 
 class OpenAIEmbeddings:
     def __init__(
-        self, api_key: str, model: str, dimension: int, key: str, base_url: str | None = None
+        self,
+        api_key: str,
+        model: str,
+        dimension: int,
+        key: str,
+        base_url: str | None = None,
+        max_retries: int = 2,
     ) -> None:
-        self._client = AsyncOpenAI(api_key=api_key, base_url=base_url, max_retries=2)
+        self._client = AsyncOpenAI(api_key=api_key, base_url=base_url, max_retries=max_retries)
         self._model, self._dimension, self._key = model, dimension, key
 
     @property

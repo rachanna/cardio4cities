@@ -1,0 +1,32 @@
+# Reviewed mentions of real places in the documents, for the AT-02 scan
+# (tests/acceptance/test_no_seeding.py, BD-35). Only paths under docs/ may appear: code,
+# tests, scripts, config, reference data and prompts are always strict. This file is not
+# scanned. Each entry: name (as the scan reports it), paths, reason. An entry that no
+# longer matches anything fails the test.
+- name: Hyderabad
+  paths: [docs/DECISIONS.md, docs/design/BRAINSTORM.md]
+  reason: DEC-16 records the city tested for the example report; a decision row, not data the system reads
+- name: Belagavi
+  paths: [docs/DECISIONS.md]
+  reason: the S-6 decision row names the data-rich city the owner chose for the spike
+- name: Bidar
+  paths: [docs/DECISIONS.md]
+  reason: the S-6 decision row names the sparse city the owner chose for the spike
+- name: São Paulo
+  paths: [docs/REHEARSAL.md, docs/design/BRAINSTORM.md]
+  reason: a CARDIO4Cities pioneer city named in the brief; listed as a rehearsal choice
+- name: Dakar
+  paths: [docs/REHEARSAL.md, docs/design/BRAINSTORM.md]
+  reason: a CARDIO4Cities pioneer city named in the brief; listed as a rehearsal choice
+- name: Barcelona
+  paths: [docs/design/REQUIREMENTS.md]
+  reason: names an analysis probe behind the "sparse is normal" requirement
+- name: Kumasi
+  paths: [docs/design/REQUIREMENTS.md]
+  reason: names an analysis probe behind the "sparse is normal" requirement
+- name: Bengaluru
+  paths: [docs/design/REQUIREMENTS.md]
+  reason: names an analysis probe behind the "sparse is normal" requirement
+- name: Gadag
+  paths: [docs/design/REQUIREMENTS.md]
+  reason: names an analysis probe behind the "sparse is normal" requirement

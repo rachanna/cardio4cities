@@ -139,6 +139,14 @@ async def test_a_crashed_run_resumes_once_without_duplicates(
                 relational, "SELECT count(*) AS n FROM claim WHERE run_id = :r", run_id
             )
             assert before[0]["n"] > 0  # the crash came after real work
+            # AT-03: the state can be read between nodes, step by step, from the checkpoints
+            saver = await checkpointer.saver()
+            steps = [c async for c in saver.alist({"configurable": {"thread_id": run_id}})]
+            assert len(steps) > 2
+            states = [s.checkpoint["channel_values"] for s in steps]
+            assert any(state.get("city") is not None for state in states)
+            planned = next(state["plans"] for state in states if state.get("plans"))
+            assert set(planned) == {"S04", "S01"}
 
             resumed_ports = ports(checker)
             restarted = RunManager(resumed_ports, settings)  # a new process

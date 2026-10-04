@@ -17,6 +17,7 @@ from tests.conftest import ConfigWriter
 from tests.support.breadth import (
     CLOSED_HOST,
     CLOSED_URL,
+    DOWN_URL,
     EMPTY_HOST,
     EMPTY_URL,
     PROGRAMME,
@@ -148,11 +149,11 @@ async def test_a_page_is_fetched_once_however_many_slots_want_it(
 
 
 async def test_the_run_summary_shows_outcomes_sources_cost_and_time(
-    relational: PostgresRelational, sparse: tuple[str, Any, Any]
+    relational: PostgresRelational, migrated: str, valid_env: dict[str, str]
 ) -> None:
     """AT-38: claims by outcome, dropped by reason, blocked and unreachable sources, cost
-    per model and time per stage."""
-    run_id, _, _ = sparse
+    per model and time per stage (code review RV-101: every count is one the run made)."""
+    run_id, _, _ = await sparse_run(relational, migrated, valid_env, {**SPARSE, "S09": DOWN_URL})
     run = await relational.runs.run_row(run_id)
     assert run is not None
     summary = run["summary"]
@@ -161,10 +162,14 @@ async def test_the_run_summary_shows_outcomes_sources_cost_and_time(
     assert summary["sources"] == {
         "read": 1,
         "blocked": {"blocked_robots": 1},
-        "unreachable": {},
+        "unreachable": {"unreachable_server_error": 1},
         "unreadable": {},
     }
-    assert summary["slots"] == {"answered_negative": 2, "blocked": 1}
+    assert summary["slots"] == {"answered_negative": 2, "blocked": 1, "unreachable": 1}
+    # A page whose server fails is unreachable, not merely unread (BD-35)
+    assert (await slot_rows(relational, run_id))["S09"]["gap_note"] == (
+        "1 candidate sources could not be reached (server error (1))."
+    )
     assert summary["models"]["claude-haiku-4-5-20251001"]["calls"] >= 3  # planner rounds
     assert summary["cost_usd"] > 0
     busy = summary["time"]["busy_ms"]
@@ -172,6 +177,25 @@ async def test_the_run_summary_shows_outcomes_sources_cost_and_time(
     assert summary["time"]["wall_clock_ms"] > 0
     finished = [e for e in await events(relational, run_id) if e["type"] == "run_finished"]
     assert finished[-1]["payload"]["summary"]["slots"] == summary["slots"]
+
+
+async def test_the_thin_slice_summary_counts_claims_by_outcome_and_drops_by_reason(
+    thin_slice: Slice,
+) -> None:
+    """AT-38 on a run with findings (code review RV-101): supported, refuted and
+    superseded claims, drops by reason, sources read, slot statuses."""
+    run = await thin_slice.store.runs.run_row(thin_slice.run_id)
+    assert run is not None
+    summary = run["summary"]
+    statuses = await thin_slice.store.research.claim_statuses(thin_slice.run_id)
+    assert summary["claims"] == {**statuses, "dropped": 2}
+    assert statuses == {"supported": 3, "refuted": 1, "superseded": 1}
+    assert summary["dropped"] == {
+        "quote_not_found": 1, "geography_elsewhere": 1, "geography_unresolved": 0,
+    }  # fmt: skip
+    assert summary["sources"] == {"read": 2, "blocked": {}, "unreachable": {}, "unreadable": {}}
+    assert summary["slots"] == {"answered": 2}
+    assert summary["models"]["claude-haiku-4-5-20251001"]["calls"] == 3
 
 
 async def test_a_tiny_budget_still_ends_with_every_slot_given_a_status(

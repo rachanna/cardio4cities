@@ -536,9 +536,9 @@ Relational access uses repository classes per aggregate (`RunRepo`, `ClaimRepo`,
 
 | AT | Test location | Type |
 |---|---|---|
-| AT-01 | `tests/acceptance/test_live_run.py::test_unseen_city_fetches_after_request` | Automated (recorded network) |
-| AT-02 | `tests/acceptance/test_no_seeding.py` | Automated (scans prompts, config, reference, fixtures for gazetteer place names and per-city URL lists) |
-| AT-03 | `tests/acceptance/test_workflow_graph.py` | Automated |
+| AT-01 | `tests/acceptance/test_live_run.py::test_unseen_city_fetches_after_request` | Automated (thin slice's fictional web: empty stores, every request and record after the request time) |
+| AT-02 | `tests/acceptance/test_no_seeding.py` | Automated (BD-35: every text file git tracks or would track, for gazetteer places of 50,000 or more and their URL forms; `docs/` only through `docs/no_seeding_allowlist.yaml`) |
+| AT-03 | `tests/acceptance/test_workflow_graph.py` (render, conditional edges); state between nodes in `tests/acceptance/checkpointed/test_resume.py` | Automated |
 | AT-04, AT-05, AT-06, AT-23, AT-33 | `tests/acceptance/test_crawl_gate.py` | Automated (local test server) |
 | AT-07, AT-08 | `tests/acceptance/test_checker.py` | Automated |
 | AT-09 | `tests/unit/test_quote_match.py` + acceptance | Automated |
@@ -552,14 +552,14 @@ Relational access uses repository classes per aggregate (`RunRepo`, `ClaimRepo`,
 | AT-19 | `tests/acceptance/test_breadth.py` (tiny budget), `tests/unit/test_budget.py` | Automated |
 | AT-20 | `tests/acceptance/test_conflicts.py` | Automated |
 | AT-22 | `tests/acceptance/test_injection.py` | Automated |
-| AT-24 | `tests/acceptance/test_resolve.py` | Automated |
+| AT-24 | `tests/acceptance/test_resolve.py` (API half, real place search); the UI half with D3-4 | Automated |
 | AT-25, AT-37 | `tests/acceptance/test_reuse_and_fresh.py` | Automated |
 | AT-26 | `tests/unit/test_entity_resolution.py` | Automated |
 | AT-30 | `tests/acceptance/test_event_replay.py` | Automated |
 | AT-34 | `tests/architecture/test_import_lint.py` | Automated |
-| AT-35 | `tests/contract/` | Automated |
+| AT-35 | `tests/contract/`: one shared suite per port with more than one adapter (search: SearXNG and Brave; embeddings: OpenAI and Sentence Transformers, a stand-in module where the optional group is absent; LLM: Anthropic and OpenAI) | Automated |
 | AT-36 | `tests/acceptance/test_config_validation.py` | Automated |
-| AT-38 | `tests/acceptance/test_breadth.py` | Automated |
+| AT-38 | `tests/acceptance/test_breadth.py` (sparse run with an unreachable source; thin-slice counts) | Automated |
 | Resume after a crash (LLD-2 §17) | `tests/acceptance/checkpointed/test_resume.py` | Automated (real checkpointer; BD-14) |
 | AT-39 to AT-46 | `tests/acceptance/test_retrieval.py` | Automated (CHG-01) |
 | AT-47 | `tests/acceptance/test_retrieval_eval.py` | Automated (CHG-01) |

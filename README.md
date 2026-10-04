@@ -25,7 +25,7 @@ first and each new connection waits for that to fail.
 ## Deploying to Render
 
 `render.yaml` is a Render Blueprint: the app, Neo4j, Qdrant, Postgres and a keep-alive
-cron, all in Singapore, with auto-deploy off. Deploy by hand, never on rehearsal or demo days.
+cron, all in one region, with auto-deploy off. Deploy by hand, never on rehearsal or demo days.
 
 1. In Render, install the GitHub app for this repository only.
 2. New → Blueprint → this repository, branch `main`.

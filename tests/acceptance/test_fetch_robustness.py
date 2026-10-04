@@ -234,3 +234,20 @@ async def test_an_api_network_failure_is_unreachable(world: WebWorld) -> None:
         got = await c.fetch_api(f"http://{DATA}/api/indicator", "who_gho")
     assert got.result is None
     assert got.decisions[-1].outcome is CrawlOutcome.UNREACHABLE_NETWORK
+
+
+# --- a page whose server fails (BD-35) --------------------------------------------------------
+
+
+@pytest.mark.parametrize(("status", "outcome"), [(503, "not_fetched"), (404, "http_error")])
+async def test_a_server_error_makes_a_page_unreachable_and_a_missing_page_does_not(
+    world: WebWorld, status: int, outcome: str
+) -> None:
+    """A 5xx page is unreachable, as robots.txt and an API are (LLD-2 §8), so the slot and
+    the run summary count it; a 404 is a page that is not there, not an unreachable site."""
+    world.site(HEALTH, HEALTH_IP, {"/robots.txt": ALLOW_ALL, "/page": Reply(status, b"")})
+    with world.running():
+        got = await collector(world).collect(f"http://{HEALTH}/page", [])
+    assert got.outcome == outcome
+    expected = CrawlOutcome.UNREACHABLE_SERVER_ERROR if status >= 500 else CrawlOutcome.ALLOWED
+    assert got.decisions[-1].outcome is expected

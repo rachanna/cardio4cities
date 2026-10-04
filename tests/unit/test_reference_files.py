@@ -26,7 +26,7 @@ from scripts.reference.yaml_reference import (
 
 CITY = "\t".join([
     "9000001", "Halden Bay", "Halden Bay", "Haldenbukt", "60.1", "5.2", "P", "PPLC", "XN", "",
-    "01", "", "", "", "420000", "", "5", "Europe/Oslo", "2026-01-01",
+    "01", "", "", "", "420000", "", "5", "Etc/UTC", "2026-01-01",
 ])  # fmt: skip
 TOWN = "\t".join([
     "9000002", "Port Ostra", "Port Ostra", "", "61.0", "6.0", "P", "PPL", "XN", "",
@@ -50,7 +50,7 @@ def test_parse_places_maps_columns_and_empty_fields() -> None:
 
     assert city == (
         "9000001", "Halden Bay", "Halden Bay", ["Haldenbukt"], "XN", "01", None, 420000,
-        60.1, 5.2, "Europe/Oslo",
+        60.1, 5.2, "Etc/UTC",
     )  # fmt: skip
     assert (town[3], town[5], town[7], town[10]) == ([], None, None, None)
 

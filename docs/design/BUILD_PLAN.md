@@ -35,7 +35,7 @@
 |---|---|---|---|---|---|
 | D1-1 | Repository scaffold | REPO_STRUCTURE | Layout, `pyproject.toml` with poe tasks (BD-01), Dockerfile, compose, `.env.example`, empty packages, CI running lint and tests | `poe up`, `poe lint`, `poe test` succeed on an empty suite | 1 h |
 | D1-2 | Ports, config and validation | LLD-4 §5, §8 | Protocols; config loader; start-up validation; `container.py` | AT-36 passes; import-linter contracts active (AT-34) | 1 h |
-| D1-3 | Database and reference data | LLD-1 §3–4 | Alembic migrations for all tables and views; loaders for GeoNames and the YAML reference files | `poe migrate` then `poe reference` loads 16 slots and the gazetteer; AT-02 scan runs | 1.5 h |
+| D1-3 | Database and reference data | LLD-1 §3–4 | Alembic migrations for all tables and views; loaders for GeoNames and the YAML reference files | `poe migrate` then `poe reference` loads 16 slots and the gazetteer; AT-02 scan runs (whole repository since BD-35) | 1.5 h |
 | D1-4 | Deployed skeleton | REPO_STRUCTURE §5, LLD-4 §3.1, §7 | `render.yaml`; app with session and `/health` touching Postgres, Qdrant, Neo4j; static placeholder page at `/` | Deployed URL serves `/` and `/api/v1/health` returns `ok` from outside (AT-29 partial) | 1 h |
 | D1-5 | Spikes (§2) | §2 below, LLD-1 §6.3 | Six spike scripts with written results | Each spike has a recorded outcome and a `BD-` row | 2.5 h |
 
@@ -78,11 +78,11 @@ Also confirm on day 1: the OpenAI checker and embedding model IDs and the embedd
 
 | ID | Task | Load | Outputs | Done when | Est. |
 |---|---|---|---|---|---|
-| D3-1 | Read API | LLD-4 §2–3, LLD-1 §4.6, §7 | Brief, findings, entities, evidence, snapshots, cities, runs endpoints | AT-12, AT-25, AT-27, AT-37 | 1.5 h |
-| D3-2 | Question answering | LLD-5, LLD-3 §6–7 | LLD-5 pipeline: understanding with follow-ups, four routes, re-validation, fusion, anchors, bundle, answerer v2, extended post-check, trace | AT-10, AT-11, AT-15, AT-28, AT-39 to AT-46 | 3 h |
+| D3-1 | Read API | LLD-4 §2–3, LLD-1 §4.6, §7 | Brief, findings, entities, evidence, snapshots, cities, runs endpoints | AT-12, AT-25, AT-27, AT-37; AT-13 and AT-14 for findings (BD-35) | 1.5 h |
+| D3-2 | Question answering | LLD-5, LLD-3 §6–7 | LLD-5 pipeline: understanding with follow-ups, four routes, re-validation, fusion, anchors, bundle, answerer v2, extended post-check, trace | AT-10, AT-11, AT-15, AT-28, AT-39 to AT-46; AT-13 and AT-14 for answers (BD-35) | 3 h |
 | D3-2b | Retrieval evaluation | LLD-5 §12 | Halden Bay retrieval fixture (about 30 claims, 25 questions with gold answers); `poe eval-rag` | AT-47 gates pass on fixtures in CI | 1.5 h |
 | D3-3 | Report | LLD-2 §16, LLD-3 §8 | Assembly, templates, PDF | AT-18 | 1 h |
-| D3-4 | Web app | HLD §12, LLD-4 §12 | Access, Start with live progress and coverage grid, City brief, Explore, Ask, Evidence panel; admin overlay | A non-technical walk-through works on a phone and a laptop; City brief screen built first | 3 h |
+| D3-4 | Web app | HLD §12, LLD-4 §12 | Access, Start with live progress and coverage grid, City brief, Explore, Ask, Evidence panel; admin overlay | A non-technical walk-through works on a phone and a laptop; City brief screen built first; AT-24's UI half: the chosen identity is shown before research starts (BD-35) | 3 h |
 | D3-5 | Deploy and smoke | REPO_STRUCTURE §5 | Full deploy; keep-alive job | AT-17, AT-29 from outside; full run on the deployed URL | 0.5 h |
 
 **Day 3 exit check:** a user can open the URL, research a city, explore, ask, trace evidence and download a report.

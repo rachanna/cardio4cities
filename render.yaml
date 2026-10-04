@@ -1,5 +1,5 @@
 # Render Blueprint (REPO_STRUCTURE §5, BD-04).
-# Every service in Singapore on one private network; auto-deploy off (R-91):
+# Every service in one region on one private network; auto-deploy off (R-91):
 # deploy by hand from the dashboard, never on rehearsal or demo days.
 # Secrets marked `sync: false` are entered in the dashboard when the Blueprint is created.
 

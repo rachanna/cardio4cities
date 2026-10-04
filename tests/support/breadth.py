@@ -42,6 +42,8 @@ CLOSED_HOST = "archive.halden-bay.test"
 CLOSED_URL = f"http://{CLOSED_HOST}/records"
 PROGRAMME_HOST = "heart.halden-bay.test"
 PROGRAMME_URL = f"http://{PROGRAMME_HOST}/programme"
+DOWN_HOST = "records.halden-bay.test"
+DOWN_URL = f"http://{DOWN_HOST}/heart-report"  # the server fails: an unreachable source
 DENY_ALL = Reply(200, b"User-agent: *\nDisallow: /\n", "text/plain")
 
 PROGRAMME = "Halden Bay Heart Health Programme"
@@ -162,6 +164,9 @@ def sparse_world() -> WebWorld:
         PROGRAMME_HOST,
         "93.184.216.42",
         {"/robots.txt": ALLOW_ALL, "/programme": Reply(200, programme_page())},
+    )
+    world.site(
+        DOWN_HOST, "93.184.216.43", {"/robots.txt": ALLOW_ALL, "/heart-report": Reply(503, b"")}
     )
     return world
 

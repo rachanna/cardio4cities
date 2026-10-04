@@ -446,6 +446,7 @@ Checked against RFC 9309 when implementing (BD-07): §2.3.1.3 (4xx: crawlers MAY
 | Types | `text/html`, `application/xhtml+xml`, `application/pdf`, `text/plain`; JSON only for structured adapters |
 | Redirects | Up to 5; **each new host goes through the gate again**; the connection uses the IP checked in step 3 (prevents DNS rebinding) |
 | 401, 402, 403 on the page | `blocked_login_or_paywall`; body discarded unread |
+| 5xx on the page | `unreachable_server_error`; body discarded unread, so the slot and the run summary count it as unreachable, as for robots.txt and official APIs (BD-35). Any other non-2xx (a 404) gives no source row and a `source_unreadable` event |
 | 429 | Honour `Retry-After` up to 10 s and retry once; otherwise `rate_limited` |
 | Response header `Content-Usage` with `ai=n` or `tdm=n` | Discard the body unread → `blocked_content_usage` |
 | HTML with a password field and almost no text | `blocked_login_or_paywall`; body discarded, not snapshotted |
@@ -460,7 +461,7 @@ Checked against RFC 9309 when implementing (BD-07): §2.3.1.3 (4xx: crawlers MAY
 
 `parsed_text` is what offsets refer to. The snapshot holds the raw bytes.
 
-**Tests (§9):** robots disallow (no content request made, AT-04); crawl-delay spacing (AT-05); `Content-Usage: ai=n` header; robots 404 (allowed); robots 503 (unreachable); redirect to a private address (refused, AT-23); 403 page (paywall outcome).
+**Tests (§9):** robots disallow (no content request made, AT-04); crawl-delay spacing (AT-05); `Content-Usage: ai=n` header; robots 404 (allowed); robots 503 (unreachable); redirect to a private address (refused, AT-23); 403 page (paywall outcome); 503 page (unreachable, BD-35).
 
 ---
 

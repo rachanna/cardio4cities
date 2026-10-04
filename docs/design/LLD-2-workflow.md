@@ -209,6 +209,8 @@ Ambiguous separators (`1,234` could be 1.234 or 1234) are resolved as thousands 
 
 **Tests:** each row above; negative cases such as `2019` alone (a year, not a value: `unparsed`).
 
+**Since BD-33.** The value must stand as a whole number in the quote: no digit, or decimal part, runs on at either end, so "7%" is not found in "17%" or "7.5%" (still exact, never fuzzy). A thousands group never starts with zero, so "0.125" and "0,125" are decimals; a percentage with one separator before exactly three digits ("1.000%", "1,000 %") is never guessed and stays unparsed.
+
 ### 4.3 Threshold coding
 
 `threshold_code(case_definition) -> str | None` using `reference/thresholds.yaml`:
@@ -219,6 +221,8 @@ Ambiguous separators (`1,234` could be 1.234 or 1234) are resolved as thousands 
 | systolic `>= ?130` or `≥ ?130` or `130/80` | `bp_130_80` |
 | fasting glucose `>= ?7.0 mmol` or `>= ?126 mg` | `fpg_7_0` |
 | none matched | `None` |
+
+**Threshold coding since BD-33.** "≥", "⩾", "≤" and "⩽" are read as ">=" and "<=" before matching; a number ends where no digit follows, so "≥140mmHg" matches; a rule may name an `exclude` pattern, and the blood-pressure rules never apply to a case definition about glucose (mg/dL, mmol, HbA1c). Comparability-key slugs drop accents but keep letters of every script, so two non-Latin district names no longer share an empty slug.
 
 ### 4.1a Label evidence and geography fit (BD-10)
 

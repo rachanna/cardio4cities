@@ -2,6 +2,7 @@
 independent checker with the restricted slice only. Refuted or insufficient claims never
 become facts; `supported` with any issue counts as insufficient (PD-03)."""
 
+import asyncio
 from typing import Any
 
 from langchain_core.runnables import RunnableConfig
@@ -31,21 +32,24 @@ STATUS_FOR = {
 
 
 async def verify(state: SlotState, config: RunnableConfig) -> dict[str, Any]:
+    """The slot's top claims checked side by side, one claim per checker call (BD-27);
+    the model gate limits how many run at once."""
     d = deps(config)
     prompt = load_prompt("checker")
-    supported: list[str] = []
-    for claim_id in state.get("matched_claim_ids", [])[: d.verify.max_claims_per_slot]:
-        try:
-            passed = await _check(d, state, prompt, claim_id)
-        except BudgetExhaustedError:
-            continue  # stays `extracted`; a stored verdict later in the list still applies
-        except Exception as exc:  # one claim's failure never costs the others (BD-21)
-            await step_failed(d, state, "verify", claim_id, exc)
-            claim, _ = await d.relational.research.claim_with_statistic(claim_id)
-            passed = claim.status in PASSED_CHECKER  # supported before it failed: kept
-        if passed:
-            supported.append(claim_id)
-    return {"supported_claim_ids": supported}
+    claim_ids = state.get("matched_claim_ids", [])[: d.verify.max_claims_per_slot]
+    passed = await asyncio.gather(*(_one(d, state, prompt, c) for c in claim_ids))
+    return {"supported_claim_ids": [c for c, ok in zip(claim_ids, passed, strict=True) if ok]}
+
+
+async def _one(d: RunDeps, state: SlotState, prompt: Prompt, claim_id: str) -> bool:
+    try:
+        return await _check(d, state, prompt, claim_id)
+    except BudgetExhaustedError:
+        return False  # stays `extracted`; a stored verdict for another claim still applies
+    except Exception as exc:  # one claim's failure never costs the others (BD-21)
+        await step_failed(d, state, "verify", claim_id, exc)
+        claim, _ = await d.relational.research.claim_with_statistic(claim_id)
+        return claim.status in PASSED_CHECKER  # supported before it failed: kept
 
 
 async def _check(d: RunDeps, state: SlotState, prompt: Prompt, claim_id: str) -> bool:

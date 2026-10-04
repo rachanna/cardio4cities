@@ -115,6 +115,7 @@ def match_quote(
     parsed_text: str,
     params: QuoteParams,
     value_as_written: str | None = None,
+    normalised: Normalised | None = None,
 ) -> QuoteMatch | QuoteDrop:
     """Locate `quote` in `parsed_text`. For statistic claims pass `value_as_written`:
     the value must occur inside the matched quote (WD-03). Quotes of `min_words_unique` to
@@ -123,7 +124,9 @@ def match_quote(
     words = len(nq.split(" ")) if nq else 0
     if not params.min_words_unique <= words <= params.max_words:
         return QuoteDrop("quote_length")
-    source = normalise(parsed_text)
+    # `normalised`: `normalise(parsed_text)` computed once by the caller for many quotes
+    # (BD-27): each draft used to re-normalise its whole window on the event loop
+    source = normalised if normalised is not None else normalise(parsed_text)
     at = source.text.find(nq)
     if at < 0:
         return QuoteDrop("quote_not_found")

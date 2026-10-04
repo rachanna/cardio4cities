@@ -171,6 +171,11 @@ def _precision(html: str, published: date | None) -> DatePrecision | None:
 
 
 class DocumentParser:
+    """`max_pages`: a PDF is read up to this page (`fetch.pdf_max_pages`, BD-27)."""
+
+    def __init__(self, max_pages: int | None = None) -> None:
+        self._max_pages = max_pages
+
     def parse_html(self, content: bytes, url: str, charset: str | None = None) -> ParsedDocument:
         try:
             return self._html(content, url, charset)
@@ -218,7 +223,8 @@ class DocumentParser:
         tables: list[tuple[int, int]] = []
         length = 0
         with pdfplumber.open(io.BytesIO(content)) as pdf:
-            for number, page in enumerate(pdf.pages, start=1):
+            pages_read = pdf.pages[: self._max_pages] if self._max_pages else pdf.pages
+            for number, page in enumerate(pages_read, start=1):
                 page_text = page.extract_text() or ""
                 block = f"[page {number}]\n{page_text}\n"
                 pages.append((number, length))
@@ -238,4 +244,4 @@ class DocumentParser:
 
 
 def make(settings: Settings) -> DocumentParser:
-    return DocumentParser()
+    return DocumentParser(settings.config.fetch.pdf_max_pages)

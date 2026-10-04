@@ -52,7 +52,7 @@ from app.workflow.rules.geography_fit import (
 from app.workflow.rules.label_evidence import clear_labels, keep_located, locate_label_quotes
 from app.workflow.rules.labels import apply_reference_period_rule, derive_flags
 from app.workflow.rules.numbers import parse_value, read_sample_size
-from app.workflow.rules.quotes import QuoteDrop, match_quote
+from app.workflow.rules.quotes import Normalised, QuoteDrop, match_quote, normalise
 from app.workflow.rules.thresholds import threshold_code
 from app.workflow.state import SlotState
 
@@ -127,6 +127,7 @@ async def match_quotes(state: SlotState, config: RunnableConfig) -> dict[str, An
     regions: dict[str, bool] = {}  # source -> it names the city's own region (BD-17)
     acronyms: dict[str, dict[str, str]] = {}  # per source (LLD-2 §6 step 3)
     matched: list[Candidate] = []
+    normalised: dict[tuple[str, int, int], Normalised] = {}
     for draft in state.get("drafts", []):
         try:
             if draft.source_id not in texts:
@@ -138,7 +139,10 @@ async def match_quotes(state: SlotState, config: RunnableConfig) -> dict[str, An
             out = ClaimOut.model_validate(draft.output)
             value = out.statistic.value_as_written if out.statistic else None
             window = text[draft.window_start : draft.window_end]
-            found = match_quote(out.quote, window, d.quote, value)
+            key = (draft.source_id, draft.window_start, draft.window_end)
+            if key not in normalised:  # once per window, not once per draft (BD-27)
+                normalised[key] = normalise(window)
+            found = match_quote(out.quote, window, d.quote, value, normalised[key])
             if isinstance(found, QuoteDrop):
                 await d.events.emit(
                     state["run_id"],
@@ -161,7 +165,7 @@ async def match_quotes(state: SlotState, config: RunnableConfig) -> dict[str, An
                 out.label_quotes.model_dump() if out.label_quotes else {}  # type: ignore[assignment]
             )
             evidence = locate_label_quotes(
-                label_quotes, window, draft.window_start, labels, d.quote
+                label_quotes, window, draft.window_start, labels, d.quote, normalised[key]
             )
             labels = clear_labels(labels, evidence.cleared)
             located = [text[start:end], *(text[a:b] for a, b in evidence.spans.values())]

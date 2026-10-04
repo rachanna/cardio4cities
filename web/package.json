@@ -1,0 +1,28 @@
+{
+  "name": "cardio4cities-web",
+  "private": true,
+  "version": "0.1.0",
+  "description": "CARDIO4Cities web app: a static Next.js export served by the API at / (LLD-4 ID-01)",
+  "scripts": {
+    "dev": "next dev --port 3000",
+    "build": "next build",
+    "typecheck": "tsc --noEmit",
+    "types": "openapi-typescript lib/openapi.json -o lib/api-types.ts"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "dependencies": {
+    "mermaid": "12.1.0",
+    "next": "16.3.8",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "20.19.43",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "openapi-typescript": "7.13.0",
+    "typescript": "5.9.3"
+  }
+}

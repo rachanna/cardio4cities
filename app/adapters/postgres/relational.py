@@ -6,6 +6,7 @@ from app.adapters.postgres.db import create_engine
 from app.adapters.postgres.repos.answers import PostgresAnswerRepo
 from app.adapters.postgres.repos.entities import PostgresEntityRepo
 from app.adapters.postgres.repos.reference import PostgresReferenceRepo
+from app.adapters.postgres.repos.reports import PostgresReportRepo
 from app.adapters.postgres.repos.research import PostgresResearchRepo
 from app.adapters.postgres.repos.runs import PostgresRunRepo
 from app.adapters.postgres.repos.sources import PostgresSourceRepo
@@ -21,6 +22,7 @@ class PostgresRelational:
         self._research = PostgresResearchRepo(self._engine)
         self._entities = PostgresEntityRepo(self._engine)
         self._answers = PostgresAnswerRepo(self._engine)
+        self._reports = PostgresReportRepo(self._engine)
 
     @property
     def reference(self) -> PostgresReferenceRepo:
@@ -45,6 +47,10 @@ class PostgresRelational:
     @property
     def answers(self) -> PostgresAnswerRepo:
         return self._answers
+
+    @property
+    def reports(self) -> PostgresReportRepo:
+        return self._reports
 
     async def ping(self) -> None:
         async with self._engine.connect() as conn:

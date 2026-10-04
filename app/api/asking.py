@@ -3,6 +3,7 @@ budget ledger of its own (owner, BD-38: `retrieval.wall_clock_s` and
 `retrieval.max_cost_micro_usd`). `app/query` stays independent of the workflow; this
 composition is where the two meet."""
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from functools import cache
 from pathlib import Path
@@ -45,11 +46,12 @@ def question_ledger(wall_clock_s: float, max_cost_micro_usd: int) -> BudgetLedge
     )
 
 
-def roles_for(settings: Settings) -> dict[str, ModelRole]:
-    """The classifier and answerer bindings of the profile (also used by the golden set)."""
+def roles_for(settings: Settings, names: Sequence[str] = ROLES) -> dict[str, ModelRole]:
+    """Model bindings of the profile: the classifier and answerer by default (also used by
+    the golden set), the reporter for the report (BD-40)."""
     bindings = role_bindings(settings)
     roles = {}
-    for role in ROLES:
+    for role in names:
         binding = bindings[role].primary
         roles[role] = ModelRole(
             provider=binding.provider,

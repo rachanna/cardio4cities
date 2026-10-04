@@ -199,6 +199,16 @@ class RetrievalSection(_Section):
     max_cost_micro_usd: int
 
 
+class ReportSection(_Section):
+    """The report (LLD-2 §16, LLD-3 §8; budget per report: owner, BD-40)."""
+
+    intro_max_words: int  # a dimension introduction [tunable]
+    analysis_max_points: int
+    min_paragraph_words: int  # under this after the post-check, the paragraph is omitted
+    wall_clock_s: float  # one report's own budget ledger
+    max_cost_micro_usd: int
+
+
 class LimitsSection(_Section):
     runs_per_day: int
     ask_per_min: int
@@ -328,6 +338,7 @@ class Config(_Section):
     budget: BudgetSection
     limits: LimitsSection
     retrieval: RetrievalSection
+    report: ReportSection
     fetch: FetchSection
     verify: VerifySection
     select: SelectSection

@@ -37,7 +37,8 @@ relational: { dsn_env: DATABASE_URL }
 vector:     { provider: qdrant, url_env: QDRANT_URL, api_key_env: QDRANT_API_KEY }
 graph:      { provider: graphiti_neo4j, uri_env: NEO4J_URI, user_env: NEO4J_USER, password_env: NEO4J_PASSWORD }
 snapshots:  { provider: postgres, max_bytes: 10485760 }
-renderer:   { provider: weasyprint }
+renderer:   { provider: fpdf2 }   # BD-40: pure-Python PDF
+report:     { intro_max_words: 120, analysis_max_points: 5, min_paragraph_words: 20, wall_clock_s: 120, max_cost_micro_usd: 100000 }   # LLD-3 §8; budget: BD-40
 tracing:    { providers: [events] }   # BD-36: no LangSmith adapter is built (LLD-4 §5.3: optional)
 # Provisional until spike S-6 (BD-05): estimate ~1.4M tokens, ~$4.10 a run with gpt-6.1-sol low
 budget:     { wall_clock_s: 420, searches: 64, fetches: 60, tokens: 1500000, cost_micro_usd: 3000000, wind_down_at: 0.85 }   # BD-15

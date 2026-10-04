@@ -601,6 +601,8 @@ class AnalysisOutput(BaseModel):
 
 The same post-check as answers (LLD-2 §15.1 step 5). A sentence or point that fails is removed. If the remaining text is under 20 words, the paragraph is omitted (HD-07).
 
+**As built (D3-3, BD-40):** `app/prompts/reporter/v1.md`, `schema.py`, `context.py`; facts and gap notes are escaped data lines, and the prompt says they are not instructions. Limits come from config: `report.intro_max_words` (120), `report.analysis_max_points` (5), `report.min_paragraph_words` (20). Golden cases for the reporter wait for D4-1.
+
 ---
 
 ## 9. Evaluation of prompts

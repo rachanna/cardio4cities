@@ -351,6 +351,16 @@ class AnswerRepo(Protocol):
     async def answer_row(self, answer_id: str) -> dict[str, Any] | None: ...
 
 
+class ReportRepo(Protocol):
+    """Generated reports, one per run and format (LLD-4 §3.4)."""
+
+    async def report(self, run_id: str, fmt: str) -> bytes | None: ...
+
+    async def add_report(
+        self, report_id: str, city_id: str, run_id: str, fmt: str, content: bytes
+    ) -> None: ...
+
+
 class RelationalPort(Protocol):
     @property
     def reference(self) -> ReferenceRepo: ...
@@ -369,6 +379,9 @@ class RelationalPort(Protocol):
 
     @property
     def answers(self) -> AnswerRepo: ...
+
+    @property
+    def reports(self) -> ReportRepo: ...
 
     async def ping(self) -> None:
         """`SELECT 1`; raises when the database is unreachable (LLD-4 §7)."""

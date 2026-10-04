@@ -1,0 +1,67 @@
+# {{ r.city_name }}: cardiovascular research brief
+
+{{ r.city_name }}{% if r.region_name %}, {{ r.region_name }}{% endif %}, {{ r.country_name }}. Researched live on {{ date(r.run_date) }} (run {{ r.run_id }}, {{ r.run_status }}). Every fact below was checked against its source; the number in brackets is its source in the list at the end.
+
+## Summary
+
+{% for dimension, name, cited in r.summary -%}
+**{{ name }}**
+{% for c in cited %}
+- {{ fact(c) }}
+{%- endfor %}
+
+{% endfor -%}
+{% if not r.summary %}No fact reached High or Medium confidence.
+{% endif %}
+{% for s in r.sections -%}
+## {{ s.dimension }} {{ s.name }}
+{% if s.intro %}
+{% for p in s.intro %}{% if p.kind == "analysis" %}*Analysis:* {% endif %}{{ p.text }}{{ r.cite(p.refs) }} {% endfor %}
+{% endif %}
+{% if not s.slots %}
+No question of this dimension was researched in this run.
+{% endif %}
+{% for b in s.slots %}
+### {{ b.row.slot_id }} {{ b.row.question }} ({{ b.row.status_word }})
+{% if b.facts %}{% for c in b.facts %}
+- {{ fact(c) }}
+{%- endfor %}{% else %}
+{{ b.row.gap_note or "Nothing confirmed." }}
+{%- endif %}
+{% if b.facts and b.row.gap_note %}
+*{{ b.row.gap_note }}*
+{% endif %}
+{% endfor %}
+{% endfor -%}
+{% if r.analysis %}## Opportunities, risks and gaps (analysis)
+{% for p in r.analysis %}
+- *{{ p.kind | capitalize }}:* {{ p.text }}{{ r.cite(p.refs) }}
+{%- endfor %}
+
+{% endif -%}
+## What we could not find
+{% for g in r.gaps %}
+- **{{ g.slot_id }} {{ g.question }}** ({{ g.status_word }}): {{ g.gap_note or "Nothing confirmed." }}
+{%- else %}
+- Every question was answered.
+{%- endfor %}
+
+## Handle with care
+{% for e in r.care %}
+- {{ e.item.card.statement }} [{{ e.citation }}]: {{ e.item.reason }}.
+{%- else %}
+- Nothing flagged.
+{%- endfor %}
+
+## Sources
+{% for s in r.sources %}
+{{ s.number }}. {{ s.title or "Untitled" }} ({{ s.publisher_class }}). {{ s.url }}. Published {{ s.published_date or "date not stated" }}; retrieved {{ s.retrieved_at }}.
+{%- endfor %}
+
+## Run details
+
+- Run: {{ r.run_id }}, {{ r.run_status }}, {{ date(r.run_date) }}
+{% for role, version in r.models.items() %}- {{ role }}: {{ version }}
+{% endfor -%}
+{% for line in counts(r.counts) %}- {{ line }}
+{% endfor %}

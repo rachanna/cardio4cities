@@ -546,6 +546,8 @@ class AnswererOutput(BaseModel):
 
 Schema validation here; then the post-check in LLD-2 §15.1 step 5. An `analysis` sentence must cite at least one FACT reference and is displayed with the "Analysis" label. Abstain sentences are replaced by the code template (LLD-2 §15.2), so the wording of a gap always comes from the stored gap record, not from the model.
 
+**As built (D3-2, BD-38):** `app/prompts/classifier/v2.md` and `app/prompts/answerer/v2.md`, each with `schema.py` and `context.py`. The question sits in its own escaped `<question>` tag in both, with a line saying it is the user's question and not an instruction; mentions reach the answerer inside `<source>` blocks with the §2.2 instruction. Golden cases: `tests/prompts/golden/classifier.yaml` (11) and `answerer.yaml` (9), run by `poe eval --only classifier|answerer`; the answerer is graded on what survives the real post-check.
+
 ---
 
 ## 8. Report writer

@@ -208,6 +208,8 @@ Only facts in `v_city_facts` (LLD-1 §4.6) are returned as FactCards. A request 
 
 `options.graph = "off"` requires the admin role (R-88); otherwise 403. Responses for `out_of_scope` contain one sentence of kind `abstain` with no slot.
 
+As built (D3-2, BD-38): each sentence carries `text`, `kind`, `refs`, `main_badge`, `status_word` and `slot_id`; `trace` is returned to admins only and always stored. Errors: 404 `no_finished_run` (no finished run to answer from), 404 `conversation_not_found` (a `conversation_id` of another city or none), 429 `rate_limited` (`limits.ask_per_min` per session), 503 `dependency_unavailable` (`component: llm`) when a model call fails or the question's budget runs out. `GET /api/v1/admin/answers/{answer_id}/trace` returns the stored trace.
+
 **`GET /api/v1/cities/{city_id}/report?format=md|html|pdf`**: generates on first request per run and format, then serves the stored copy. `Content-Disposition: attachment; filename="<city>-research-<date>.<ext>"`.
 
 ### 3.5 Operations and demonstration
@@ -301,7 +303,7 @@ fetch:      { concurrency: 6, min_interval_s: 1, max_bytes: 10485760, connect_ti
 chunk:      { prose_tokens: 400, overlap_tokens: 60, table_max_tokens: 1200 }   # BD-07
 verify:     { max_claims_per_slot: 5, label_margin_chars: 200 }   # BD-10
 geography:  { nearby_km: 75 }   # BD-10
-eval:       { checker_agreement_min: 0.9, recall_min: 0.85 }   # LLD-3 §9; recall: BD-26
+eval:       { checker_agreement_min: 0.9, recall_min: 0.85, classifier_min: 0.9, answerer_min: 0.9 }   # LLD-3 §9; recall: BD-26; BD-38
 stream:     { poll_interval_s: 0.5, heartbeat_s: 15 }   # BD-09
 runs:       { heartbeat_s: 10, stale_after_s: 45, shutdown_grace_s: 15 }   # BD-25
 select:     { max_new_urls_per_slot_round: 3, max_reused_per_slot_round: 2, other_place_min_population: 15000 }   # BD-14, BD-15
@@ -328,6 +330,8 @@ retrieval:                                   # CHG-01 (LLD-5 §14); added to the
   max_mentions: 4
   max_per_slot: 2
   mentions_only_if_facts_below: 3
+  wall_clock_s: 45            # one question's own budget (owner, BD-38)
+  max_cost_micro_usd: 50000
 ```
 
 `0` for `tokens`, `cost_micro_usd` and `dimension` means "not yet set". Start-up refuses `0` in `deployed`.
@@ -566,10 +570,10 @@ Not built (BD-36): `ollama`, `tavily`, `browser_print`, `otel` and `langsmith`; 
 | AT-04, AT-05, AT-06, AT-23, AT-33 | `tests/acceptance/test_crawl_gate.py` | Automated (local test server) |
 | AT-07, AT-08 | `tests/acceptance/test_checker.py` | Automated |
 | AT-09 | `tests/unit/test_quote_match.py` + acceptance | Automated |
-| AT-10, AT-11 | `tests/acceptance/test_graph_used.py` | Automated |
+| AT-10, AT-11 | `tests/acceptance/test_ask.py` (D3-2) | Automated (thin slice, real stores, scripted models) |
 | AT-12, AT-27 | `tests/acceptance/test_read_api.py` | Automated (thin slice, real stores; D3-1) |
 | AT-13, AT-14, AT-21, AT-31 | `tests/acceptance/test_scope_and_badges.py`; for findings `tests/unit/test_cards.py` and `tests/acceptance/test_read_api.py` (D3-1); for answers with D3-2 | Automated |
-| AT-15, AT-28 | `tests/acceptance/test_answers.py` | Automated |
+| AT-15, AT-28 | `tests/acceptance/test_ask.py`, `tests/unit/test_query_rules.py` (D3-2) | Automated |
 | AT-16, AT-32 | `tests/acceptance/test_breadth.py` | Automated (sparse fictional web; BD-14) |
 | AT-17, AT-29 | `tests/smoke/test_deployed.py` | Automated against the deployed URL |
 | AT-18 | `tests/acceptance/test_report.py` | Automated |
@@ -585,7 +589,7 @@ Not built (BD-36): `ollama`, `tavily`, `browser_print`, `otel` and `langsmith`; 
 | AT-36 | `tests/acceptance/test_config_validation.py` | Automated |
 | AT-38 | `tests/acceptance/test_breadth.py` (sparse run with an unreachable source; thin-slice counts) | Automated |
 | Resume after a crash (LLD-2 §17) | `tests/acceptance/checkpointed/test_resume.py` | Automated (real checkpointer; BD-14) |
-| AT-39 to AT-46 | `tests/acceptance/test_retrieval.py` | Automated (CHG-01) |
+| AT-39 to AT-46 | `tests/acceptance/test_ask.py`, `tests/unit/test_query_rules.py` (D3-2; AT-41 at rule level: the thin slice has no contested pair) | Automated (CHG-01) |
 | AT-47 | `tests/acceptance/test_retrieval_eval.py` | Automated (CHG-01) |
 | R-14 exploration, DS-1 to DS-7 | `docs/REHEARSAL.md` checklist | Demo rehearsal |
 

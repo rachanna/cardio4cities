@@ -45,7 +45,7 @@ cardio4cities/
 │   ├── sources.yaml              # LLD-1 §3.4 (Wave 0 registry)
 │   ├── publishers.yaml           # LLD-2 §14 (domain patterns, deny list)
 │   ├── region_aliases.yaml       # LLD-2 §13 (generic admin-1 name aliases)
-│   ├── keyword_stopwords.yaml    # LLD-5 §4.1 keyword route (D3-2, BD-36)
+│   ├── keyword_stopwords.yaml    # LLD-5 §4.1 keyword route (BD-36, BD-38)
 │   └── geonames/README.md        # download instructions; dumps are git-ignored
 │
 ├── app/
@@ -69,6 +69,9 @@ cardio4cities/
 │   │   ├── dates.py              # calendar arithmetic; `today` is always passed in
 │   │   ├── geography.py          # effective geography level of a claim
 │   │   ├── place_names.py        # name keys shared by claims and the gazetteer (BD-17)
+│   │   ├── text.py               # quote normalisation, LLD-2 §4.1 (BD-38)
+│   │   ├── entity_names.py       # entity name keys and acronyms (BD-38)
+│   │   ├── cards.py              # FactCard, SlotRow (BD-37)
 │   │   ├── charset.py            # text decoding rules
 │   │   ├── prices.py             # model and embedding prices (BD-30)
 │   │   └── ids.py                # deterministic uuid5 IDs (Qdrant points, graph nodes)
@@ -94,9 +97,9 @@ cardio4cities/
 │   │                             #       labels (reference-period rule, derived flags), label_evidence,
 │   │                             #       geography_fit, programme_status, region_match,
 │   │                             #       other_places (source selection, BD-15)
-│   ├── query/                    # (D3-2) LLD-5 (CHG-01): understand.py, routes/ (structured.py, keyword.py,
-│   │                             #   semantic.py, graph.py), revalidate.py, fuse.py, anchors.py,
-│   │                             #   bundle.py, answer.py, postcheck.py, trace.py
+│   ├── query/                    # LLD-5 (CHG-01, BD-38): understand.py, routes/ (structured.py, keyword.py,
+│   │                             #   semantic.py, graph.py), revalidate.py, fuse.py (fusion, anchors),
+│   │                             #   bundle.py, postcheck.py, pipeline.py, llm.py, types.py
 │   ├── report/                   # (D3-3) assemble, render, templates/report.{md,html}.j2 (LLD-2 §16)
 │   ├── prompts/
 │   │   ├── loader.py             # loads text, computes prompt_version (LLD-3 §2.5)
@@ -137,6 +140,7 @@ cardio4cities/
 │   ├── purge_city.py             # (D3-5) LLD-1 §8, LangGraph checkpoints included (BD-36)
 │   ├── purge_graph.py            # local only: empty Neo4j, its marker and the graph links (BD-14, BD-36)
 │   ├── eval_prompts.py           # LLD-3 §9
+│   ├── eval_answers.py           # classifier and answerer golden sets (BD-38)
 │   ├── predeploy.sh, start.sh    # Render pre-deploy (migrations, reference data) and start
 │   └── keepalive.sh              # calls /api/v1/health
 │

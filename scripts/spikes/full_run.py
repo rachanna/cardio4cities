@@ -9,6 +9,8 @@ labelled by the `--label` given (for example data-rich or sparse), goes to
 `scripts/spikes/results/`.
 
     uv run python -m scripts.spikes.full_run --city "<name>" --label data-rich [--pick 0]
+    uv run python -m scripts.spikes.full_run --gazetteer-id <id> --label sparse \
+        --profile local-openai --search searxng      # OpenAI models, free search (BD-29)
     uv run python -m scripts.spikes.full_run --report <run_id> --label data-rich  # no spend
 """
 
@@ -37,24 +39,34 @@ RESULTS = Path(__file__).parent / "results"
 TARGET_S = 420  # the 7-minute target (budget.wall_clock_s, BD-15)
 
 
-def configured(max_usd: float) -> Settings:
-    """`local-quality` models and stores, Brave search, the model spend cap. Written as a
-    config file (git-ignored) so the Brave key is resolved like any configured secret."""
-    os.environ["APP_ENV"] = "local-quality"
-    raw = yaml.safe_load((CONFIG_DIR / "local-quality.yaml").read_text(encoding="utf-8"))
+def configured(max_usd: float, profile: str = "local-quality", search: str = "brave") -> Settings:
+    """A profile's models and stores, Brave search (or the profile's own, SearXNG), and
+    the model spend cap. Written as a config file (git-ignored) so the Brave key is
+    resolved like any configured secret."""
+    os.environ["APP_ENV"] = profile
+    raw = yaml.safe_load((CONFIG_DIR / f"{profile}.yaml").read_text(encoding="utf-8"))
     deployed = yaml.safe_load((CONFIG_DIR / "deployed.yaml").read_text(encoding="utf-8"))
-    raw["search"] = {"provider": "brave", "mode": "links_only", "api_key_env": "BRAVE_API_KEY",
-                     "rate_per_s": deployed["search"]["rate_per_s"]}  # fmt: skip
+    if search == "brave":
+        raw["search"] = {"provider": "brave", "mode": "links_only", "api_key_env": "BRAVE_API_KEY",
+                         "rate_per_s": deployed["search"]["rate_per_s"]}  # fmt: skip
     raw["budget"]["cost_micro_usd"] = int(max_usd * 1e6)
     folder = RAW_DIR / "s6-config"
     folder.mkdir(parents=True, exist_ok=True)
-    (folder / "local-quality.yaml").write_text(yaml.safe_dump(raw), encoding="utf-8")
+    (folder / f"{profile}.yaml").write_text(yaml.safe_dump(raw), encoding="utf-8")
     return load_settings(config_dir=folder)
 
 
-async def run(city: str, pick: int, label: str, max_usd: float) -> int:
+async def run(
+    city: str | None,
+    pick: int,
+    label: str,
+    max_usd: float,
+    profile: str = "local-quality",
+    search: str = "brave",
+    gazetteer_id: str | None = None,
+) -> int:
     load_dotenv(ROOT / ".env", override=False)
-    settings = configured(max_usd)
+    settings = configured(max_usd, profile, search)
     container = build_container(settings)
     try:
         relational = container.relational
@@ -62,18 +74,19 @@ async def run(city: str, pick: int, label: str, max_usd: float) -> int:
             print("no relational store configured")
             return 1
         await check_graph_marker(container.graph, settings.config.embeddings.key)
-        candidates = await relational.reference.search_places(city)
-        for n, c in enumerate(candidates[:5]):
-            print(f"  [{n}] {c['name']}, {c['admin1_name']}, {c['country_name']}"
-                  f" (pop {c['population']})")  # fmt: skip
-        if not candidates:
-            print("no place matched")
-            return 1
-        chosen = candidates[pick]
-        print(f"researching [{pick}] {chosen['name']}, {chosen['country_name']}: all slots")
+        if gazetteer_id is None:
+            candidates = await relational.reference.search_places(city or "")
+            for n, c in enumerate(candidates[:5]):
+                print(f"  [{n}] {c['name']}, {c['admin1_name']}, {c['country_name']}"
+                      f" (pop {c['population']})")  # fmt: skip
+            if not candidates:
+                print("no place matched")
+                return 1
+            gazetteer_id = str(candidates[pick]["gazetteer_id"])
+        print(f"researching gazetteer place {gazetteer_id}: all slots, profile {profile}")
         manager = RunManager(container, settings)
         started_at = time.monotonic()
-        started = await manager.start(str(chosen["gazetteer_id"]))
+        started = await manager.start(gazetteer_id)
         await manager.wait(started.run_id)
         elapsed = time.monotonic() - started_at
         return await report(container, started.run_id, label, elapsed, max_usd)
@@ -179,12 +192,20 @@ if __name__ == "__main__":
     parser.add_argument("--label", required=True, help="data-rich or sparse")
     parser.add_argument("--max-usd", type=float, default=5.0)
     parser.add_argument("--report", metavar="RUN_ID", help="report an existing run only")
+    parser.add_argument("--gazetteer-id", help="start by place ID instead of a city name")
+    parser.add_argument("--profile", default="local-quality",
+                        choices=["local-quality", "local-openai"])  # fmt: skip
+    parser.add_argument("--search", default="brave", choices=["brave", "searxng"])
     args = parser.parse_args()
     sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
     # A selector loop, as on Linux, so the checkpointer runs as it will when deployed
     loop = asyncio.SelectorEventLoop if sys.platform == "win32" else None
     if args.report:
         sys.exit(asyncio.run(report_only(args.report, args.label, args.max_usd), loop_factory=loop))
-    if not args.city:
-        parser.error("give --city; it is never saved")
-    sys.exit(asyncio.run(run(args.city, args.pick, args.label, args.max_usd), loop_factory=loop))
+    if not args.city and not args.gazetteer_id:
+        parser.error("give --city or --gazetteer-id; neither is saved")
+    sys.exit(asyncio.run(
+        run(args.city, args.pick, args.label, args.max_usd, args.profile, args.search,
+            args.gazetteer_id),
+        loop_factory=loop,
+    ))  # fmt: skip

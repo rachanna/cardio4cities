@@ -65,10 +65,16 @@ def is_tabular(rows: list[list[str | None]]) -> bool:
 
 def _pipe_table(rows: list[list[str | None]]) -> str:
     cleaned = [[(cell or "").replace("\n", " ").strip() for cell in row] for row in rows if row]
+    cleaned = [r for r in cleaned if any(r)]  # rows with no text at all
     if not cleaned:
         return ""
     width = max(len(r) for r in cleaned)
     cleaned = [r + [""] * (width - len(r)) for r in cleaned]
+    # Columns empty in every row: in one statistical PDF 79% of the separators marked
+    # empty cells, and quotes copied across them failed (BD-29; code review RV-054)
+    keep = [c for c in range(width) if any(r[c] for r in cleaned)]
+    cleaned = [[r[c] for c in keep] for r in cleaned]
+    width = len(keep)
     lines = ["| " + " | ".join(cleaned[0]) + " |", "|" + "---|" * width]
     lines += ["| " + " | ".join(r) + " |" for r in cleaned[1:]]
     return "\n".join(lines)

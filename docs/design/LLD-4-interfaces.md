@@ -289,7 +289,7 @@ runs:       { heartbeat_s: 10, stale_after_s: 45, shutdown_grace_s: 15 }   # BD-
 select:     { max_new_urls_per_slot_round: 3, max_reused_per_slot_round: 2, other_place_min_population: 15000 }   # BD-14, BD-15
 replan:     { max_rounds: 2, max_rounds_wider_geo: 1, priority: [S04, S03, S05, S06] }   # priority: BD-15
 plan:       { queries_per_slot: 2 }   # BD-15
-extract:    { window_tokens: 12000, overlap_tokens: 500 }
+extract:    { window_tokens: 12000, overlap_tokens: 500, max_windows_per_source: 4, stop_windows_below_s: 60 }   # BD-29
 quote:      { min_words: 6, max_words: 60 }   # BD-06
 consistency:{ agree_pp: 0.5, agree_rel: 0.02 }
 entity:     { candidate_threshold: 0.85 }   # BD-24: logged for review, never merged

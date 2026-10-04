@@ -224,6 +224,8 @@ class PlanSection(_Section):
 class ExtractSection(_Section):
     window_tokens: int
     overlap_tokens: int
+    max_windows_per_source: int  # owner, BD-29: windows per (slot, source), most relevant
+    stop_windows_below_s: float  # owner, BD-29: no new window with less time left
 
 
 class QuoteSection(_Section):

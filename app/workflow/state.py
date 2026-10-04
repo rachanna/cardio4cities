@@ -65,9 +65,9 @@ class Candidate(BaseModel):
     publisher_class: str
     rank: int
     query_id: str
-    # Search text, for ranking only (the other-place rule, BD-15); never evidence (R-58)
-    title: str = ""
-    snippet: str = ""
+    # The hit's title, snippet or URL names another place (BD-15): decided in `search`, so
+    # search text never enters the run state or its checkpoints (BD-36; RV-090)
+    names_other_place: bool = False
 
 
 class Draft(BaseModel):

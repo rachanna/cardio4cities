@@ -141,6 +141,7 @@ cardio4cities/
 │   ├── purge_graph.py            # local only: empty Neo4j, its marker and the graph links (BD-14, BD-36)
 │   ├── eval_prompts.py           # LLD-3 §9
 │   ├── eval_answers.py           # classifier and answerer golden sets (BD-38)
+│   ├── eval_rag.py               # retrieval evaluation, `poe eval-rag` (LLD-5 §12, BD-39)
 │   ├── predeploy.sh, start.sh    # Render pre-deploy (migrations, reference data) and start
 │   └── keepalive.sh              # calls /api/v1/health
 │
@@ -226,7 +227,7 @@ Run as `uv run poe <task>`; tasks are defined in `pyproject.toml` under `[tool.p
 | `poe types` | Regenerate `web/lib/api-types.ts` from the OpenAPI document (added by D3-4) |
 | `poe spike NAME` | Run one script in `scripts/spikes/` |
 | `poe eval` | Prompt golden set against real models (costs money) |
-| `poe eval-rag` | Retrieval evaluation with real models (costs money; ask the owner first; CHG-01; added by D3-2) |
+| `poe eval-rag` | Retrieval evaluation with real models (costs money; ask the owner first; CHG-01, BD-39); `--real FILE` for a researched city |
 | `poe smoke URL` | Smoke tests against a deployed URL |
 | `poe purge CITY` | Remove a city from all stores, its LangGraph checkpoints (`lg`) included (added by D3-5, BD-36) |
 | `poe purge-graph` | Delete the local Neo4j graph, its embedding marker and the Postgres graph links; refuses a graph not on this machine and `APP_ENV=deployed` (BD-14, BD-36) |

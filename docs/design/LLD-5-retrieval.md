@@ -270,6 +270,16 @@ The same questions with real models, plus about 15 questions on one real researc
 | Bundle recall | Gold claims present in the bundle | ≥ 0.95 fixtures; ≥ 0.90 real |
 | First-pass survival | Sentences passing the post-check without removal or repair | Monitored; below 0.8 means revisit the answer prompt |
 
+### 12.4 As built (D3-2b, BD-39)
+
+| Part | As built |
+|---|---|
+| Fixture | `tests/fixtures/retrieval/halden_bay/fixture.yaml` (26 claims in all six dimensions, 8 entities, 16 slot results) and `questions.yaml` (25 questions, 26 gold claims). Besides §12.1's cases: a claim of an older run, an unchecked claim, a second national figure, and an organisation known only by its initials (NHF) |
+| Loader | `scripts/eval_rag.py` writes the fixture as a finished run would leave it: Postgres rows (city, both runs, sources, claims, verdicts, relations, entities and aliases, the contested pair, slot results, `search_tsv`), claim-index points, and graph edges with their `graph_link` |
+| CI (AT-47) | `tests/acceptance/test_retrieval_eval.py`: classification fixed per question, deterministic embeddings (a question marked `means` embeds as its claim's text), and two scripted answerers (owner): faithful, and faulty (one side of a disagreement, a wider-area figure stated as the city's, an invented number and an invented person). The gates hold for both. Two control tests show the gates can fail: without the post-check the faulty answers break contested completeness and citation validity; without re-validation, rejected claims reach bundles |
+| Measured | Scope violations are re-checked from Postgres for every bundle claim. Abstention correctness: an `abstain` question has no fact sentence, any other has one. Contested completeness: every cited contested claim has its partner cited. Citation validity: a fact sentence cites only bundle claims and its numbers are in them |
+| `poe eval-rag` | Real models: the fixture loaded into the test database (refused unless its name ends in `_test`) and the profile's graph, with the profile's embeddings; report in `tests/fixtures/retrieval/results/<profile>-latest.md`. `--real FILE` (owner): a git-ignored YAML of `city_id` and questions with gold claim IDs, run against the profile's stores; its report goes to `spike_results/`. Runs only with the owner's approval of the spend (D4-1) |
+
 ---
 
 ## 13. Acceptance tests

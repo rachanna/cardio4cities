@@ -333,7 +333,7 @@ Derived from the brief, the panel review, and evidence gathered during analysis.
 | R-39 | Extract figures from **PDF tables** as well as HTML | SHOULD | T-14, many primary statistics are in PDFs | T |
 | R-40 | Crawl decisions are **logged with reasons**, and blocks **reroute** or become recorded gaps; applies to third-party fetchers | MUST | R-03 | T AT-04, AT-06 |
 | R-41 | **Source tiering** (official or multilateral, academic, NGO, news, other) recorded on every source and used in confidence and conflict ordering | MUST | DQ-03, T-08 | T |
-| R-42 | **Language handling**: queries and extraction work in the city's language; quotes kept in the original with a translation | SHOULD | R-01, A-02 | T |
+| R-42 | **Language handling**: queries and extraction work in the city's language; quotes kept in the original with a translation. *PoC scope (owner, 2026-10-04, BD-31): queries are in English only; a non-English page that English search finds is still read and quoted in the original with a translation* | SHOULD | R-01, A-02 | T |
 | R-58 | **Search is for URL discovery only**: search snippets are never used as evidence; only permission-gated fetched content can support a fact. Search adapters run in **links-only mode**: provider features that fetch or return page content (raw content, extract endpoints) are disabled `[v1.1]` | MUST | R-03, R-07 | T AT-06, AT-33 |
 | R-59 | **Prefer official APIs** where a site disallows crawling but offers an API | SHOULD | R-03 | I |
 | R-68 | **Reachability states are distinct**: blocked by policy, unreachable (network, geo-block, 5xx), and not found are recorded and shown differently | SHOULD | R-16, T-15 | T |

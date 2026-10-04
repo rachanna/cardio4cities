@@ -162,6 +162,8 @@ These conditional edges make the three required routing points visible in the re
 
 If the planner fails validation twice, the slot gets two template queries: `"{slot.question_short} {city.name} {country_name}"` in English and the same template in the primary local language with the slot's local-language label taken from `reference/slots.yaml` (`labels_local` per language, generic) when present. This keeps a run moving without inventing anything.
 
+**As built (BD-31; owner: English only for the PoC).** Validation is per slot: after the one repair, the slots of the last output that are usable on their own keep their plans, and only the others get the template (one slot's problem used to send all 16 to the template). The template is two English queries: `"{short_label} {city} {country}"` and `"{city} {short_label} survey report"`. Every planned query is in English.
+
 ---
 
 ## 4. Text algorithms

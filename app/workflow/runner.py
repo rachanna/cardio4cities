@@ -33,6 +33,7 @@ from app.domain.params import (
     ReplanParams,
     VerifyParams,
 )
+from app.domain.prices import embedding_cost_micro_usd
 from app.domain.vocab import EventType
 from app.ports.checkpoint import CheckpointPort, CheckpointUnavailableError
 from app.ports.embeddings import EmbeddingsPort
@@ -373,9 +374,6 @@ class RunManager:
             _need(p.robots, "robots"),
         )
         parser = _need(p.parser, "parser")
-        embeddings = LimitedEmbeddings(
-            _need(p.embeddings, "embeddings"), asyncio.Semaphore(cfg.embeddings.concurrency)
-        )
         model_gate = asyncio.Semaphore(cfg.llm.concurrency)  # shared by every provider
         vector, snapshots = _need(p.vector, "vector"), _need(p.snapshots, "snapshots")
         graph = _need(p.graph, "graph")
@@ -392,6 +390,16 @@ class RunManager:
                 cost_micro_usd=b.cost_micro_usd or 0,
                 wind_down_at=b.wind_down_at,
             )
+        )
+
+        async def record_embedding(tokens: int) -> None:  # BD-30
+            model = cfg.embeddings.model
+            await ledger.record_embedding(model, tokens, embedding_cost_micro_usd(model, tokens))
+
+        embeddings = LimitedEmbeddings(
+            _need(p.embeddings, "embeddings"),
+            asyncio.Semaphore(cfg.embeddings.concurrency),
+            record_embedding,
         )
         f = cfg.fetch
         collector = Collector(

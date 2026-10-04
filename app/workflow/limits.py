@@ -11,12 +11,13 @@ to more than the run's wall clock (the run summary shows both)."""
 import asyncio
 import time
 from collections import defaultdict
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 
 from pydantic import BaseModel
 
 from app.ports.embeddings import EmbeddingsPort
 from app.ports.llm import LLMParams, LLMPort, LLMResult
+from app.workflow.rules.chunking import estimate_tokens
 
 # Graph node -> reported stage (AT-38). Nodes not listed are bookkeeping.
 STAGE_OF = {
@@ -47,8 +48,16 @@ class LimitedLLM:
 
 
 class LimitedEmbeddings:
-    def __init__(self, inner: EmbeddingsPort, gate: asyncio.Semaphore) -> None:
-        self._inner, self._gate = inner, gate
+    """The embeddings port under the global limit; each call's estimated tokens and cost
+    are recorded on the ledger when one is given (BD-30)."""
+
+    def __init__(
+        self,
+        inner: EmbeddingsPort,
+        gate: asyncio.Semaphore,
+        record: Callable[[int], Awaitable[None]] | None = None,
+    ) -> None:
+        self._inner, self._gate, self._record = inner, gate, record
 
     @property
     def dimension(self) -> int:
@@ -60,7 +69,10 @@ class LimitedEmbeddings:
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
         async with self._gate:
-            return await self._inner.embed(texts)
+            vectors = await self._inner.embed(texts)
+        if self._record is not None:
+            await self._record(sum(estimate_tokens(t) for t in texts))
+        return vectors
 
 
 class StageClock:

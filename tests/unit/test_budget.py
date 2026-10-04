@@ -50,6 +50,7 @@ async def test_model_calls_stop_once_cost_is_spent_and_are_recorded_by_model() -
         await led.reserve("model")
     assert led.by_model["model-a"] == {
         "calls": 2, "tokens_in": 200, "tokens_out": 40, "cost_micro_usd": 1200,
+        "cached_tokens": 0, "cache_write_tokens": 0, "reasoning_tokens": 0,  # BD-30
     }  # fmt: skip
     assert led.phase() == "exhausted"
 

@@ -49,7 +49,7 @@ async def _index(
     chunks = chunk_text(text, tables, d.chunk)
     if not chunks:
         return
-    await d.ledger.reserve("model")
+    await d.ledger.reserve("embedding")  # not a model call (BD-30)
     vectors = await d.embeddings.embed([c.text for c in chunks])
     points = [
         VectorPoint(

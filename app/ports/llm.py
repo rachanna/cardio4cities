@@ -25,6 +25,22 @@ class LLMParams(BaseModel):
     timeout_s: float | None = None  # the run's time left (BD-15); None: the SDK default
 
 
+class LLMUsage(BaseModel):
+    """What one call used and cost (BD-30). `tokens_in` counts every input token, cached
+    ones included; `cached_tokens` were read from the provider's prompt cache and
+    `cache_write_tokens` written to it; `reasoning_tokens` are part of `tokens_out`."""
+
+    model_config = ConfigDict(frozen=True)
+
+    model_id: str
+    tokens_in: int
+    tokens_out: int
+    cost_micro_usd: int
+    cached_tokens: int = 0
+    cache_write_tokens: int = 0
+    reasoning_tokens: int = 0
+
+
 class LLMResult(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -35,6 +51,16 @@ class LLMResult(BaseModel):
     tokens_in: int
     tokens_out: int
     cost_micro_usd: int
+    cached_tokens: int = 0  # BD-30
+    cache_write_tokens: int = 0
+    reasoning_tokens: int = 0
+
+    def usage(self) -> LLMUsage:
+        return LLMUsage(
+            model_id=self.model_id, tokens_in=self.tokens_in, tokens_out=self.tokens_out,
+            cost_micro_usd=self.cost_micro_usd, cached_tokens=self.cached_tokens,
+            cache_write_tokens=self.cache_write_tokens, reasoning_tokens=self.reasoning_tokens,
+        )  # fmt: skip
 
 
 class LLMPort(Protocol):

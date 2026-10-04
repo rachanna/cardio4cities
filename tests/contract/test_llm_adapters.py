@@ -190,3 +190,62 @@ async def test_any_other_http_error_is_a_port_error_from_both_adapters(
     stub.body = {"error": {"type": "invalid_request_error", "code": None, "message": "bad"}}
     with pytest.raises(ProviderUnavailableError, match=f"HTTP {status}"):
         await gpt(stub).complete("checker", "s", "u", Verdict, LUNA)
+
+
+# --- usage and prompt caching (BD-30) -----------------------------------------------------
+
+
+async def test_claude_caches_the_system_prompt_and_prices_cache_tokens(stub: Stub) -> None:
+    message = claude_message(GOOD)
+    message["usage"] = {
+        "input_tokens": 200,
+        "output_tokens": 80,
+        "cache_read_input_tokens": 4000,
+        "cache_creation_input_tokens": 0,
+    }
+    stub.body = message
+    llm = AnthropicLLM("test-key", base_url=f"http://127.0.0.1:{stub.port}", max_retries=0,
+                       prompt_cache=True)  # fmt: skip
+    result = await llm.complete("extractor", "system text", "u", Verdict, HAIKU)
+    (body,) = stub.requests
+    assert body["system"] == [
+        {"type": "text", "text": "system text", "cache_control": {"type": "ephemeral"}}
+    ]
+    assert (result.tokens_in, result.cached_tokens) == (4200, 4000)
+    # Haiku $1 per million in, $5 out: 200 plain + 4000 read at a tenth, 80 out
+    assert result.cost_micro_usd == round(200 * 1.0 + 4000 * 0.1 + 80 * 5.0)
+
+
+async def test_openai_sends_a_cache_key_and_reports_cached_and_reasoning_tokens(
+    stub: Stub,
+) -> None:
+    response = openai_response(GOOD)
+    response["usage"]["input_tokens_details"] = {"cached_tokens": 700}
+    stub.body = response
+    llm = OpenAILLM("test-key", base_url=f"http://127.0.0.1:{stub.port}/v1", max_retries=0,
+                    prompt_cache=True)  # fmt: skip
+    result = await llm.complete("extractor", "s", "u", Verdict, LUNA)
+    (body,) = stub.requests
+    assert body["prompt_cache_key"] == "c4c-extractor"
+    assert (result.cached_tokens, result.reasoning_tokens) == (700, 250)
+    # cached input is billed at the full rate until its published rate is confirmed (owner)
+    assert result.cost_micro_usd == round(900 * 0.10 + 300 * 0.50)
+
+
+async def test_no_cache_fields_are_sent_when_caching_is_off(stub: Stub) -> None:
+    stub.body = claude_message(GOOD)
+    await claude(stub).complete("extractor", "system text", "u", Verdict, HAIKU)
+    assert stub.requests[0]["system"] == "system text"
+    stub.body = openai_response(GOOD)
+    await gpt(stub).complete("extractor", "s", "u", Verdict, LUNA)
+    assert "prompt_cache_key" not in stub.requests[1]
+
+
+async def test_a_call_that_returns_no_output_still_reports_its_usage(stub: Stub) -> None:
+    """RV-049: failed calls added nothing to the cap or the summary."""
+    message = claude_message(GOOD, stop="refusal")
+    stub.body = message
+    with pytest.raises(ProviderUnavailableError) as declined:
+        await claude(stub).complete("checker", "s", "u", Verdict, HAIKU)
+    assert declined.value.usage is not None
+    assert declined.value.usage.tokens_in == 1200

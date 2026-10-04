@@ -8,19 +8,26 @@ from typing import Any
 import anthropic
 from pydantic import BaseModel, ValidationError
 
-from app.adapters.llm.prices import cost_micro_usd
+from app.domain.prices import cost_micro_usd
 from app.ports.errors import LLMOutputValidationError, ProviderUnavailableError
-from app.ports.llm import LLMParams, LLMResult
+from app.ports.llm import LLMParams, LLMResult, LLMUsage
 from app.settings import Settings
 
 
 class AnthropicLLM:
     family = "anthropic"
 
-    def __init__(self, api_key: str, base_url: str | None = None, max_retries: int = 2) -> None:
+    def __init__(
+        self,
+        api_key: str,
+        base_url: str | None = None,
+        max_retries: int = 2,
+        prompt_cache: bool = False,
+    ) -> None:
         self._client = anthropic.AsyncAnthropic(
             api_key=api_key, base_url=base_url, max_retries=max_retries
         )
+        self._cache = prompt_cache  # llm.prompt_cache (BD-30)
 
     async def complete(
         self, role: str, system: str, user: str, schema: type[BaseModel], params: LLMParams
@@ -28,7 +35,13 @@ class AnthropicLLM:
         kwargs: dict[str, Any] = {
             "model": params.model,
             "max_tokens": params.max_output_tokens,
-            "system": system,
+            # The system prompt is the same on every call of a role: cached (BD-30). A
+            # prefix under the model's minimum is simply not cached
+            "system": (
+                [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}]
+                if self._cache
+                else system
+            ),
             "messages": [{"role": "user", "content": user}],
             "output_format": schema,
         }
@@ -58,31 +71,45 @@ class AnthropicLLM:
         except anthropic.APIError as exc:
             raise ProviderUnavailableError(f"anthropic: {type(exc).__name__}") from exc
         raw = "".join(b.text for b in response.content if b.type == "text")
+        used = _usage(response)
         if response.stop_reason == "refusal":
-            raise ProviderUnavailableError(f"anthropic: {role} request declined")
+            error = ProviderUnavailableError(f"anthropic: {role} request declined")
+            error.usage = used  # a declined call is still billed (BD-30)
+            raise error
         parsed = response.parsed_output
         if parsed is None:
             cut = response.stop_reason == "max_tokens"
-            raise LLMOutputValidationError(f"{role}: no structured output", raw, truncated=cut)
-        usage = response.usage
-        return LLMResult(
-            parsed=parsed,
-            raw_text=raw,
-            model_id=response.model,
-            family=self.family,
-            tokens_in=usage.input_tokens,
-            tokens_out=usage.output_tokens,
-            cost_micro_usd=cost_micro_usd(response.model, usage.input_tokens, usage.output_tokens),
-        )
+            failed = LLMOutputValidationError(f"{role}: no structured output", raw, truncated=cut)
+            failed.usage = used
+            raise failed
+        return LLMResult(parsed=parsed, raw_text=raw, family=self.family, **used.model_dump())
 
 
 def make(settings: Settings) -> AnthropicLLM:
     provider = settings.config.llm.providers["anthropic"]
     if not provider.api_key_env:
         raise ValueError("llm.providers.anthropic.api_key_env is required")
-    return AnthropicLLM(settings.secret(provider.api_key_env))
+    return AnthropicLLM(
+        settings.secret(provider.api_key_env), prompt_cache=settings.config.llm.prompt_cache
+    )
 
 
 def _cut_off(detail: str) -> bool:
     """Pydantic's message for JSON that ends early: the output hit the token ceiling."""
     return "EOF while parsing" in detail or "Unterminated string" in detail
+
+
+def _usage(response: Any) -> LLMUsage:
+    """Claude reports uncached input, cache reads and cache writes separately."""
+    u = response.usage
+    read = getattr(u, "cache_read_input_tokens", None) or 0
+    write = getattr(u, "cache_creation_input_tokens", None) or 0
+    tokens_in = u.input_tokens + read + write
+    return LLMUsage(
+        model_id=response.model,
+        tokens_in=tokens_in,
+        tokens_out=u.output_tokens,
+        cost_micro_usd=cost_micro_usd(response.model, tokens_in, u.output_tokens, read, write),
+        cached_tokens=read,
+        cache_write_tokens=write,
+    )

@@ -242,8 +242,7 @@ class ConsistencySection(_Section):
 
 
 class EntitySection(_Section):
-    merge_threshold: float
-    candidate_threshold: float
+    candidate_threshold: float  # BD-24: embedding similarity never merges
 
 
 class BadgeSection(_Section):

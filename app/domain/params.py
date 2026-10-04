@@ -46,8 +46,9 @@ class VerifyParams:
 
 @dataclass(frozen=True)
 class EntityParams:
-    merge_threshold: float  # entity.merge_threshold: cosine at or above merges (LLD-2 §6 step 4)
-    candidate_threshold: float  # entity.candidate_threshold: logged for review below the merge
+    candidate_threshold: (
+        float  # entity.candidate_threshold: logged for review, never merged (BD-24)
+    )
 
 
 @dataclass(frozen=True)

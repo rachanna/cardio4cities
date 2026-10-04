@@ -358,6 +358,59 @@ class PostgresResearchRepo:
             )
             return {f.claim.claim_id: f for f in map(_stored_fact, rows.mappings())}
 
+    # --- question answering routes (D3-2, LLD-5 §4) --------------------------------------
+
+    async def keyword_claims(
+        self, city_id: str, run_id: str, words: list[str], limit: int
+    ) -> list[str]:
+        """R2: claims of the run matching any of `words` (`simple` lexemes ORed, LLD-5
+        §4.1, BD-36), most matches first by `ts_rank_cd`. Each word is quoted by Postgres."""
+        if not words:
+            return []
+        sql = (
+            "WITH q AS (SELECT to_tsquery('simple', array_to_string(ARRAY("
+            "  SELECT quote_literal(w) FROM unnest(CAST(:w AS text[])) w), ' | ')) AS q)"
+            " SELECT c.claim_id FROM claim c, q WHERE c.city_id = :c AND c.run_id = :r"
+            " AND c.search_tsv @@ q.q ORDER BY ts_rank_cd(c.search_tsv, q.q) DESC, c.claim_id"
+            " LIMIT :l"
+        )
+        params = {"w": words, "c": city_id, "r": run_id, "l": limit}
+        async with self._engine.connect() as conn:
+            rows = await conn.execute(text(sql), params)
+            return [str(x) for x in rows.scalars()]
+
+    async def entity_claims(self, run_id: str, entity_ids: list[str]) -> list[str]:
+        """Relation claims of the run naming any of the entities (LLD-5 §4.1)."""
+        if not entity_ids:
+            return []
+        async with self._engine.connect() as conn:
+            rows = await conn.execute(
+                text(
+                    "SELECT c.claim_id FROM claim c JOIN relation r USING (claim_id)"
+                    " WHERE c.run_id = :r AND (r.subject_entity_id = ANY(:e)"
+                    " OR r.object_entity_id = ANY(:e)) ORDER BY c.claim_id"
+                ),
+                {"r": run_id, "e": entity_ids},
+            )
+            return [str(x) for x in rows.scalars()]
+
+    async def claims_for_edges(self, edge_uuids: list[str]) -> dict[str, list[str]]:
+        """R4: each graph edge's claims through `graph_link` (LLD-5 §4.3)."""
+        if not edge_uuids:
+            return {}
+        out: dict[str, list[str]] = {}
+        async with self._engine.connect() as conn:
+            rows = await conn.execute(
+                text(
+                    "SELECT CAST(edge_uuid AS text) AS e, claim_id FROM graph_link"
+                    " WHERE edge_uuid = ANY(CAST(:u AS uuid[])) ORDER BY claim_id"
+                ),
+                {"u": edge_uuids},
+            )
+            for r in rows:
+                out.setdefault(str(r.e), []).append(str(r.claim_id))
+        return out
+
     async def contested_pairs(self, run_id: str) -> list[tuple[str, str]]:
         """The run's disagreements, headline claim first (both sides are always shown)."""
         async with self._engine.connect() as conn:

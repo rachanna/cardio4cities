@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from app.domain.cards import CareItem, FactCard, SlotRow
+from app.domain.cards import BadgeCard, CareItem, FactCard, SlotRow
 
 
 class SessionRequest(BaseModel):
@@ -195,3 +195,42 @@ class EvidenceResponse(BaseModel):
     verdict: VerdictOut | None
     snapshot: SnapshotOut | None
     consistency: ConsistencyOut | None
+
+
+# --- Questions (LLD-4 §3.4, LLD-5; D3-2) ------------------------------------------------
+
+
+class AskOptions(BaseModel):
+    graph: Literal["on", "off"] = "on"  # "off" needs the admin role (R-88)
+
+
+class AskRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=500)
+    options: AskOptions = Field(default_factory=AskOptions)
+    conversation_id: str | None = Field(default=None, max_length=64)
+
+
+class AnswerSentenceOut(BaseModel):
+    text: str
+    kind: Literal["fact", "mention", "analysis", "abstain"]
+    refs: list[str]
+    main_badge: BadgeCard | None
+    status_word: str | None
+    slot_id: str | None
+
+
+class AskResponse(BaseModel):
+    answer_id: str
+    question_type: str
+    sentences: list[AnswerSentenceOut]
+    graph_used: bool
+    run_id: str
+    conversation_id: str
+    turn: int
+    trace: dict[str, Any] | None = None  # admins only (LLD-5 §10)
+
+
+class AnswerTraceResponse(BaseModel):
+    answer_id: str
+    question: str
+    trace: dict[str, Any]

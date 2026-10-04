@@ -12,7 +12,7 @@ from typing import Literal
 
 from ulid import ULID
 
-Prefix = Literal["city", "run", "src", "clm", "ent", "evt", "ans", "cp", "cd", "sq", "rep"]
+Prefix = Literal["city", "run", "src", "clm", "ent", "evt", "ans", "conv", "cp", "cd", "sq", "rep"]
 
 
 def new_id(prefix: Prefix) -> str:

@@ -67,6 +67,14 @@ class MemoryEntities:
     async def get(self, entity_ids: list[str]) -> dict[str, Entity]:
         return {i: self.by_id[i] for i in entity_ids if i in self.by_id}
 
+    async def match_names(
+        self, city_id: str, texts: list[str], keys: list[str], min_similarity: float
+    ) -> list[str]:
+        return []  # question answering's lookup (D3-2); resolution never reads it
+
+    async def names(self, city_id: str) -> list[tuple[str, str]]:
+        return []
+
     async def with_fact_counts(self, city_id: str) -> list[tuple[Entity, int]]:
         return []  # the read API's query (D3-1); resolution never reads it
 

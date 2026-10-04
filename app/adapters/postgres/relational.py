@@ -3,6 +3,7 @@
 from sqlalchemy import text
 
 from app.adapters.postgres.db import create_engine
+from app.adapters.postgres.repos.answers import PostgresAnswerRepo
 from app.adapters.postgres.repos.entities import PostgresEntityRepo
 from app.adapters.postgres.repos.reference import PostgresReferenceRepo
 from app.adapters.postgres.repos.research import PostgresResearchRepo
@@ -19,6 +20,7 @@ class PostgresRelational:
         self._runs = PostgresRunRepo(self._engine)
         self._research = PostgresResearchRepo(self._engine)
         self._entities = PostgresEntityRepo(self._engine)
+        self._answers = PostgresAnswerRepo(self._engine)
 
     @property
     def reference(self) -> PostgresReferenceRepo:
@@ -39,6 +41,10 @@ class PostgresRelational:
     @property
     def research(self) -> PostgresResearchRepo:
         return self._research
+
+    @property
+    def answers(self) -> PostgresAnswerRepo:
+        return self._answers
 
     async def ping(self) -> None:
         async with self._engine.connect() as conn:

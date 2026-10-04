@@ -211,6 +211,18 @@ class ResearchRepo(Protocol):
 
     async def stored_facts(self, claim_ids: list[str]) -> dict[str, StoredFact]: ...
 
+    async def keyword_claims(
+        self, city_id: str, run_id: str, words: list[str], limit: int
+    ) -> list[str]:
+        """R2: claims of the run matching any of the words, best first (LLD-5 §4.1)."""
+        ...
+
+    async def entity_claims(self, run_id: str, entity_ids: list[str]) -> list[str]: ...
+
+    async def claims_for_edges(self, edge_uuids: list[str]) -> dict[str, list[str]]:
+        """R4: graph edge -> claims, through `graph_link` (LLD-5 §4.3)."""
+        ...
+
     async def contested_pairs(self, run_id: str) -> list[tuple[str, str]]:
         """The run's contested pairs as (headline claim, other claim) (D3-1)."""
         ...
@@ -303,6 +315,14 @@ class EntityRepo(Protocol):
 
     async def get(self, entity_ids: list[str]) -> dict[str, Entity]: ...
 
+    async def match_names(
+        self, city_id: str, texts: list[str], keys: list[str], min_similarity: float
+    ) -> list[str]:
+        """Entities a question names, by lookup only (LLD-5 §4.1, §4.3)."""
+        ...
+
+    async def names(self, city_id: str) -> list[tuple[str, str]]: ...
+
     async def with_fact_counts(self, city_id: str) -> list[tuple[Entity, int]]:
         """Entities named by facts of the city's latest run, with how many (D3-1)."""
         ...
@@ -316,6 +336,19 @@ class EntityRepo(Protocol):
     async def merge_attributes(self, entity_id: str, attributes: dict[str, Any]) -> None:
         """Shallow-merge into `entity.attributes`, e.g. a programme's status (T-06)."""
         ...
+
+
+class AnswerRepo(Protocol):
+    """Answers, their conversation turns and retrieval traces (LLD-5 §3.2, §10)."""
+
+    async def add_answer(self, answer: dict[str, Any]) -> None: ...
+
+    async def last_turn(self, conversation_id: str) -> dict[str, Any] | None:
+        """City, turn and classification of the conversation's latest answer, never its
+        text (RD-09)."""
+        ...
+
+    async def answer_row(self, answer_id: str) -> dict[str, Any] | None: ...
 
 
 class RelationalPort(Protocol):
@@ -333,6 +366,9 @@ class RelationalPort(Protocol):
 
     @property
     def entities(self) -> EntityRepo: ...
+
+    @property
+    def answers(self) -> AnswerRepo: ...
 
     async def ping(self) -> None:
         """`SELECT 1`; raises when the database is unreachable (LLD-4 §7)."""

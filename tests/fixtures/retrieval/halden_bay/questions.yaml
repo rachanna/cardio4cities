@@ -1,0 +1,158 @@
+# Retrieval evaluation questions (LLD-5 §12.1, D3-2b, BD-39) on the Halden Bay fixture.
+# `classified`: the classifier output used in CI (real models classify for themselves in
+# `poe eval-rag`). `gold`: claims that must be in the bundle. `expect`: answer, abstain,
+# disagree (both sides of a pair stated) or wider_area. `means`: in CI the question embeds
+# as this claim's index text, standing in for a question worded unlike any claim (AT-43).
+# `follows`: the question this one follows up, in the same conversation.
+
+- id: q01-prevalence
+  question: What share of adults in Halden Bay have hypertension?
+  classified: {question_type: figure, slot_ids: [S03], indicator_codes: [HTN_PREV]}
+  gold: [clm_rag_prev_a, clm_rag_prev_b]
+  expect: disagree
+
+- id: q02-control
+  question: How many people with hypertension in Halden Bay have it under control?
+  classified: {question_type: figure, slot_ids: [S04], indicator_codes: [HTN_CONTROL]}
+  gold: [clm_rag_control_national]
+  expect: wider_area
+
+- id: q03-diabetes
+  question: What is the diabetes prevalence in Halden Bay?
+  classified: {question_type: figure, slot_ids: [S05], indicator_codes: [DM_PREV]}
+  gold: [clm_rag_diabetes_old]
+  expect: answer
+
+- id: q04-stroke
+  question: What is the stroke mortality rate in Halden Bay?
+  classified: {question_type: figure, slot_ids: [S06], indicator_codes: [STROKE_MORT]}
+  gold: [clm_rag_stroke]
+  expect: answer
+
+- id: q05-who-runs
+  question: Who runs public health in Halden Bay?
+  classified: {question_type: relationship, slot_ids: [S01]}
+  gold: [clm_rag_gov_new]
+  expect: answer
+
+- id: q06-who-ran-before
+  question: Who ran public health in Halden Bay before the current office?
+  classified: {question_type: change_over_time, slot_ids: [S01]}
+  gold: [clm_rag_gov_old, clm_rag_gov_new]
+  expect: answer
+
+- id: q07-as-of
+  question: Who was in charge of public health in Halden Bay in June 2023?
+  classified: {question_type: relationship, slot_ids: [S01], as_of: "2023-06"}
+  gold: [clm_rag_gov_old]
+  expect: answer
+
+- id: q08-reorganisation
+  question: Was the Halden Bay health authority reorganised?
+  classified: {question_type: change_over_time, slot_ids: [S02]}
+  gold: [clm_rag_reorg]
+  expect: answer
+
+- id: q09-hbho-runs
+  question: What does the HBHO run?
+  classified: {question_type: relationship, slot_ids: [S07], entity_mentions: [{text: HBHO, type: Organization}]}
+  gold: [clm_rag_runs_hearts]
+  expect: answer
+
+- id: q10-nhf-acronym
+  question: What does the NHF fund in Halden Bay?
+  classified: {question_type: relationship, slot_ids: [S14], entity_mentions: [{text: NHF, type: Organization}]}
+  gold: [clm_rag_ngo_funds]
+  expect: answer
+
+- id: q11-screening
+  question: Do clinics in Halden Bay screen adults for high blood pressure?
+  classified: {question_type: open, slot_ids: [S08]}
+  gold: [clm_rag_screening]
+  expect: answer
+
+- id: q12-national-plan
+  question: What does the national NCD plan aim for?
+  classified: {question_type: open, slot_ids: [S09]}
+  gold: [clm_rag_plan_target]
+  expect: answer
+
+- id: q13-protocol
+  question: Which hypertension treatment protocol do Halden Bay clinics use?
+  classified: {question_type: open, slot_ids: [S10]}
+  gold: [clm_rag_protocol]
+  expect: answer
+
+- id: q14-salt-policy
+  question: Does Halden Bay have a salt reduction policy?
+  classified: {question_type: open, slot_ids: [S11]}
+  gold: []
+  expect: abstain
+
+- id: q15-leader
+  question: Who heads the Halden Bay Health Office?
+  classified: {question_type: relationship, slot_ids: [S12], entity_mentions: [{text: Halden Bay Health Office, type: Organization}]}
+  gold: []
+  expect: abstain
+
+- id: q16-hospital
+  question: Which hospitals work with the health office?
+  classified: {question_type: relationship, slot_ids: [S13]}
+  gold: [clm_rag_hospital]
+  expect: answer
+
+- id: q17-ngos
+  question: Which NGOs support heart health in Halden Bay?
+  classified: {question_type: relationship, slot_ids: [S14]}
+  gold: [clm_rag_ngo_funds, clm_rag_ngo_partner]
+  expect: answer
+
+- id: q18-city-data
+  question: Does Halden Bay publish its own health statistics?
+  classified: {question_type: open, slot_ids: [S15]}
+  gold: [clm_rag_bulletin]
+  expect: answer
+
+- id: q19-information-system
+  question: Where do clinics record blood pressure readings?
+  classified: {question_type: open, slot_ids: [S16]}
+  gold: [clm_rag_his]
+  expect: answer
+
+- id: q20-by-meaning
+  question: How many grown-ups live with raised pressure?
+  classified: {question_type: open, slot_ids: []}
+  means: clm_rag_prev_a
+  gold: [clm_rag_prev_a, clm_rag_prev_b]
+  expect: disagree
+
+- id: q21-follow-up-nationally
+  question: And nationally?
+  follows: q01-prevalence
+  classified: {question_type: out_of_scope, slot_ids: [], refers_to_previous: true}
+  gold: [clm_rag_prev_national]
+  expect: answer
+
+- id: q22-out-of-scope
+  question: Which football team does Halden Bay support?
+  classified: {question_type: out_of_scope, slot_ids: []}
+  gold: []
+  expect: abstain
+
+- id: q23-refuted-trap
+  question: Is it true that 15% of adults in Halden Bay have diabetes?
+  classified: {question_type: figure, slot_ids: [S05], indicator_codes: [DM_PREV]}
+  gold: [clm_rag_diabetes_old]
+  expect: answer
+
+- id: q24-compound
+  question: What is the diabetes rate in Halden Bay, and who heads the health office?
+  classified: {question_type: figure, slot_ids: [S05, S12], sub_questions: [diabetes rate, head of the health office]}
+  gold: [clm_rag_diabetes_old]
+  expect: answer
+
+- id: q25-named-hospital
+  question: What does Halden Bay General Hospital do in heart care?
+  classified: {question_type: open, slot_ids: [], entity_mentions: [{text: Halden Bay General Hospital, type: Organization}]}
+  gold: [clm_rag_hospital]
+  expect: answer

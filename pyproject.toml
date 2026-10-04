@@ -72,6 +72,7 @@ spike = { cmd = "python -m scripts.spikes.${name}", args = [
     { name = "name", positional = true, required = true, help = "Spike script in scripts/spikes/" },
 ], help = "Run one day-1 spike (may make live calls: ask the owner first)" }
 eval = { cmd = "python -m scripts.eval_prompts", help = "Prompt golden set against real models (costs money: ask first)" }
+eval-rag = { cmd = "python -m scripts.eval_rag", help = "Retrieval evaluation with real models (costs money: ask the owner first; --real FILE for a researched city)" }
 migrate = { cmd = "alembic upgrade head", help = "Run database migrations (needs DATABASE_URL only)" }
 geonames = { cmd = "python -m scripts.reference.load_geonames --download-only", help = "Download GeoNames dumps if missing" }
 purge-graph = { cmd = "python -m scripts.purge_graph", help = "Delete the local Neo4j graph and its embedding marker (refuses when APP_ENV=deployed)" }

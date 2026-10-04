@@ -58,6 +58,9 @@ class AccessSection(_Section):
     access_code_env: str
     admin_code_env: str
     session_secret_env: str
+    # The header a trusted proxy sets to the client's address (BD-36): only behind that
+    # proxy, which overwrites what a client sends; otherwise the peer address is used
+    client_ip_header: str | None = None
 
 
 class _Binding(_Section):

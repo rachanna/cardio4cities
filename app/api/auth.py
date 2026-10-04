@@ -28,6 +28,7 @@ class AccessConfig:
     access_code: str = field(repr=False)
     admin_code: str = field(repr=False)
     session_secret: str = field(repr=False)
+    client_ip_header: str | None = None  # set only behind a proxy that overwrites it
 
 
 @dataclass(frozen=True)

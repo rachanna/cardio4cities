@@ -8,6 +8,7 @@ access:
   access_code_env: ACCESS_CODE
   admin_code_env: ADMIN_CODE
   session_secret_env: SESSION_SECRET
+  client_ip_header: CF-Connecting-IP  # Render is fronted by Cloudflare, which overwrites it (BD-04)
 llm:
   # Model bindings (BD-05). Each binding carries the setting its model accepts:
   # effort for Claude Sonnet/Opus 5.5 and OpenAI reasoning models, temperature for Claude Haiku 4.5.

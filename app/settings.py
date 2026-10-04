@@ -58,6 +58,9 @@ class AccessSection(_Section):
     access_code_env: str
     admin_code_env: str
     session_secret_env: str
+    # The header a trusted proxy sets to the client's address (BD-36): only behind that
+    # proxy, which overwrites what a client sends; otherwise the peer address is used
+    client_ip_header: str | None = None
 
 
 class _Binding(_Section):
@@ -371,6 +374,7 @@ def load_settings(env: Mapping[str, str] | None = None, config_dir: Path = CONFI
     required = required_secrets(config)
     problems = [
         *check_checker_independence(config),
+        *check_model_families(config),
         *check_providers_declared(config),
         *check_adapter_settings(config),
         *[
@@ -403,6 +407,38 @@ def check_checker_independence(config: Config) -> list[str]:
             f"accept a same-family checker that is labelled on every verdict"
         ]
     return []
+
+
+# A provider that serves one family; Ollama serves models of any other family (BD-36)
+PROVIDER_FAMILY = {"anthropic": "anthropic", "openai": "openai"}
+
+
+def check_model_families(config: Config) -> list[str]:
+    """A declared family must match its provider: `{provider: anthropic, family: openai}`
+    would pass the R-82 independence check with one family (code review RV-073). The
+    effective family is the one the run labels verdicts with (`runner.role_bindings`)."""
+    problems = []
+    for name, role in config.llm.roles.items():
+        refs: list[tuple[str, ModelRef | RoleConfig, str]] = [("", role, role.family)]
+        if role.escalate_to is not None:
+            refs.append((".escalate_to", role.escalate_to, role.escalate_to.family or role.family))
+        if role.fallback is not None:
+            refs.append(
+                (".fallback", role.fallback, role.fallback.family or role.fallback.provider)
+            )
+        for where, ref, family in refs:
+            expected = PROVIDER_FAMILY.get(ref.provider)
+            if expected is not None and family != expected:
+                problems.append(
+                    f"llm.roles.{name}{where}: provider {ref.provider!r} serves the {expected!r} "
+                    f"family, not {family!r}"
+                )
+            if expected is None and family in PROVIDER_FAMILY.values():
+                problems.append(
+                    f"llm.roles.{name}{where}: a {ref.provider!r} model is not of the "
+                    f"{family!r} family"
+                )
+    return problems
 
 
 def check_providers_declared(config: Config) -> list[str]:

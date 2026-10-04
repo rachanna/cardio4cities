@@ -84,6 +84,9 @@ git commit -m "chore: secret scanning on commit"
 
 Claude Code adds ruff and the import-lint check to this file in task D1-1.
 
+CI runs the same scanner (same version) over the whole history on every push, so a
+commit made without the hook is still caught (BD-36).
+
 ## 6. Branches and commits
 
 | Rule | Example |

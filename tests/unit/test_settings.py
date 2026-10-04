@@ -125,6 +125,48 @@ def test_undeclared_llm_provider_refused(
     assert any("llm.roles.planner" in p for p in _problems(valid_env, config_dir))
 
 
+@pytest.mark.parametrize(
+    ("role", "change", "message"),
+    [
+        ("checker", {"provider": "anthropic", "family": "openai"},
+         "llm.roles.checker: provider 'anthropic' serves the 'anthropic' family, not 'openai'"),
+        ("planner", {"provider": "ollama", "family": "anthropic"},
+         "llm.roles.planner: a 'ollama' model is not of the 'anthropic' family"),
+    ],
+)  # fmt: skip
+def test_a_declared_family_must_match_its_provider(
+    write_config: ConfigWriter,
+    valid_env: dict[str, str],
+    role: str,
+    change: dict[str, str],
+    message: str,
+) -> None:
+    """RV-073: a mislabelled family would pass the R-82 independence check."""
+    config_dir = write_config(change=lambda raw: raw["llm"]["roles"][role].update(change))
+
+    assert message in _problems(valid_env, config_dir)
+
+
+def test_a_fallback_without_a_family_takes_its_provider_s(
+    write_config: ConfigWriter, valid_env: dict[str, str]
+) -> None:
+    def change(raw: dict[str, Any]) -> None:
+        raw["llm"]["roles"]["checker"]["fallback"] = {"provider": "openai", "model": "gpt-6-luna"}
+
+    config_dir = write_config(change=change)
+    problems = [p for p in _problems_or_none(valid_env, config_dir) if "fallback" in p]
+
+    assert problems == []
+
+
+def _problems_or_none(env: dict[str, str], config_dir: Path) -> list[str]:
+    try:
+        load_settings(env, config_dir)
+    except ConfigError as exc:
+        return exc.problems
+    return []
+
+
 def test_searxng_needs_base_url(write_config: ConfigWriter, valid_env: dict[str, str]) -> None:
     config_dir = write_config(change=lambda raw: raw["search"].pop("base_url"))
 

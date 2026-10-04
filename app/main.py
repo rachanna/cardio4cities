@@ -156,6 +156,7 @@ def _lifespan(
                 access_code=settings.secret(access.access_code_env),
                 admin_code=settings.secret(access.admin_code_env),
                 session_secret=settings.secret(access.session_secret_env),
+                client_ip_header=access.client_ip_header,
             )
             app.state.session_limiter = FailureLimiter()
             manager = app.state.runs = RunManager(container, settings)

@@ -1,7 +1,9 @@
 """Reference-file parsing (no database). Gazetteer lines are fictional (Halden Bay, Norvania)."""
 
 import asyncio
+import io
 import shutil
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -11,6 +13,7 @@ from app.domain.models import SlotDef
 from scripts.reference import load_yaml_reference
 from scripts.reference.geonames import (
     build_gazetteer,
+    check_download,
     iso639_1,
     large_place_names,
     parse_admin1,
@@ -157,3 +160,33 @@ def test_strict_load_refuses_placeholders_before_touching_the_database(
 
     with pytest.raises(ReferenceError, match="placeholder indicator codes"):
         asyncio.run(load_yaml_reference.load(_with_placeholder(tmp_path), strict=True))
+
+
+# --- RV-076: a downloaded dump is whole before it is kept -----------------------------------
+
+
+def _zip(member: str, text: str) -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr(member, text)
+    return buffer.getvalue()
+
+
+def test_a_whole_dump_is_accepted() -> None:
+    check_download("cities15000.zip", _zip("cities15000.txt", "9000001\tHalden Bay\n"))
+    check_download("countryInfo.txt", b"#ISO\tISO3\nXN\tXNV\n")
+
+
+@pytest.mark.parametrize(
+    ("name", "data"),
+    [
+        ("cities15000.zip", b"<html>an error page</html>"),
+        ("cities15000.zip", _zip("other.txt", "x")),
+        ("cities15000.zip", _zip("cities15000.txt", "x")[:-30]),
+        ("admin1CodesASCII.txt", b"<html>an error page</html>"),
+        ("admin1CodesASCII.txt", b""),
+    ],
+)
+def test_a_damaged_or_wrong_dump_is_refused(name: str, data: bytes) -> None:
+    with pytest.raises(ValueError, match=name):
+        check_download(name, data)

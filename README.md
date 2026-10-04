@@ -30,7 +30,7 @@ cron, all in one region, with auto-deploy off. Deploy by hand, never on rehearsa
 1. In Render, install the GitHub app for this repository only.
 2. New → Blueprint → this repository, branch `main`.
 3. Enter the prompted secrets: `ACCESS_CODE` (12+ characters), `ADMIN_CODE` (different),
-   `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `BRAVE_API_KEY`, `LANGSMITH_API_KEY`.
+   `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `BRAVE_API_KEY`.
    Store passwords and `SESSION_SECRET` are generated.
 4. Each deploy runs `scripts/predeploy.sh` (migrations and reference data) before the app starts.
 5. Check from outside: `uv run poe smoke https://<service>.onrender.com`.

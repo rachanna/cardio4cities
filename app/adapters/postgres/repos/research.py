@@ -424,6 +424,10 @@ class PostgresResearchRepo:
                 {"c": claim_id},
             )
 
+    async def clear_graph_links(self) -> int:
+        async with self._engine.begin() as conn:
+            return (await conn.execute(text("DELETE FROM graph_link"))).rowcount
+
     async def claims_without_graph_link(self, run_id: str) -> list[str]:
         async with self._engine.connect() as conn:
             rows = await conn.execute(

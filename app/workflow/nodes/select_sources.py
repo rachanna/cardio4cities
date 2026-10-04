@@ -11,7 +11,6 @@ from langchain_core.runnables import RunnableConfig
 from app.workflow.deps import RunDeps
 from app.workflow.nodes._deps import deps
 from app.workflow.rules.crawl_gate import canonicalise
-from app.workflow.rules.other_places import place_matcher
 from app.workflow.rules.selection import Candidate as Selected
 from app.workflow.rules.selection import select_urls
 from app.workflow.state import Candidate, SlotState
@@ -36,12 +35,7 @@ async def select_sources(state: SlotState, config: RunnableConfig) -> dict[str, 
     await seed_fetch_cache(d, state["run_id"])
     hits = [(c.url, c.rank) for c in raw]
     known = {u for u in by_url if d.fetch_cache.known(u)}
-    if d.places is None:  # the country's places, once per run
-        rows = await d.relational.reference.country_places(
-            state["city"].country_iso2, d.other_place_min_population
-        )
-        d.places = place_matcher(state["city"], rows)
-    later = {u for u, c in by_url.items() if d.places.names_other_place(c.title, c.snippet, u)}
+    later = {u for u, c in by_url.items() if c.names_other_place}  # decided in search
     everything = select_urls(hits, (), d.publishers, len(by_url), later)
 
     def candidate(s: Selected) -> Candidate:

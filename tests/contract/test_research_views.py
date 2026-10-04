@@ -8,6 +8,8 @@ from typing import Any
 import pytest
 from sqlalchemy import text
 
+from app.domain.ids import graph_uuid
+
 pytestmark = pytest.mark.db
 
 SEED = (
@@ -91,3 +93,21 @@ async def test_a_contested_pair_is_stored_once(relational: Any) -> None:
     pairs = await _rows(relational, "SELECT headline_claim FROM contested_pair")
 
     assert pairs == ["clm_run_1_supported"]
+
+
+async def test_purging_the_graph_clears_every_graph_link(relational: Any) -> None:
+    """RV-094: after `poe purge-graph` no link points at an edge that no longer exists."""
+    async with relational._engine.begin() as conn:
+        for sql in SEED:
+            await conn.execute(text(sql))
+    await _run(relational, "run_1", "completed")
+    await relational.research.add_graph_link(
+        "clm_run_1_supported", graph_uuid("clm_run_1_supported")
+    )
+    await relational.research.add_graph_link(
+        "clm_run_1_contested", graph_uuid("clm_run_1_contested")
+    )
+
+    assert await relational.research.clear_graph_links() == 2
+    assert await relational.research.graph_link("clm_run_1_supported") is None
+    assert await relational.research.clear_graph_links() == 0

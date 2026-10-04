@@ -4,6 +4,7 @@ Used for both rehearsals and on demo day. The demonstration steps DS-1 to DS-7 c
 
 ## 1. Before (one hour ahead)
 
+- [ ] Once, before the first rehearsal: spike S-3 run on the deployed service (`python -m scripts.spikes.reachability`, sites listed in the git-ignored `spike_results/s3_sites.txt`); its summary recorded in the BD-36 follow-up row (BD-36)
 - [ ] `GET /api/v1/health` returns `ok`, with `checker_independence: different_family`
 - [ ] No deploy scheduled; auto-deploy off
 - [ ] Fallback city present under "Open existing", with its report downloadable

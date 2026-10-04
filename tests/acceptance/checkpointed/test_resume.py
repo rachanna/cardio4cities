@@ -198,6 +198,16 @@ async def test_a_crashed_run_resumes_once_without_duplicates(
     )
     assert max(per_claim.values()) == 1
 
+    # Search titles and snippets never reach the checkpoints (BD-36; code review RV-090)
+    for table in ("checkpoint_writes", "checkpoint_blobs"):
+        rows = await duplicates(
+            relational,
+            f"SELECT count(*) AS n FROM lg.{table} WHERE thread_id = :r"  # noqa: S608
+            " AND position(convert_to('SNIPPET-TEXT-NEVER-EVIDENCE', 'UTF8') in blob) > 0",
+            run_id,
+        )
+        assert rows[0]["n"] == 0, table
+
     links = await duplicates(
         relational,
         "SELECT g.edge_uuid FROM graph_link g JOIN claim c USING (claim_id) WHERE c.run_id = :r",

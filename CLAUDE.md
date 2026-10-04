@@ -71,18 +71,19 @@ Start each session by naming the task ID from `BUILD_PLAN.md` and reading the do
 
 ```text
 uv run poe up          # local stores and SearXNG
+uv run poe down        # stop local stores
 uv run poe migrate     # database migrations
 uv run poe reference   # load gazetteer and reference YAML (downloads GeoNames if missing)
 uv run poe geonames    # download GeoNames only (needed by the AT-02 scan)
-uv run poe dev         # API on :8000 and web on :3000
+uv run poe dev         # API on :8000 and web on :3000 (from D3-4)
 uv run poe test        # unit, contract, architecture, acceptance (recorded responses)
 uv run poe lint        # ruff, mypy, import-linter
 uv run poe fmt         # ruff format and auto-fix
-uv run poe types       # regenerate web API types from OpenAPI
+uv run poe types       # regenerate web API types from OpenAPI (from D3-4)
 uv run poe spike NAME  # run a day-1 spike
 uv run poe eval        # prompt golden set against real models (costs money: ask first)
 uv run poe smoke URL   # smoke tests against a deployed URL
-uv run poe purge CITY  # remove a city from all stores
+uv run poe purge CITY  # remove a city from all stores (from D3-5)
 uv run poe purge-graph # empty the local Neo4j graph and its embedding marker (local only)
 ```
 

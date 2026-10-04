@@ -5,14 +5,22 @@ recorded with its reason. Local fictional web; AT-04 and AT-06 machinery unchang
 
 import pytest
 
-from app.adapters.fetch.httpx_pinned import PinnedFetcher, _getaddrinfo
+from app.adapters.fetch.httpx_pinned import PinnedFetcher, _getaddrinfo, prefer_ipv4
 from app.adapters.fetch.robots_protego import ProtegoRobotsParser
 from app.adapters.parse.documents import DocumentParser
 from app.domain.vocab import CrawlOutcome, ParseOutcome
 from app.ports.errors import FetchError
 from app.ports.fetch import FetchLimits, FetchResult
 from app.workflow.collection import Collector
-from tests.support.webworld import ALLOW_ALL, CountingBudget, Reply, WebWorld, collector, params
+from tests.support.webworld import (
+    ALLOW_ALL,
+    CountingBudget,
+    Reply,
+    WebWorld,
+    article,
+    collector,
+    params,
+)
 
 HEALTH = "health.halden-bay.test"
 DATA = "data.halden-bay.test"
@@ -251,3 +259,25 @@ async def test_a_server_error_makes_a_page_unreachable_and_a_missing_page_does_n
     assert got.outcome == outcome
     expected = CrawlOutcome.UNREACHABLE_SERVER_ERROR if status >= 500 else CrawlOutcome.ALLOWED
     assert got.decisions[-1].outcome is expected
+
+
+# --- RV-046: address order and the next checked address ---------------------------------------
+
+
+def test_addresses_keep_the_resolver_order_with_ipv4_first() -> None:
+    resolved = ["2001:db8::1", "93.184.216.34", "2001:db8::1", "151.101.1.69"]
+    assert prefer_ipv4(resolved) == ["93.184.216.34", "151.101.1.69", "2001:db8::1"]
+
+
+async def test_a_refused_connection_is_retried_at_the_host_s_next_address(world: WebWorld) -> None:
+    """BD-36: one address of a host refuses; the one network retry dials the next."""
+    dead = "93.184.216.99"
+    world.site(HEALTH, HEALTH_IP, {"/robots.txt": ALLOW_ALL, "/page": Reply(body=article())})
+    world.dns[HEALTH] = [dead, HEALTH_IP]
+    world.dead.add(dead)
+    with world.running():
+        got = await collector(world).collect(f"http://{HEALTH}/page", [])
+    assert got.outcome == "fetched"
+    assert got.decisions[0].pinned_ip == dead
+    assert got.decisions[0].other_ips == (HEALTH_IP,)
+    assert world.paths(HEALTH) == ["/robots.txt", "/page"]

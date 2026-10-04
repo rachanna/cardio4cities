@@ -1,6 +1,7 @@
 """Session (LLD-4 §3.1), health (LLD-4 §7), error envelope (§6) and the web root, over HTTP."""
 
 from collections.abc import Iterator
+from dataclasses import replace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -77,6 +78,9 @@ def test_five_failures_then_429_even_for_the_right_code(
 def test_rate_limit_keys_on_cloudflare_client_ip_not_forwarded_for(
     client: TestClient, valid_env: dict[str, str]
 ) -> None:
+    """Behind Cloudflare (the deployed profile names its header, BD-36)."""
+    state = client.app.state  # type: ignore[attr-defined]
+    state.access = replace(state.access, client_ip_header="CF-Connecting-IP")
     for n in range(5):  # forged X-Forwarded-For values do not spread the failures
         client.post(
             "/api/v1/session",
@@ -97,6 +101,26 @@ def test_rate_limit_keys_on_cloudflare_client_ip_not_forwarded_for(
 
     assert blocked.status_code == 429
     assert other_client.status_code == 204
+
+
+def test_a_proxy_header_is_not_trusted_unless_configured(
+    client: TestClient, valid_env: dict[str, str]
+) -> None:
+    """RV-068: rotating CF-Connecting-IP no longer spreads failures where no proxy sets it."""
+    for n in range(5):
+        client.post(
+            "/api/v1/session",
+            json={"access_code": "wrong"},
+            headers={"cf-connecting-ip": f"203.0.113.{n}"},
+        )
+
+    blocked = client.post(
+        "/api/v1/session",
+        json={"access_code": valid_env["ACCESS_CODE"]},
+        headers={"cf-connecting-ip": "203.0.113.99"},
+    )
+
+    assert blocked.status_code == 429
 
 
 def test_malformed_body_is_400_invalid_request(client: TestClient) -> None:
@@ -136,6 +160,20 @@ def test_failure_window_slides() -> None:
     now[0] = 11.0
 
     assert not limiter.blocked("ip")
+    assert len(limiter) == 0  # a key whose failures expired is not kept (RV-068)
+
+
+def test_the_limiter_holds_at_most_its_cap_of_keys() -> None:
+    """RV-068: one entry per key forever let memory grow without bound."""
+    limiter = FailureLimiter(max_failures=2, window_s=600, max_keys=3)
+    for n in range(10):
+        limiter.record_failure(f"ip{n}")
+    limiter.record_failure("ip9")
+    limiter.record_failure("ip9")
+
+    assert len(limiter) == 3
+    assert limiter.blocked("ip9")
+    assert not limiter.blocked("ip0")  # the oldest keys were forgotten
 
 
 # --- health ---------------------------------------------------------------------

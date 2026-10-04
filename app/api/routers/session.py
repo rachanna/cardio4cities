@@ -10,17 +10,18 @@ from app.api.schemas import SessionRequest
 router = APIRouter(tags=["session"])
 
 
-def _client_ip(request: Request) -> str:
-    """The caller's address for rate limiting (BD-04).
+def _client_ip(request: Request, header: str | None) -> str:
+    """The caller's address for rate limiting (BD-04, BD-36).
 
-    Render is fronted by Cloudflare, which sets CF-Connecting-IP to the real client
-    and overwrites any value a client sends. X-Forwarded-For is not used: Render
-    passes client-supplied entries through, so it can be forged to dodge the limit.
-    Without the header (local runs), the direct peer address is used.
+    The deployed profile names CF-Connecting-IP: Render is fronted by Cloudflare, which
+    sets it to the real client and overwrites any value a client sends. Elsewhere no
+    header is trusted, since a client could rotate it to dodge the limit (code review
+    RV-068). X-Forwarded-For is never used: Render passes client-supplied entries through.
     """
-    forwarded = request.headers.get("cf-connecting-ip", "").strip()
-    if forwarded:
-        return forwarded
+    if header:
+        forwarded = request.headers.get(header, "").strip()
+        if forwarded:
+            return forwarded
     return request.client.host if request.client else "unknown"
 
 
@@ -28,7 +29,7 @@ def _client_ip(request: Request) -> str:
 async def start_session(body: SessionRequest, request: Request) -> Response:
     access: AccessConfig = request.app.state.access
     limiter: FailureLimiter = request.app.state.session_limiter
-    ip = _client_ip(request)
+    ip = _client_ip(request, access.client_ip_header)
     if limiter.blocked(ip):
         raise ApiError(429, "rate_limited", "Too many attempts. Wait ten minutes, then try again.")
     role = role_for_code(body.access_code, access)

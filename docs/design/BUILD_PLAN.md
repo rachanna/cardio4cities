@@ -48,11 +48,11 @@
 | Spike | Script | Pass when | If it fails |
 |---|---|---|---|
 | S-1 Graphiti triplets | `spikes/graphiti_triplets.py` | 20 triplets written with our UUIDs; no Graphiti entity re-resolution; edge attributes returned by search; `invalid_at` set without deletion; model calls counted | Fallback in LLD-1 §6.3 (episode per source); record BD row; DEC-09 and HD-06 updated |
-| S-2 WHO and DHS endpoints | `spikes/who_endpoint.py` | Hypertension prevalence and control codes return records for three countries; DHS returns a sub-national record for one | Use the replacement WHO API; or Wave 0 from DHS and World Bank only |
-| S-3 Reachability from the host | `spikes/reachability.py` (run on the deployed service) | WHO, DHS, World Bank APIs reachable; record which of a list of government health sites (India and two other countries) return content | Decide the example city (DEC-16); `unreachable` stays honest |
-| S-4 Search links only | `spikes/search_links_only.py` | Brave returns title, URL, snippet with no page content; rate limits observed | Switch adapter; adjust Δ9 timing |
+| S-2 WHO and DHS endpoints | `spikes/structured_endpoints.py` (BD-13) | Hypertension prevalence and control codes return records for three countries; DHS returns a sub-national record for one | Use the replacement WHO API; or Wave 0 from DHS and World Bank only |
+| S-3 Reachability from the host | `spikes/reachability.py` (run on the deployed service; written in FX-18, run before the first rehearsal with D3-5, BD-36) | WHO, DHS, World Bank APIs reachable; record which of a list of government health sites (India and two other countries) return content | Decide the example city (DEC-16); `unreachable` stays honest |
+| S-4 Search links only | `spikes/brave_links.py` | Brave returns title, URL, snippet with no page content; rate limits observed | Switch adapter; adjust Δ9 timing |
 | S-5 PDF quote matching | `spikes/pdf_quotes.py` | On two real PDF tables, extraction plus §4.1 matching drops under about 20% of claims | Improve normalisation and table parsing; never loosen matching |
-| S-6 Run timing | `spikes/run_timing.py` (after D2-3; may slip to day 2) | One slot end to end under 60 s; projected full run under 5 min | Reduce slots per round, claims verified per slot, or URLs per slot |
+| S-6 Run timing | `spikes/full_run.py`, `spikes/compare_runs.py` (after D2-3; may slip to day 2) | One slot end to end under 60 s; projected full run under 5 min | Reduce slots per round, claims verified per slot, or URLs per slot |
 
 Also confirm on day 1: the OpenAI checker and embedding model IDs and the embedding dimension (fill `deployed.yaml`), and WeasyPrint in the image.
 
@@ -66,7 +66,7 @@ Also confirm on day 1: the OpenAI checker and embedding model IDs and the embedd
 | D2-2 | Collection | LLD-2 §9, §14 | Crawl gate, robots and Content-Usage parsing, pinned-IP fetcher, HTML and PDF parsing, chunking and embedding, snapshots, selection | AT-04, AT-05, AT-06, AT-23, AT-33 against a local test server | 2 h |
 | D2-3 | **Thin slice** | LLD-2 §3, LLD-3 §3–5 | Graph with resolve, plan (one slot), search, select, gate, fetch, extract, match, verify, write to Postgres and Qdrant; events stored and streamed | One real city, slot S04: at least one verified, cited claim in Postgres; events replayable (AT-30); AT-07, AT-08 | 2 h |
 | D2-4 | Graph and entities | LLD-1 §6, LLD-2 §5.5, §6 | Entity resolution; Graphiti writes per S-1 outcome; supersession and contested relations; claim index in Qdrant; `search_tsv`; index updates on status change | AT-26; a GOVERNS edge written and readable with its claim ID; AT-39 plumbing: a refuted claim's index point is deleted | 1.5 h |
-| D2-5 | Breadth | LLD-2 §3, §11–13 | All 16 slots in parallel, Wave 0, coverage loop and re-plans, budget ledger, run summary | A full run on one real city ends under 7 min (BD-15; was 5) with every slot carrying a status; AT-16, AT-19, AT-32, AT-38 | 1.5 h |
+| D2-5 | Breadth | LLD-2 §3, §11–13 | All 16 slots in parallel, Wave 0, coverage loop and re-plans, budget ledger, run summary | A full run on one real city ends under 7 min (BD-15; was 5) with every slot carrying a status (met on the data-rich run, 360 s after FX-12; the sparse tuned run stopped on its budget at 425 s, before FX-12: `scripts/spikes/results/`); AT-16, AT-19, AT-32, AT-38 | 1.5 h |
 
 **Day 2 exit check:** one real city researched end to end on the deployed URL from the command line or API; every slot has a status; verified facts in all three stores.
 
@@ -83,7 +83,7 @@ Also confirm on day 1: the OpenAI checker and embedding model IDs and the embedd
 | D3-2b | Retrieval evaluation | LLD-5 §12 | Halden Bay retrieval fixture (about 30 claims, 25 questions with gold answers); `poe eval-rag` | AT-47 gates pass on fixtures in CI | 1.5 h |
 | D3-3 | Report | LLD-2 §16, LLD-3 §8 | Assembly, templates, PDF | AT-18 | 1 h |
 | D3-4 | Web app | HLD §12, LLD-4 §12 | Access, Start with live progress and coverage grid, City brief, Explore, Ask, Evidence panel; admin overlay | A non-technical walk-through works on a phone and a laptop; City brief screen built first; AT-24's UI half: the chosen identity is shown before research starts (BD-35) | 3 h |
-| D3-5 | Deploy and smoke | REPO_STRUCTURE §5 | Full deploy; keep-alive job | AT-17, AT-29 from outside; full run on the deployed URL | 0.5 h |
+| D3-5 | Deploy and smoke | REPO_STRUCTURE §5, LLD-4 §7, LLD-1 §8 | Full deploy; keep-alive job; `/health` provider components and prompt versions (RV-038); `poe purge CITY`, LangGraph checkpoints included (BD-36) | AT-17, AT-29 from outside; full run on the deployed URL; spike S-3 run on the deployed service (BD-36) | 0.5 h |
 
 **Day 3 exit check:** a user can open the URL, research a city, explore, ask, trace evidence and download a report.
 

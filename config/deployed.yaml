@@ -8,6 +8,7 @@ access:
   access_code_env: ACCESS_CODE
   admin_code_env: ADMIN_CODE
   session_secret_env: SESSION_SECRET
+  client_ip_header: CF-Connecting-IP  # Render is fronted by Cloudflare, which overwrites it (BD-04)
 llm:
   # Model bindings (BD-05). Each binding carries the setting its model accepts:
   # effort for Claude Sonnet/Opus 5.5 and OpenAI reasoning models, temperature for Claude Haiku 4.5.
@@ -37,7 +38,7 @@ vector:     { provider: qdrant, url_env: QDRANT_URL, api_key_env: QDRANT_API_KEY
 graph:      { provider: graphiti_neo4j, uri_env: NEO4J_URI, user_env: NEO4J_USER, password_env: NEO4J_PASSWORD }
 snapshots:  { provider: postgres, max_bytes: 10485760 }
 renderer:   { provider: weasyprint }
-tracing:    { providers: [events, langsmith], langsmith_api_key_env: LANGSMITH_API_KEY }
+tracing:    { providers: [events] }   # BD-36: no LangSmith adapter is built (LLD-4 §5.3: optional)
 # Provisional until spike S-6 (BD-05): estimate ~1.4M tokens, ~$4.10 a run with gpt-6.1-sol low
 budget:     { wall_clock_s: 420, searches: 64, fetches: 60, tokens: 1500000, cost_micro_usd: 3000000, wind_down_at: 0.85 }   # BD-15
 limits:     { runs_per_day: 20, ask_per_min: 20, resolve_per_min: 30 }

@@ -47,6 +47,7 @@ class RunState(TypedDict):
     all_slots: list[str]                         # every slot of the run: each ends with a status
     slots_to_work: list[str]                     # slot ids for the next fan-out
     replans: Annotated[dict[str, int], merge_dicts]             # slot_id -> re-plans used
+    wave0_claim_ids: list[str]                   # Wave 0 claims, checked by code (HD-03)
     plans: Annotated[dict[str, SlotPlan], merge_dicts]          # slot_id -> queries for this round
     slot_reports: Annotated[dict[str, SlotReport], merge_dicts] # keyed '<slot_id>@<round>' (BD-14)
     finished: bool
@@ -78,20 +79,25 @@ The state holds IDs only. Everything else is in Postgres, so a checkpoint stays 
 class SlotState(TypedDict):
     run_id: str
     city: CityIdentity
-    slot: SlotDef
+    slot_id: str                                 # the slot's definition is read from RunDeps
     round: int
     plan: SlotPlan
     query_ids: list[str]
-    candidates: list[Candidate]                  # url, title, rank, query_id, publisher_class
+    candidates: list[Candidate]                  # url, rank, query_id, publisher_class,
+                                                 # names_other_place (BD-36: never title or snippet)
     reused: list[Candidate]                      # fetched by another slot this run (§14)
     allowed: list[Candidate]
     crawl_decision_ids: list[str]
     source_ids: list[str]
+    drafts: list[Draft]                          # extracted, quote not yet located (BD-09)
     claim_ids: list[str]
     matched_claim_ids: list[str]                 # quote found
     supported_claim_ids: list[str]
     error: str | None
+    slot_reports: dict[str, SlotReport]          # the subgraph's only output
 ```
+
+Checkpoints hold this state (BD-14). Search titles and snippets never enter it: `search` decides the other-place flag itself (BD-36; code review RV-090, correcting BD-15(6)). Claim drafts do, until `match_quotes` writes the located ones.
 
 ### 2.3 Budget is not in state (decision WD-01)
 
@@ -145,12 +151,12 @@ These conditional edges make the three required routing points visible in the re
 | `crawl_gate` | code agent | candidates | `crawl_decision` | `crawl_decision` per URL | — | A URL whose gate errors is `unreachable_network` |
 | `record_gate_gap` | code | decisions | — | — | — | — |
 | `fetch_parse` | code | allowed | `source`, `snapshot`, Qdrant points | `source_fetched` or `source_unreadable` | Embeddings | Per-URL; failure recorded on `source.parse_outcome` |
-| `extract` | model | `source.parsed_text` | `claim` (`extracted`), `statistic`, `relation` draft | `claim_extracted` | Extractor (LLD-3 §4) | Repair once, escalate once, else skip source (§17) |
-| `match_quotes` | code | claim drafts in slot state (BD-09) | `claim` rows for located quotes only; a miss is recorded as a `claim_dropped` event with its reason and quote, never as a row (BD-09) | `claim_dropped` | — | — |
+| `extract` | model | `source.parsed_text`, in windows (BD-29) | claim drafts in slot state, no rows (BD-09) | `claim_extracted` | Extractor (LLD-3 §4) | Repair once, escalate once, else skip the window with `step_failed` (§17, BD-29) |
+| `match_quotes` | code | claim drafts in slot state (BD-09) | `claim` rows for located quotes only, with `statistic`; for relation claims the resolved `entity`, `entity_alias` and `relation` (BD-12); a miss is recorded as a `claim_dropped` event with its reason and quote, never as a row (BD-09) | `claim_dropped` | Embeddings (entity merge) | — |
 | `verify` | model | top claims (§5.3) + located passages | `verdict`, `claim.status` | `claim_verdict` | Checker (LLD-3 §5) | Retry, then labelled fallback model (§17) |
 | `record_unsupported` | code | verdicts | — | — | — | — |
 | `consistency` | code | this slot's supported relation claims, the run's supported and contested relation claims | `consistency`, `contested_pair`, `relation.superseded_on`, `claim.status`; claim-index payload status for contested claims | `conflict_found` | — | — |
-| `write` | code | supported claims | `entity`, `entity_alias`, `relation`, Graphiti edges, `graph_link`; `claim.search_tsv`; Qdrant claim-index point (LLD-5 §4.2) | `fact_written` | Embeddings (entity merge) | Graph write failure: claim stays supported in Postgres, `graph_link` absent, event payload notes it; retried once at `brief_ready` |
+| `write` | code | supported claims | Graphiti edges (names and fact embedded through the run's port, BD-36), `graph_link`, programme status; `claim.search_tsv`; Qdrant claim-index point (LLD-5 §4.2) | `fact_written` | Embeddings | Graph write failure: claim stays supported in Postgres, `graph_link` absent, event payload notes it; retried once at `brief_ready` |
 | `slot_done` | code | subgraph state | returns `SlotReport` | — | — | — |
 | `coverage` | code agent | all slot reports, claims | first the run-wide statistics sweep (§5.4: `consistency`, `contested_pair`, `claim.status`); then `slot_result` (one row per slot, replaced each round), `run.budget.used` | `conflict_found`; `slot_status` per slot worked this round | — | — |
 | `analytics` | code | Graphiti subgraph | `entity.attributes.centrality` | — | — | Skip silently |
@@ -298,11 +304,11 @@ Claims beyond the per-slot cap stay `extracted`: kept, never shown, still search
 
 ### 5.2 Ranking key (used everywhere a "best" claim is chosen)
 
-Sort ascending by this tuple; the first element wins:
+Sort ascending by this tuple; the first element wins. Geography comes first since BD-36 (owner): with source tier first, five national government figures pushed a city survey out of the five checks per slot, and a WHO national figure headlined over an academic city survey.
 
-1. Source tier: `government, multilateral` = 0, `academic` = 1, `ngo` = 2, `news` = 3, `other` = 4
-2. Representativeness: `census` 0, `representative_sample` 1, `modelled` 2, `non_representative` 3, `not_applicable` 1
-3. Geography fit: 0 if `geography_level` is in the slot's `accepted_levels`, else the distance in the `GeographyLevel` order
+1. Geography fit: 0 if the claim's effective `geography_level` is in the slot's `accepted_levels`, else the distance in the `GeographyLevel` order
+2. Source tier: `government, multilateral` = 0, `academic` = 1, `ngo` = 2, `news` = 3, `other` = 4
+3. Representativeness: `census` 0, `representative_sample` 1, `modelled` 2, `not_stated` and `not_applicable` 3, `non_representative` 4 (BD-22)
 4. Recency: `-reference_end` (newer first; `NULL` last)
 5. `claim_id` (determinism)
 

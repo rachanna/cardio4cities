@@ -154,7 +154,10 @@ class GraphitiGraph:
             labels=[entity.entity_type],
             attributes=dict(entity.attributes),
         )
-        await node.generate_name_embedding(self._embedder)
+        if entity.name_embedding is not None:  # embedded by the caller (BD-36)
+            node.name_embedding = list(entity.name_embedding)
+        else:
+            await node.generate_name_embedding(self._embedder)
         await node.save(self._g.driver)
 
     async def add_triplet(self, subject: GraphEntity, edge: GraphEdge, obj: GraphEntity) -> str:
@@ -180,7 +183,10 @@ class GraphitiGraph:
             reference_time=_at(edge.valid_at) or now,
             attributes=dict(edge.attributes),
         )
-        await stored.generate_embedding(self._embedder)
+        if edge.fact_embedding is not None:  # embedded by the caller (BD-36)
+            stored.fact_embedding = list(edge.fact_embedding)
+        else:
+            await stored.generate_embedding(self._embedder)
         await stored.save(self._g.driver)
         return edge.uuid
 
@@ -341,11 +347,17 @@ class GraphitiGraph:
         return bool(records)
 
     async def purge(self) -> int:
-        """Delete every node and edge, the marker too (`poe purge-graph`, local only)."""
-        records, _, _ = await self._g.driver.execute_query(
-            "MATCH (n) WITH n LIMIT 100000 DETACH DELETE n RETURN count(*) AS n"
-        )
-        return int(records[0]["n"]) if records else 0
+        """Delete every node and edge, the marker too (`poe purge-graph`, local only), in
+        batches until none is left."""
+        total = 0
+        while True:
+            records, _, _ = await self._g.driver.execute_query(
+                "MATCH (n) WITH n LIMIT 10000 DETACH DELETE n RETURN count(*) AS n"
+            )
+            deleted = int(records[0]["n"]) if records else 0
+            if deleted == 0:
+                return total
+            total += deleted
 
     async def close(self) -> None:
         await self._g.close()  # type: ignore[no-untyped-call]

@@ -14,6 +14,7 @@ from app.workflow.deps import RunDeps
 from app.workflow.ids import stable_id
 from app.workflow.nodes._deps import deps
 from app.workflow.problems import step_failed
+from app.workflow.rules.other_places import PlaceMatcher, place_matcher
 from app.workflow.state import Candidate, SlotState
 
 RESULTS_PER_QUERY = 10
@@ -28,6 +29,16 @@ async def _search(d: RunDeps, text: str, lang: str) -> list[SearchHit]:
         await asyncio.sleep(NETWORK_RETRY_DELAY_S)
     await d.ledger.reserve("search")
     return await d.search.search(text, lang, RESULTS_PER_QUERY)
+
+
+async def other_places(d: RunDeps, state: SlotState) -> PlaceMatcher:
+    """The country's other places, loaded once per run (BD-15)."""
+    if d.places is None:
+        rows = await d.relational.reference.country_places(
+            state["city"].country_iso2, d.other_place_min_population
+        )
+        d.places = place_matcher(state["city"], rows)
+    return d.places
 
 
 async def search(state: SlotState, config: RunnableConfig) -> dict[str, Any]:
@@ -63,6 +74,7 @@ async def search(state: SlotState, config: RunnableConfig) -> dict[str, Any]:
             {"slot_id": slot_id, "query_id": query_id, "result_count": len(hits)},
         )
         query_ids.append(query_id)
+        places = await other_places(d, state)
         candidates += [
             Candidate(
                 url=h.url,
@@ -70,9 +82,8 @@ async def search(state: SlotState, config: RunnableConfig) -> dict[str, Any]:
                 publisher_class="",
                 rank=h.rank,
                 query_id=query_id,
-                title=h.title,
-                snippet=h.snippet,
+                names_other_place=places.names_other_place(h.title, h.snippet, h.url),
             )
             for h in hits
-        ]  # title and snippet only rank candidates: they never become evidence (AT-06)
+        ]  # title and snippet only rank candidates, here: never evidence, never kept (AT-06)
     return {"query_ids": query_ids, "candidates": candidates, "error": error}

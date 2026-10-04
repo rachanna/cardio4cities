@@ -48,7 +48,7 @@ from app.ports.snapshots import SnapshotPort
 from app.ports.structured import StructuredDataPort
 from app.ports.vector import VectorPort
 from app.prompts.loader import load_prompt
-from app.settings import ModelRef, RoleConfig, Settings
+from app.settings import Config, ModelRef, RoleConfig, Settings
 from app.workflow.budget import BudgetLedger, BudgetLimits
 from app.workflow.collection import CollectionParams, Collector
 from app.workflow.deps import Binding, RoleBinding, RunDeps, WindowParams
@@ -147,6 +147,23 @@ def _need[T](port: T | None, name: str) -> T:
     if port is None:
         raise RuntimeError(f"the workflow needs a {name} port; none is configured")
     return port
+
+
+def collection_params(cfg: Config) -> CollectionParams:
+    """The collector's settings from config: for a run, and for spike S-3 (BD-36)."""
+    f = cfg.fetch
+    return CollectionParams(
+        user_agent=cfg.app.user_agent,
+        allowed_ports=tuple(f.allowed_ports),
+        min_interval_s=f.min_interval_s,
+        concurrency=f.concurrency,
+        max_bytes=f.max_bytes,
+        connect_timeout_s=f.connect_timeout_s,
+        read_timeout_s=f.read_timeout_s,
+        robots_timeout_s=f.robots_timeout_s,
+        crawl_delay_cap_s=f.crawl_delay_cap_s,
+        total_timeout_s=f.total_timeout_s,
+    )
 
 
 def role_bindings(settings: Settings) -> dict[str, RoleBinding]:
@@ -401,25 +418,7 @@ class RunManager:
             asyncio.Semaphore(cfg.embeddings.concurrency),
             record_embedding,
         )
-        f = cfg.fetch
-        collector = Collector(
-            fetch,
-            robots,
-            parser,
-            ledger,
-            CollectionParams(
-                user_agent=cfg.app.user_agent,
-                allowed_ports=tuple(f.allowed_ports),
-                min_interval_s=f.min_interval_s,
-                concurrency=f.concurrency,
-                max_bytes=f.max_bytes,
-                connect_timeout_s=f.connect_timeout_s,
-                read_timeout_s=f.read_timeout_s,
-                robots_timeout_s=f.robots_timeout_s,
-                crawl_delay_cap_s=f.crawl_delay_cap_s,
-                total_timeout_s=f.total_timeout_s,
-            ),
-        )
+        collector = Collector(fetch, robots, parser, ledger, collection_params(cfg))
         reference = self.relational.reference
         events = EventEmitter(self.relational.runs)
         deps = RunDeps(

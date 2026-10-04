@@ -226,7 +226,7 @@ data: {"source_id":"src_01J9Z4C2","url":"https://…","publisher_class":"governm
 | Rule | Detail |
 |---|---|
 | `id` | The event's `seq` (LLD-1 §4.2) |
-| Resume | The browser sends `Last-Event-ID` on reconnect; the server first replays stored events with `seq` greater than it, in order, then follows live events. No duplicates, no gaps |
+| Resume | The browser sends `Last-Event-ID` on reconnect; the server first replays stored events with `seq` greater than it, in order, then follows live events. No duplicates, no gaps. A `Last-Event-ID` that is not 1 to 18 digits is refused with 400 `invalid_last_event_id` (it used to become 0, a full replay as duplicates). When the run is terminal the server reads the events once more before closing, so the stream always ends with `run_finished` even when it was stored just after an empty read (BD-25) |
 | Live following | The server polls `run_event` every 500 ms `[tunable]` after replay, so live delivery works even if the run executes in another process later |
 | Heartbeat | A comment line every 15 s to keep proxies from closing the connection |
 | End | After `run_finished`, the server sends it and closes. A client that connects after the run ended receives the full replay, then the close |
@@ -284,6 +284,7 @@ verify:     { max_claims_per_slot: 5, label_margin_chars: 200 }   # BD-10
 geography:  { nearby_km: 75 }   # BD-10
 eval:       { checker_agreement_min: 0.9 }   # LLD-3 §9
 stream:     { poll_interval_s: 0.5, heartbeat_s: 15 }   # BD-09
+runs:       { heartbeat_s: 10, stale_after_s: 45, shutdown_grace_s: 15 }   # BD-25
 select:     { max_new_urls_per_slot_round: 3, max_reused_per_slot_round: 2, other_place_min_population: 15000 }   # BD-14, BD-15
 replan:     { max_rounds: 2, max_rounds_wider_geo: 1, priority: [S04, S03, S05, S06] }   # priority: BD-15
 plan:       { queries_per_slot: 2 }   # BD-15
@@ -315,7 +316,9 @@ The application refuses to start, with a message naming the problem, when:
 | Check | Rule |
 |---|---|
 | Checker independence | `checker.family == extractor.family` and no `fallback` path is in use: refuse. A same-family primary checker is allowed only with `allow_same_family_checker: true`, which is then shown on every verdict and in `/health` |
-| Embedding model | Provider's reported dimension ≠ `embeddings.dimension`; or the Qdrant collection `source_chunks__{key}` exists with a different vector size |
+| Embedding model | Provider's reported dimension ≠ `embeddings.dimension`; or the Qdrant collection `source_chunks__{key}` or `claim_index__{key}` exists with a different vector size (checked at start-up since BD-25; an unreachable Qdrant is left to `/health`) |
+| Adapters | A provider a workflow port uses (relational, checkpointer, llm, embeddings, search, fetch, robots, parser, vector, snapshots, graph) has no adapter: refuse, naming it (BD-25). It used to start with a warning and fail every check at run time |
+| Graph embedding marker | Checked before every run starts or resumes, not only at start-up (BD-25): an empty graph takes the configured key; a graph that is unreachable, holds unmarked entities or another model's marker refuses the run with 503 `dependency_unavailable` (`component: neo4j`). At start-up the same check only warns, so a graph problem never stops the app |
 | Secrets | Any `*_env` referenced by an enabled adapter is missing |
 | Placeholders | Any value `"<confirm day 1>"` or a `0` budget in `deployed` |
 | Reference data | `ref_slot` does not hold exactly S01–S16; `ref_source` contains placeholder indicator codes |
@@ -359,7 +362,8 @@ APP_ENV=local           # local | deployed
 | 409 | `no_research_yet` | Ask, brief or report for a city with no completed run |
 | 413 | `question_too_long` | Over 500 characters |
 | 429 | `rate_limited`, `daily_run_limit` | Limits in §4 of config |
-| 503 | `dependency_unavailable` | A store is down; `details.component` names it |
+| 503 | `dependency_unavailable` | A store is down; `details.component` names it. Also a run refused because the graph is not ready (BD-25), and a run start that fails while Postgres is unreachable |
+| 404, 405 | `not_found`, `method_not_allowed` | From routing, unknown `/api` addresses included: the same envelope (BD-25) |
 | 500 | `internal_error` | Anything else; logged with a request ID |
 
 Messages are written for the City Lead: they say what happened and what to do, without apology or internal terms.
@@ -395,6 +399,8 @@ Messages are written for the City Lead: they say what happened and what to do, w
 | Providers | A cached lightweight check (model list or a one-token call) at most every 10 minutes, so health checks do not burn budget |
 | Overall status | `ok` only if every component is `ok`; otherwise `degraded` with HTTP 503 |
 | Keep-alive | A scheduled job calls `/health` every 6 hours during the evaluation window `[tunable]`, which also keeps any free-tier store awake |
+| Resume | `resume: "off"` when this process cannot save checkpoints (Windows' Proactor loop, local only), so a run cannot resume after a restart; shown, not counted against the status. The run summary carries `checkpointed` (BD-25) |
+| Liveness | `GET /api/v1/live` (no auth): 200 when the process answers and Postgres is reachable, else 503. The platform health check (`render.yaml`) uses it, so a Neo4j or Qdrant restart degrades `/health` without the platform restarting the app and killing a run (BD-25) |
 
 ---
 

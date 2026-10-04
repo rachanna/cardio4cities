@@ -21,9 +21,18 @@ from app.api.auth import AccessConfig
 from app.api.limits import FailureLimiter
 from app.api.routers import health, runs, session
 from app.api.routers.health import HealthService
-from app.container import AdapterRegistry, Container, build_container
+from app.container import ADAPTERS, AdapterRegistry, Container, build_container
 from app.ports.graph import GraphPort
-from app.settings import ConfigError, check_indicator_codes, check_reference_slots, load_settings
+from app.settings import (
+    ConfigError,
+    Settings,
+    check_embedding_dimension,
+    check_indicator_codes,
+    check_reference_slots,
+    load_settings,
+)
+from app.workflow.deps import chunk_collection, claim_collection
+from app.workflow.graph_marker import GraphNotReadyError, ensure_graph_marker
 from app.workflow.runner import RunManager
 
 log = logging.getLogger(__name__)
@@ -53,33 +62,68 @@ async def check_reference_data(container: Container) -> None:
         raise ConfigError(problems)
 
 
-PURGE_HINT = "run `uv run poe purge-graph` (local only), or point NEO4J_URI at an empty database"
-
-
-async def check_graph_marker(graph: GraphPort | None, embedding_key: str) -> None:
-    """R-82: one embedding model per store. The graph records the key of the model that
-    made its embeddings; start-up refuses a different one. An unreachable graph is left
-    to the health check: it never blocks start-up."""
+async def check_graph_marker(graph: GraphPort | None, embedding_key: str) -> str | None:
+    """R-82 at start-up: warn only. A graph that is unreachable, unmarked or from another
+    model refuses runs with a 503 (`ensure_graph_marker` before every run, BD-25); it
+    never stops the app from starting. Returns the problem, if any."""
     if graph is None:
-        return
+        return None
     try:
-        marker = await graph.embedding_marker()
-        if marker is None and not await graph.has_entities():
-            await graph.set_embedding_marker(embedding_key)
-            return
-    except Exception as exc:
-        log.warning("graph embedding marker not checked (%s)", type(exc).__name__)
+        await ensure_graph_marker(graph, embedding_key)
+    except GraphNotReadyError as exc:
+        log.warning("runs will be refused until the graph is ready: %s", exc)
+        return str(exc)
+    return None
+
+
+# Ports a run cannot do without: a missing adapter refuses start-up (code review RV-037)
+REQUIRED_PORTS = frozenset({
+    "relational", "checkpointer", "llm", "embeddings", "search", "fetch", "robots",
+    "parser", "vector", "snapshots", "graph",
+})  # fmt: skip
+
+
+def check_adapters(missing: list[str], registry: AdapterRegistry) -> None:
+    """A role on a provider with no adapter used to start with a warning and fail every
+    check at run time with KeyError; now start-up refuses and names it (BD-25). A port the
+    registry does not offer at all (a partial build for API tests) is not refused."""
+    required = [
+        m for m in missing
+        if (port := m.partition(":")[0]) in REQUIRED_PORTS and registry.get(port)
+    ]  # fmt: skip
+    if required:
+        raise ConfigError(
+            [f"no adapter for {m.replace(':', ' provider ')}; choose a supported provider"
+             for m in required]
+        )  # fmt: skip
+
+
+async def check_vector_store(container: Container, settings: Settings) -> None:
+    """R-82, BD-02(5): the embedding model's dimension is the configured one, and no
+    existing collection holds vectors of another size. An unreachable store is left to
+    the health check (code review RV-034)."""
+    embeddings, vector = container.embeddings, container.vector
+    if embeddings is None or vector is None:
         return
-    if marker is None:
-        raise ConfigError(
-            [f"the graph holds entities with no embedding marker, so they may come from "
-             f"another embedding model than {embedding_key!r}: {PURGE_HINT}"]
-        )  # fmt: skip
-    if marker != embedding_key:
-        raise ConfigError(
-            [f"the graph's embeddings were made with {marker!r} but the configuration uses "
-             f"{embedding_key!r}: {PURGE_HINT}"]
-        )  # fmt: skip
+    cfg = settings.config.embeddings
+    problems: list[str] = []
+    for name in (chunk_collection(cfg.key), claim_collection(cfg.key)):
+        try:
+            existing = await vector.collection_dimension(name)
+        except Exception as exc:
+            log.warning("vector collections not checked (%s)", type(exc).__name__)
+            return
+        problems += check_embedding_dimension(cfg.dimension, embeddings.dimension, name, existing)
+    if problems:
+        raise ConfigError(sorted(set(problems)))
+
+
+async def _checkpoints(manager: RunManager) -> bool | None:
+    try:
+        return await manager.checkpoints_available()
+    except Exception as exc:
+        log.warning("checkpoints not checked (%s)", type(exc).__name__)
+        return None
 
 
 def _lifespan(
@@ -91,8 +135,11 @@ def _lifespan(
             load_dotenv(env_file, override=False)  # never overrides real environment variables
         settings = load_settings()
         container = build_container(settings, registry)
+        manager: RunManager | None = None
         try:
+            check_adapters(container.missing, ADAPTERS if registry is None else registry)
             await check_reference_data(container)
+            await check_vector_store(container, settings)
             await check_graph_marker(container.graph, settings.config.embeddings.key)
             if container.missing:
                 log.warning("adapters not built yet: %s", ", ".join(container.missing))
@@ -104,19 +151,26 @@ def _lifespan(
                 session_secret=settings.secret(access.session_secret_env),
             )
             app.state.session_limiter = FailureLimiter()
-            app.state.runs = RunManager(container, settings)
+            manager = app.state.runs = RunManager(container, settings)
+            checkpoints: bool | None = None
             if container.relational is not None:
-                resumed = await app.state.runs.resume_stranded()
+                # Never raises: a store outage must not stop the app or spend a resume
+                resumed = await manager.resume_stranded()
                 if resumed:
                     log.warning("resumed runs left by a stopped process: %s", ", ".join(resumed))
+                manager.start_watching()  # heartbeat and take over quiet runs (BD-25)
+                checkpoints = await _checkpoints(manager)
             app.state.health = HealthService(
                 relational=container.relational,
                 probes=container.probes,
                 same_family_checker=settings.same_family_checker,
                 app_version=APP_VERSION,
+                checkpoints=checkpoints,
             )
             yield
         finally:
+            if manager is not None:  # runs stop, keeping their checkpoints, before stores close
+                await manager.shutdown()
             await container.close()
 
     return lifespan

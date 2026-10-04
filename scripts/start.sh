@@ -10,4 +10,6 @@ if [ -n "$QDRANT_HOST" ] && [ -z "$QDRANT_URL" ]; then export QDRANT_URL="http:/
 # variable as a setting and refuses to start on an unknown one (BD-04).
 if [ -n "$STORE_NEO4J_PASSWORD" ] && [ -z "$NEO4J_PASSWORD" ]; then export NEO4J_PASSWORD="$STORE_NEO4J_PASSWORD"; fi
 if [ -n "$STORE_QDRANT_API_KEY" ] && [ -z "$QDRANT_API_KEY" ]; then export QDRANT_API_KEY="$STORE_QDRANT_API_KEY"; fi
-exec uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8000}"
+# A bounded graceful shutdown: open event streams must not hold the process forever, and
+# runs get time to stop with their checkpoint so the next process resumes them (BD-25)
+exec uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8000}" --timeout-graceful-shutdown 20

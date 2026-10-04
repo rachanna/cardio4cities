@@ -444,7 +444,8 @@ CREATE TABLE run (
   budget jsonb NOT NULL,                         -- limits in force; `used`: the ledger's saved counters (BD-14)
   versions jsonb NOT NULL,                       -- model ids and prompt versions per role
   error text,
-  resume_attempts int NOT NULL DEFAULT 0         -- resumed at start-up at most once (BD-14)
+  resume_attempts int NOT NULL DEFAULT 0,        -- resumed at start-up at most once (BD-14)
+  owner text, heartbeat_at timestamptz           -- the process running it, last alive (BD-25)
 );
 CREATE INDEX run_city_idx ON run (city_id, started_at DESC);
 ALTER TABLE city ADD CONSTRAINT city_latest_run_fk FOREIGN KEY (latest_run_id) REFERENCES run;

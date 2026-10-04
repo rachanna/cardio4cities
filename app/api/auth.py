@@ -9,7 +9,7 @@ import hashlib
 import hmac
 import json
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 from fastapi import Request
@@ -23,9 +23,11 @@ MAX_AGE_S = 43_200  # 12 hours (LLD-4 §3.1)
 
 @dataclass(frozen=True)
 class AccessConfig:
-    access_code: str
-    admin_code: str
-    session_secret: str
+    """Secrets: never in a repr or a log line (code review RV-074)."""
+
+    access_code: str = field(repr=False)
+    admin_code: str = field(repr=False)
+    session_secret: str = field(repr=False)
 
 
 @dataclass(frozen=True)
@@ -64,6 +66,8 @@ def issue_token(role: Role, secret: str, now: float | None = None) -> str:
 
 
 def read_token(token: str, secret: str, now: float | None = None) -> Session | None:
+    if not token.isascii():  # compare_digest refuses non-ASCII text with TypeError (RV-069)
+        return None
     payload, _, signature = token.partition(".")
     if not payload or not hmac.compare_digest(signature, _sign(payload, secret)):
         return None

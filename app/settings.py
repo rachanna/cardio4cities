@@ -275,6 +275,12 @@ class StructuredSection(_Section):
     providers: dict[str, StructuredProvider]
 
 
+class RunsSection(_Section):
+    heartbeat_s: float  # BD-25: how often a process says its runs are alive [tunable]
+    stale_after_s: float  # BD-25: a quieter run is taken over by another process [tunable]
+    shutdown_grace_s: float  # BD-25: time a run gets to stop cleanly on shutdown [tunable]
+
+
 class StreamSection(_Section):
     poll_interval_s: float  # LLD-4 §4: live following polls run_event [tunable]
     heartbeat_s: float  # LLD-4 §4: comment line that keeps proxies from closing
@@ -308,6 +314,7 @@ class Config(_Section):
     confidence: ConfidenceSection
     analytics: AnalyticsSection
     stream: StreamSection
+    runs: RunsSection
     structured: StructuredSection
     geography: GeographySection
     eval: EvalSection

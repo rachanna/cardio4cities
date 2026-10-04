@@ -12,6 +12,7 @@ resumed (no checkpoint, or already resumed once) is marked `failed`, visibly."""
 
 import asyncio
 import logging
+import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import date
@@ -52,6 +53,7 @@ from app.workflow.deps import Binding, RoleBinding, RunDeps, WindowParams
 from app.workflow.entities import EntityResolver
 from app.workflow.events import EventEmitter
 from app.workflow.graph import build_graph
+from app.workflow.graph_marker import ensure_graph_marker
 from app.workflow.ids import new_id
 from app.workflow.limits import LimitedEmbeddings, LimitedLLM
 from app.workflow.rules.chunking import ChunkParams
@@ -142,7 +144,10 @@ class RunManager:
     settings: Settings
     reference_dir: Path = REFERENCE_DIR
     tasks: dict[str, asyncio.Task[None]] = field(default_factory=dict)
+    # This process, as the owner its runs record with their heartbeat (BD-25)
+    owner: str = field(default_factory=lambda: f"proc_{uuid.uuid4().hex[:16]}")
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
+    _watcher: asyncio.Task[None] | None = field(default=None, repr=False)
     _publishers: PublisherTable | None = None
     _thresholds: tuple[ThresholdRule, ...] = ()
 
@@ -172,10 +177,16 @@ class RunManager:
                 city_id = new_id("city")
                 await runs.create_city(CityIdentity(city_id=city_id, admin2_name=None, **place))
             city = await runs.city_identity(city_id)
+            # The graph takes this run's embeddings only with this model's marker (BD-25)
+            await ensure_graph_marker(self.ports.graph, self.settings.config.embeddings.key)
             run_id = new_id("run")
             deps = await self.build_deps(run_id)
             await runs.create_run(
-                run_id, city_id, deps.ledger.limits.__dict__, model_versions(deps.roles)
+                run_id,
+                city_id,
+                deps.ledger.limits.__dict__,
+                model_versions(deps.roles),
+                self.owner,
             )
         slot_ids = list(slots) if slots is not None else sorted(deps.slots)
         state: RunState = {
@@ -209,9 +220,12 @@ class RunManager:
         task.add_done_callback(lambda _: self.tasks.pop(run_id, None))
 
     async def _run(self, deps: RunDeps, state: RunState | None) -> None:
-        """`state` None: resume the run from its last checkpoint."""
+        """`state` None: resume the run from its last checkpoint. A cancelled run (the
+        process is stopping) stays `running`, so another process resumes it (BD-25)."""
         try:
-            graph = build_graph(await self._saver())
+            saver = await self._saver()
+            deps.checkpointed = saver is not None  # shown in the run summary (BD-25)
+            graph = build_graph(saver)
             await graph.ainvoke(
                 state,
                 {
@@ -231,28 +245,88 @@ class RunManager:
         )
         await self.relational.runs.set_status(run_id, "failed", error)
 
-    async def resume_stranded(self) -> list[str]:
-        """At start-up: resume each run a stopped process left behind, once (BD-14)."""
-        resumed = []
-        saver = await self._saver()
-        for row in await self.relational.runs.stranded_runs():
+    async def resume_stranded(self, stale_after_s: float | None = None) -> list[str]:
+        """Resume each run a stopped process left behind, once (BD-14). Only a run whose
+        owner has gone quiet for `stale_after_s` (default `runs.stale_after_s`) is taken
+        over, so a live run in another process is never run twice (BD-25). One run's
+        failure never stops the others, and nothing here raises."""
+        stale = self.settings.config.runs.stale_after_s if stale_after_s is None else stale_after_s
+        resumed: list[str] = []
+        try:
+            rows = await self.relational.runs.stranded_runs()
+            saver = await self._saver()
+        except Exception as exc:  # the store is unreachable: try again on the next pass
+            log.warning("stranded runs not checked (%s)", type(exc).__name__)
+            return resumed
+        for row in rows:
             run_id = row["run_id"]
-            checkpoint = (
-                await saver.aget_tuple({"configurable": {"thread_id": run_id}})
-                if saver is not None
-                else None
-            )
-            if checkpoint is None or row["resume_attempts"] >= 1:
-                reason = "no checkpoint" if checkpoint is None else "already resumed once"
-                log.warning("run %s cannot be resumed (%s)", run_id, reason)
-                await self._fail(run_id, f"interrupted by a restart ({reason})")
-                continue
-            await self.relational.runs.note_resume(run_id)
-            deps = await self.build_deps(run_id)
-            deps.ledger.restore((row["budget"] or {}).get("used", {}))
-            self._launch(deps, None)
-            resumed.append(run_id)
+            if run_id in self.tasks:
+                continue  # this process is running it
+            quiet = row.get("quiet_s")
+            if quiet is not None and float(quiet) < stale and row.get("owner") != self.owner:
+                continue  # another process is alive and owns it
+            try:
+                if await self._resume(row, saver, stale):
+                    resumed.append(run_id)
+            except Exception as exc:  # left for the next pass; the resume is not spent
+                log.warning("run %s not resumed (%s)", run_id, type(exc).__name__)
         return resumed
+
+    async def _resume(self, row: dict[str, Any], saver: Any, stale_after_s: float) -> bool:
+        run_id = row["run_id"]
+        checkpoint = (
+            await saver.aget_tuple({"configurable": {"thread_id": run_id}})
+            if saver is not None
+            else None
+        )
+        if checkpoint is None or row["resume_attempts"] >= 1:
+            reason = "no checkpoint" if checkpoint is None else "already resumed once"
+            log.warning("run %s cannot be resumed (%s)", run_id, reason)
+            await self._fail(run_id, f"interrupted by a restart ({reason})")
+            return False
+        # Everything that can fail on a store comes before the claim, so a failure here
+        # does not spend the run's one resume (code review RV-035)
+        deps = await self.build_deps(run_id)
+        await ensure_graph_marker(self.ports.graph, self.settings.config.embeddings.key)
+        if not await self.relational.runs.claim_stale(run_id, self.owner, stale_after_s):
+            return False  # another process took it first
+        deps.ledger.restore((row["budget"] or {}).get("used", {}))
+        self._launch(deps, None)
+        return True
+
+    async def watch(self) -> None:
+        """For the life of the process: keep this process's runs' heartbeat fresh and
+        take over runs whose owner went quiet, such as an old instance during a deploy
+        (BD-25). Never raises."""
+        every = self.settings.config.runs.heartbeat_s
+        while True:
+            try:
+                if self.tasks:
+                    await self.relational.runs.heartbeat(self.owner)
+                resumed = await self.resume_stranded()
+                if resumed:
+                    log.warning("took over stranded runs: %s", ", ".join(resumed))
+            except Exception as exc:
+                log.warning("run watch pass failed (%s)", type(exc).__name__)
+            await asyncio.sleep(every)
+
+    def start_watching(self) -> None:
+        if self._watcher is None:
+            self._watcher = asyncio.create_task(self.watch(), name="run-watch")
+
+    async def shutdown(self) -> None:
+        """Stop watching, then cancel this process's runs and wait for them before the
+        adapters close. A cancelled run stays `running` with its checkpoint, so the next
+        process resumes it (BD-25; code review RV-040)."""
+        tasks = [t for t in (self._watcher, *self.tasks.values()) if t is not None]
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.wait(tasks, timeout=self.settings.config.runs.shutdown_grace_s)
+
+    async def checkpoints_available(self) -> bool:
+        """False on Windows' Proactor loop, where runs cannot resume (BD-14)."""
+        return await self._saver() is not None
 
     async def build_deps(self, run_id: str) -> RunDeps:
         p, cfg = self.ports, self.settings.config

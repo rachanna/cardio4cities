@@ -154,7 +154,10 @@ class GraphitiGraph:
             labels=[entity.entity_type],
             attributes=dict(entity.attributes),
         )
-        await node.generate_name_embedding(self._embedder)
+        if entity.name_embedding is not None:  # embedded by the caller (BD-36)
+            node.name_embedding = list(entity.name_embedding)
+        else:
+            await node.generate_name_embedding(self._embedder)
         await node.save(self._g.driver)
 
     async def add_triplet(self, subject: GraphEntity, edge: GraphEdge, obj: GraphEntity) -> str:
@@ -180,7 +183,10 @@ class GraphitiGraph:
             reference_time=_at(edge.valid_at) or now,
             attributes=dict(edge.attributes),
         )
-        await stored.generate_embedding(self._embedder)
+        if edge.fact_embedding is not None:  # embedded by the caller (BD-36)
+            stored.fact_embedding = list(edge.fact_embedding)
+        else:
+            await stored.generate_embedding(self._embedder)
         await stored.save(self._g.driver)
         return edge.uuid
 

@@ -199,3 +199,37 @@ async def test_the_embedding_marker_round_trips_and_is_restored(
         else:
             await g.set_embedding_marker(held)
     assert await g.embedding_marker() == held
+
+
+async def test_given_embeddings_are_stored_and_the_adapter_embeds_nothing(
+    graph: tuple[GraphitiGraph, str],
+) -> None:
+    """BD-36 (code review RV-091): the workflow embeds names and facts under its budget
+    and limiter; the adapter stores those vectors and makes no embedding call."""
+    g, group = graph
+    model = HashEmbeddings()
+    calls: list[list[str]] = []
+    real = g._embedder._port
+
+    class Counting:
+        dimension, key = model.dimension, model.key
+
+        async def embed(self, texts: list[str]) -> list[list[float]]:
+            calls.append(texts)
+            return await real.embed(texts)
+
+    g._embedder._port = Counting()
+    city = entity(group, "city", "Halden Bay", "Place")
+    office = entity(group, "office", "Halden Bay Health Office", "Organization")
+    governs = edge(group, "clm_e", "GOVERNS", "The office runs public health.", None)
+    vectors = await model.embed([city.name, office.name, governs.fact])
+
+    await g.add_triplet(
+        office.model_copy(update={"name_embedding": vectors[1]}),
+        governs.model_copy(update={"fact_embedding": vectors[2]}),
+        city.model_copy(update={"name_embedding": vectors[0]}),
+    )
+
+    assert calls == []
+    hits = await g.search_edges(group, ["GOVERNS"], query="The office runs public health.")
+    assert [h.edge.uuid for h in hits] == [governs.uuid]  # the stored vector is the fact's

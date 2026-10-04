@@ -34,6 +34,25 @@ def _node(entity: Entity) -> GraphEntity:
     )
 
 
+def _flat(text: str) -> str:
+    return text.replace("\n", " ")  # as Graphiti embeds names and facts
+
+
+async def _embedded(
+    d: RunDeps, subject: GraphEntity, edge: GraphEdge, obj: GraphEntity
+) -> tuple[GraphEntity, GraphEdge, GraphEntity]:
+    """Both names and the fact in one embedding call, reserved first and through the
+    run's limited, costed port: the graph adapter then embeds nothing itself (BD-36; code
+    review RV-091). A confirmed claim's edge is never refused by the budget (BD-19)."""
+    await d.ledger.reserve("indexing")
+    names = await d.embeddings.embed([_flat(subject.name), _flat(obj.name), _flat(edge.fact)])
+    return (
+        subject.model_copy(update={"name_embedding": names[0]}),
+        edge.model_copy(update={"fact_embedding": names[2]}),
+        obj.model_copy(update={"name_embedding": names[1]}),
+    )
+
+
 def _attributes(claim: Claim, proxy: bool) -> dict[str, object]:
     return {
         "claim_ids": [claim.claim_id],
@@ -110,10 +129,7 @@ async def write_graph(d: RunDeps, claim_id: str) -> bool:
         built = await triplet(d, claim, statistic, ended_at)
         if built is None:
             return False
-        subject, edge, obj = built
-        # The edge fact and new node names are embedded. A confirmed claim's edge is never
-        # refused by the budget (BD-19).
-        await d.ledger.reserve("indexing")
+        subject, edge, obj = await _embedded(d, *built)
         await d.graph.add_triplet(subject, edge, obj)
     except Exception as exc:  # graph down or refused: the claim stays supported in Postgres
         log.warning("graph write failed for %s (%s)", claim_id, type(exc).__name__)
@@ -177,8 +193,10 @@ async def apply_programme_status(d: RunDeps, claim: Claim) -> None:
             continue
         updated = entity.model_copy(update={"attributes": merged})
         try:
+            node = _node(updated)
             await d.ledger.reserve("indexing")  # the node name is embedded again
-            await d.graph.upsert_entity(_node(updated))
+            (vector,) = await d.embeddings.embed([_flat(node.name)])
+            await d.graph.upsert_entity(node.model_copy(update={"name_embedding": vector}))
         except Exception as exc:  # Postgres holds the status; the node catches up on retry
             log.warning(
                 "graph programme status failed for %s (%s)", claim.claim_id, type(exc).__name__

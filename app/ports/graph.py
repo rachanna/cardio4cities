@@ -12,6 +12,9 @@ class GraphEntity(BaseModel):
     entity_type: str
     name: str
     attributes: dict[str, Any]
+    # Embedded by the workflow under its budget and limiter (BD-36); None: the adapter
+    # embeds the name itself
+    name_embedding: list[float] | None = None
 
 
 class GraphEdge(BaseModel):
@@ -24,6 +27,7 @@ class GraphEdge(BaseModel):
     valid_at: date | None
     invalid_at: date | None
     attributes: dict[str, Any]
+    fact_embedding: list[float] | None = None  # as `GraphEntity.name_embedding`
 
 
 class GraphEdgeHit(BaseModel):

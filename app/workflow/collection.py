@@ -584,6 +584,11 @@ class Collector:
                 CrawlOutcome.BLOCKED_LOGIN_OR_PAYWALL,
                 f"the page requires a login or payment ({result.status}); body discarded unread",
             )
+        if result.status >= 500:  # as for an API and robots.txt: unreachable, so counted (BD-35)
+            return blocked(
+                CrawlOutcome.UNREACHABLE_SERVER_ERROR,
+                f"the server returned an error ({result.status}); body discarded unread",
+            )
         usage = content_usage.from_header(result.headers)
         if usage.blocked:
             return blocked(

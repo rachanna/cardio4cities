@@ -82,7 +82,7 @@ Also confirm on day 1: the OpenAI checker and embedding model IDs and the embedd
 | D3-2 | Question answering | LLD-5, LLD-3 §6–7 | LLD-5 pipeline: understanding with follow-ups, four routes, re-validation, fusion, anchors, bundle, answerer v2, extended post-check, trace | AT-10, AT-11, AT-15, AT-28, AT-39 to AT-46; AT-13 and AT-14 for answers (BD-35) | 3 h |
 | D3-2b | Retrieval evaluation | LLD-5 §12 | Halden Bay retrieval fixture (about 30 claims, 25 questions with gold answers); `poe eval-rag` | AT-47 gates pass on fixtures in CI | 1.5 h |
 | D3-3 | Report | LLD-2 §16, LLD-3 §8 | Assembly, templates, PDF | AT-18 | 1 h |
-| D3-4 | Web app | HLD §12, LLD-4 §12 | Access, Start with live progress and coverage grid, City brief, Explore, Ask, Evidence panel; admin overlay | A non-technical walk-through works on a phone and a laptop; City brief screen built first; AT-24's UI half: the chosen identity is shown before research starts (BD-35) | 3 h |
+| D3-4 | Web app | HLD §12, LLD-4 §12 | Access, Start with live progress and coverage grid, City brief, Explore, Ask, Evidence panel; admin overlay | A non-technical walk-through works on a phone and a laptop; City brief screen built first; AT-24's UI half: the chosen identity is shown before research starts (BD-35); the Playwright smoke passes in CI (BD-41) | 3 h |
 | D3-5 | Deploy and smoke | REPO_STRUCTURE §5, LLD-4 §7, LLD-1 §8 | Full deploy; keep-alive job; `/health` provider components and prompt versions (RV-038); `poe purge CITY`, LangGraph checkpoints included (BD-36) | AT-17, AT-29 from outside; full run on the deployed URL; spike S-3 run on the deployed service (BD-36) | 0.5 h |
 
 **Day 3 exit check:** a user can open the URL, research a city, explore, ask, trace evidence and download a report.

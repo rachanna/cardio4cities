@@ -33,11 +33,13 @@ ROOT = Path(__file__).resolve().parents[2]
 MIN_POPULATION = 50_000
 MIN_NAME_LENGTH = 4
 # Place names that are also English words or code identifiers; never a city in this repo
-COMMON_WORDS = frozenset({"Date", "Most", "Reading", "Split", "Union", "Upland"})
+COMMON_WORDS = frozenset({"Date", "Independence", "Most", "Reading", "Split", "Union", "Upland"})
 ALLOWLIST = ROOT / "docs" / "no_seeding_allowlist.yaml"
 ALLOWED_PREFIX = "docs/"  # only documents may be allow-listed; everything else is strict
 EXTRA_NAMES = ROOT / "spike_results" / "scan_names.txt"  # git-ignored, optional
-SKIPPED = ("reference/geonames/",)  # the gazetteer itself (git-ignored dumps)
+# The gazetteer itself (git-ignored dumps), and npm's lock file: registry URLs and
+# platform names of third-party packages, written by npm (BD-41)
+SKIPPED = ("reference/geonames/", "web/package-lock.json")
 URL = re.compile(r"https?://[^\s\"'<>)\]]+")
 
 

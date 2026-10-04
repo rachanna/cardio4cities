@@ -15,11 +15,15 @@ from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException
+from starlette.responses import Response
+from starlette.routing import Match
+from starlette.types import Scope
 
 from app.api import errors
 from app.api.auth import AccessConfig
 from app.api.limits import FailureLimiter
-from app.api.routers import ask, cities, facts, health, reports, runs, session
+from app.api.routers import ask, cities, facts, health, reports, runs, session, workflow
 from app.api.routers.health import HealthService
 from app.container import ADAPTERS, AdapterRegistry, Container, build_container
 from app.ports.graph import GraphPort
@@ -38,8 +42,21 @@ from app.workflow.runner import RunManager
 log = logging.getLogger(__name__)
 APP_VERSION = "0.1.0"
 ROOT = Path(__file__).resolve().parents[1]
-# The Next.js export (D3-4) once built; until then the placeholder page.
+# The Next.js export (`poe web`, BD-41); the placeholder page when it is not built.
 WEB_DIRS = (ROOT / "web" / "out", ROOT / "web" / "placeholder")
+
+
+class WebFiles(StaticFiles):
+    """The web app at /. An unknown API address is the API's 404 in the error envelope,
+    never the web app's not-found page (RV-071, BD-41)."""
+
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        if scope["path"] == "/api" or scope["path"].startswith("/api/"):
+            # A known address with another method is 405, as without the web app
+            routes = scope["app"].router.routes
+            known = any(r.matches(scope)[0] is Match.PARTIAL for r in routes)
+            raise HTTPException(status_code=405 if known else 404)
+        return await super().get_response(path, scope)
 
 
 async def check_reference_data(container: Container) -> None:
@@ -198,9 +215,10 @@ def create_app(
     app.include_router(facts.router, prefix="/api/v1")
     app.include_router(ask.router, prefix="/api/v1")
     app.include_router(reports.router, prefix="/api/v1")
+    app.include_router(workflow.router, prefix="/api/v1")
     web_dir = next((d for d in WEB_DIRS if d.is_dir()), None)
     if web_dir is not None:  # mounted last: API routes take precedence
-        app.mount("/", StaticFiles(directory=web_dir, html=True), name="web")
+        app.mount("/", WebFiles(directory=web_dir, html=True), name="web")
     return app
 
 

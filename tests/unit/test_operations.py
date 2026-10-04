@@ -124,6 +124,7 @@ def test_unknown_addresses_and_methods_use_the_error_envelope(client: TestClient
     missing = client.get("/api/v1/no-such-thing")
     assert missing.status_code == 404
     assert missing.json()["error"]["code"] == "not_found"
+    assert client.get("/api").json()["error"]["code"] == "not_found"  # not the web app's page
     wrong = client.put("/api/v1/health")
     assert wrong.status_code == 405
     assert wrong.json()["error"]["code"] == "method_not_allowed"

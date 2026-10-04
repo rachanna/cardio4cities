@@ -1,6 +1,14 @@
-# Application image (REPO_STRUCTURE §5, BD-04).
-# Still to come: a Node stage that builds web/out (D3-4) and WeasyPrint system
-# libraries (verified in a spike). Until then FastAPI serves web/placeholder at /.
+# Application image (REPO_STRUCTURE §5, BD-04). Two stages: Node builds the web app's
+# static export (BD-41), then the Python image serves it at / with the API. Reports are
+# PDFs from fpdf2, which needs no system libraries (BD-40).
+
+FROM node:22.20-slim AS web
+
+WORKDIR /web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY web ./
+RUN npm run build
 
 FROM python:3.12-slim AS app
 
@@ -31,7 +39,7 @@ COPY app ./app
 COPY config ./config
 COPY reference/*.yaml ./reference/
 COPY scripts/start.sh scripts/predeploy.sh ./scripts/
-COPY web/placeholder ./web/placeholder
+COPY --from=web /web/out ./web/out
 
 RUN useradd --system --uid 10001 c4c
 USER c4c

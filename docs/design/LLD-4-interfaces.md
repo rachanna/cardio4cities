@@ -100,6 +100,8 @@ Slot status words: `answered` "Answered", `answered_wider_geo` "Wider area only"
 
 Cookie: signed token (HMAC with `SESSION_SECRET`), `HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=43200`. Claims: `role` (`viewer` or `admin`), `iat`, `exp`.
 
+As built (D3-4, BD-41): `GET /api/v1/session` returns `{ "role": "viewer" | "admin", "expires_at": "…" }` for a valid cookie and 401 otherwise, so the web app can tell whether it is signed in (the cookie is `HttpOnly`) and show the presenter tools to admins.
+
 ### 3.2 Cities and runs
 
 **`POST /api/v1/cities/resolve`**
@@ -179,6 +181,7 @@ Only facts in `v_city_facts` (LLD-1 §4.6) are returned as FactCards. A request 
 | `/entities/{id}` | Edges from the knowledge graph (`GraphPort.neighbours`, non-negotiable 5); every claim behind an edge is checked again in Postgres, and only claims of the latest run that are supported, contested or superseded (ended) with a supported verdict keep it. `graph_used: true`. When Neo4j is down, 503 `dependency_unavailable` (`component: neo4j`); the other read endpoints do not use the graph (owner, BD-37) |
 | `/facts/{id}/evidence` | `card` (a FactCard, any status), `quote`, `passage` (300 characters each side of the quote, with `highlight_start` and `highlight_end`), `label_passages` (period, population or area stated outside the quote, BD-10), `geography_fit`, `verdict`, `snapshot` (sha256, size, type, URL), `consistency` |
 | `/snapshots/{id}` | Served with `X-Snapshot-SHA256`, `nosniff` and a sandboxing Content-Security-Policy: a stored page is shown, never run |
+| `GET /slots` | (D3-4, BD-41) The 16 slots in order: `slot_id`, `dimension`, `question`, `short_label`, `headline`; the Start screen's coverage grid before a run has slot rows |
 
 ### 3.4 Questions and reports
 
@@ -219,7 +222,7 @@ As built (D3-3, BD-40): the default format is `pdf`; the first request for a run
 | Endpoint | Role | Returns |
 |---|---|---|
 | `GET /api/v1/health` | none | §7 |
-| `GET /api/v1/workflow/diagram` | viewer | Mermaid text generated from the compiled graphs (`draw_mermaid`), main graph and slot subgraph, for DS-2 (AT-03) |
+| `GET /api/v1/workflow/diagram` | viewer | Mermaid text generated from the compiled graphs (`draw_mermaid`), main graph and slot subgraph, for DS-2 (AT-03). As built (BD-41): `{ "main": "…", "slot": "…" }`, generated once per process |
 | `GET /api/v1/admin/planted-cases` | admin | The planted trust cases (HLD §9.5) with their last results |
 | `POST /api/v1/admin/planted-cases/{case_id}/run` | admin | Runs one planted case against the live components and returns the outcome with the claim, verdict and consequence |
 | `GET /api/v1/admin/answers/{answer_id}/trace` | admin | The stored retrieval trace of one answer (CHG-01, LLD-5 §10) |
@@ -611,6 +614,8 @@ Tests that would call paid providers use recorded responses in CI; `scripts/eval
 | Ask | `POST /cities/{id}/ask` |
 | Evidence panel | `GET /facts/{claim_id}/evidence`, `GET /snapshots/{source_id}` |
 | Admin overlay (demo) | `GET /workflow/diagram`, `GET /admin/planted-cases`, `POST /admin/planted-cases/{id}/run`, `ask` with `graph: "off"` |
+
+As built (D3-4, BD-41): every screen first calls `GET /session`; Start also calls `GET /slots` for its grid. Routes use a query string because the export is static: `/` (access and Start), `/city/?id=` (City brief), `/city/explore/?id=&entity=`, `/city/ask/?id=`, `/admin/` (presenter tools). The Evidence panel is a drawer opened from any fact on any screen. The presenter tools show the workflow diagram; the graph-off switch and the answer trace sit on the Ask screen for admins; planted cases join with D4-1.
 
 ---
 

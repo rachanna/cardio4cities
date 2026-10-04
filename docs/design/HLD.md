@@ -480,7 +480,7 @@ Every event is written to Postgres with a monotonic sequence number before it is
 | **Ask** | Questions with cited, badged answers and abstentions |
 | **Evidence panel** | Available everywhere: source, exact passage highlighted, dates, geography, verdict, all flags, snapshot link |
 
-Built as a static Next.js export, served by the API on the same origin (LLD-4 ID-01); the event stream drives live views.
+Built as a static Next.js export, served by the API on the same origin (LLD-4 ID-01); the event stream drives live views. Presenters also get the workflow diagram, the knowledge-graph switch and the answer trace (BD-41).
 
 ---
 

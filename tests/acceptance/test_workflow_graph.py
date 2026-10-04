@@ -3,6 +3,9 @@ decision, the verdict and the sufficiency loop (R-02, R-37; code review RV-062).
 can be read between nodes is checked on a checkpointed run
 (`checkpointed/test_resume.py`)."""
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from app.workflow.graph import build_graph
 
 SLOT = "slot_subgraph:"
@@ -50,3 +53,27 @@ def test_the_sufficiency_loop_re_plans_or_moves_on() -> None:
         ("coverage", "analytics"),
         ("plan_slots", f"{SLOT}search"),
     } <= conditional_edges()
+
+
+def test_the_diagram_endpoint_serves_the_compiled_graphs() -> None:
+    """AT-03 for the demo (DS-2): the API returns Mermaid text generated from the code."""
+    from fastapi.testclient import TestClient
+
+    from app.api.auth import COOKIE_NAME, AccessConfig, issue_token
+    from app.main import create_app
+
+    app = create_app(env_file=None)
+    app.router.lifespan_context = _no_lifespan
+    app.state.access = AccessConfig("a" * 12, "b" * 12, "diagram-test-signing-key")
+    with TestClient(app, base_url="https://testserver") as client:
+        assert client.get("/api/v1/workflow/diagram").status_code == 401
+        client.cookies.set(COOKIE_NAME, issue_token("viewer", "diagram-test-signing-key"))
+        body = client.get("/api/v1/workflow/diagram").json()
+    assert "subgraph slot_subgraph" in body["main"]
+    assert "crawl_gate" in body["slot"]
+    assert "-.->" in body["slot"]
+
+
+@asynccontextmanager
+async def _no_lifespan(_: object) -> AsyncIterator[None]:
+    yield

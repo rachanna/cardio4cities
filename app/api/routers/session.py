@@ -1,11 +1,21 @@
 """POST and DELETE /api/v1/session (LLD-4 §3.1)."""
 
-from fastapi import APIRouter, Request, Response
+from typing import Annotated
 
-from app.api.auth import COOKIE_NAME, MAX_AGE_S, AccessConfig, issue_token, role_for_code
+from fastapi import APIRouter, Depends, Request, Response
+
+from app.api.auth import (
+    COOKIE_NAME,
+    MAX_AGE_S,
+    AccessConfig,
+    Session,
+    current_session,
+    issue_token,
+    role_for_code,
+)
 from app.api.errors import ApiError
 from app.api.limits import FailureLimiter
-from app.api.schemas import SessionRequest
+from app.api.schemas import SessionInfo, SessionRequest
 
 router = APIRouter(tags=["session"])
 
@@ -47,6 +57,13 @@ async def start_session(body: SessionRequest, request: Request) -> Response:
         path="/",
     )
     return response
+
+
+@router.get("/session", response_model=SessionInfo)
+async def session_info(session: Annotated[Session, Depends(current_session)]) -> SessionInfo:
+    """Who is signed in, so the web app shows the presenter's overlay to admins only
+    (D3-4, BD-41). 401 without a valid session."""
+    return SessionInfo(role=session.role, expires_at=session.exp)
 
 
 @router.delete("/session", status_code=204, response_class=Response)

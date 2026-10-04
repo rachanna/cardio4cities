@@ -10,15 +10,18 @@ within its own source.
 
 import math
 import re
-import unicodedata
 from collections.abc import Sequence
 
+from app.domain.entity_names import NON_WORD as _NON_WORD
+from app.domain.entity_names import SMALL_WORDS as _SMALL_WORDS
+from app.domain.entity_names import acronym_fits, is_acronym, normalized_key
+from app.domain.entity_names import strip_diacritics as _strip_diacritics
 from app.domain.params import EntityParams
-from app.workflow.rules.quotes import normalise_text
+from app.domain.text import normalise_text
 
-_LEADING_THE = re.compile(r"^the\s+")
+__all__ = ["acronym_fits", "is_acronym", "normalized_key"]
+
 _LEADING_THE_ANY_CASE = re.compile(r"^the\s+", re.IGNORECASE)
-_NON_WORD = re.compile(r"[^\w]+")
 # "Long Name (ACR)" and "ACR (Long Name)": ACR is 2 to 8 capital letters (LLD-2 §6 step 3).
 # Text is normalised first (typographic quotes become ASCII), so only ' is matched.
 _LONG_THEN_ACR = re.compile(
@@ -26,37 +29,6 @@ _LONG_THEN_ACR = re.compile(
     r"[A-Z][\w'&.-]*)\s*\(([A-Z]{2,8})\)"
 )
 _ACR_THEN_LONG = re.compile(r"\b([A-Z]{2,8})\s*\(([A-Z][^()]{3,80})\)")
-_SMALL_WORDS = frozenset(
-    ["of", "and", "for", "the", "on", "in", "de", "du", "des", "la", "le", "&"]
-)
-
-
-def _strip_diacritics(text: str) -> str:
-    return "".join(c for c in unicodedata.normalize("NFKD", text) if not unicodedata.combining(c))
-
-
-def normalized_key(surface: str) -> str:
-    """casefold, no diacritics, no leading "the", punctuation removed, words joined by -."""
-    text = _strip_diacritics(normalise_text(surface)).casefold().strip()
-    text = _LEADING_THE.sub("", text)
-    return "-".join(w for w in _NON_WORD.split(text) if w)
-
-
-def is_acronym(surface: str) -> bool:
-    return bool(re.fullmatch(r"[A-Z]{2,8}", surface.strip()))
-
-
-def _initials(long_name: str) -> tuple[str, str]:
-    words = re.findall(r"[^\W\d_][\w'.-]*", long_name)
-    significant = "".join(w[0] for w in words if w.casefold() not in _SMALL_WORDS)
-    every = "".join(w[0] for w in words)
-    return significant.upper(), every.upper()
-
-
-def acronym_fits(long_name: str, acronym: str) -> bool:
-    """The acronym is the initials of the long name's words: a pair the text did not
-    state as initials is not trusted (precision first)."""
-    return acronym in _initials(long_name)
 
 
 def acronym_pairs(text: str) -> dict[str, str]:

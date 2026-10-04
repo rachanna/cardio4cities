@@ -97,6 +97,9 @@ _INDICATOR = _Table("ref_indicator", ("code",), ("code", "name", "comparability_
 _SOURCE = _Table("ref_source", ("provider",), ("provider", "adapter", "config"))
 
 
+EXACT_MATCHES = 20  # places sharing a searched name, listed in full (BD-34)
+
+
 class PostgresReferenceRepo:
     def __init__(self, engine: AsyncEngine) -> None:
         self._engine = engine
@@ -107,6 +110,10 @@ class PostgresReferenceRepo:
         async with self._engine.connect() as conn:
             rows = await conn.execute(text("SELECT slot_id FROM ref_slot ORDER BY slot_id"))
             return [row.slot_id for row in rows]
+
+    async def place_count(self) -> int:
+        async with self._engine.connect() as conn:
+            return int((await conn.execute(text("SELECT count(*) FROM ref_place"))).scalar() or 0)
 
     async def indicator_codes(self) -> dict[str, str]:
         async with self._engine.connect() as conn:
@@ -140,21 +147,33 @@ class PostgresReferenceRepo:
             return [IndicatorDef.model_validate(dict(r)) for r in rows]
 
     async def search_places(self, query: str, limit: int = 5) -> list[dict[str, Any]]:
-        """Trigram similarity on name and alternate names, then population (LLD-4 §3.2)."""
+        """Every place whose name is the query (up to EXACT_MATCHES), then trigram matches
+        up to `limit` (LLD-4 §3.2, BD-34): a shared name lists all its places, told apart
+        by region, population and coordinates. Both parts use the indexes: the trigram
+        `%` operator on `ascii_name` and `@>` on `alternate_names`."""
+        q = query.strip()
         sql = text(
-            "SELECT p.gazetteer_id, p.name, p.country_iso2, c.name AS country_name,"
-            " a.name AS admin1_name, p.population,"
-            " greatest(similarity(p.ascii_name, :q), similarity(p.name, :q),"
-            "   CASE WHEN :q = ANY(p.alternate_names) THEN 1.0 ELSE 0 END) AS score"
-            " FROM ref_place p JOIN ref_country c ON c.iso2 = p.country_iso2"
+            "WITH exact AS ("
+            "  SELECT p.gazetteer_id, 1.0 AS score FROM ref_place p"
+            "  WHERE lower(p.ascii_name) = lower(:q) OR lower(p.name) = lower(:q)"
+            "     OR p.alternate_names @> ARRAY[:q]::text[]"
+            "  ORDER BY p.population DESC NULLS LAST LIMIT :exact_limit"
+            "), fuzzy AS ("
+            "  SELECT p.gazetteer_id, similarity(p.ascii_name, :q) AS score FROM ref_place p"
+            "  WHERE p.ascii_name % :q AND p.gazetteer_id NOT IN (SELECT gazetteer_id FROM exact)"
+            "  ORDER BY score DESC, p.population DESC NULLS LAST LIMIT :limit"
+            "), chosen AS (SELECT * FROM exact UNION ALL SELECT * FROM fuzzy)"
+            " SELECT p.gazetteer_id, p.name, p.country_iso2, c.name AS country_name,"
+            " a.name AS admin1_name, p.population, p.lat, p.lon, ch.score"
+            " FROM chosen ch JOIN ref_place p USING (gazetteer_id)"
+            " JOIN ref_country c ON c.iso2 = p.country_iso2"
             " LEFT JOIN ref_admin1 a ON a.country_iso2 = p.country_iso2"
             "   AND a.admin1_code = p.admin1_code"
-            " WHERE similarity(p.ascii_name, :q) > 0.3 OR similarity(p.name, :q) > 0.3"
-            "   OR :q = ANY(p.alternate_names)"
-            " ORDER BY score DESC, p.population DESC NULLS LAST LIMIT :limit"
+            " ORDER BY ch.score DESC, p.population DESC NULLS LAST"
         )
+        params = {"q": q, "limit": limit, "exact_limit": EXACT_MATCHES}
         async with self._engine.connect() as conn:
-            rows = (await conn.execute(sql, {"q": query.strip(), "limit": limit})).mappings()
+            rows = (await conn.execute(sql, params)).mappings()
             return [dict(r) for r in rows]
 
     async def place_identity(self, gazetteer_id: str) -> dict[str, Any] | None:

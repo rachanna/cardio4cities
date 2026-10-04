@@ -2,6 +2,7 @@
 recordings keep the real response structure (spike S-2) with fictional values for
 Norvania (XNV) only. Adapters are pure: they build URLs and parse bytes."""
 
+import json
 from pathlib import Path
 
 import pytest
@@ -75,3 +76,16 @@ def test_unparseable_responses_raise_value_error(raw: bytes) -> None:
         WhoGho("x").parse("NCD_HYP_CONTROL_A", raw)
     with pytest.raises(ValueError, match="not a World Bank API response"):
         WorldBank("x").parse("SP.POP.TOTL", raw)
+
+
+def test_who_gho_keeps_a_published_value_it_cannot_read_so_it_is_never_skipped() -> None:
+    """BD-34 (code review RV-033): a value code cannot read blocks the record instead of
+    letting an older year stand in for it; an unpublished year is not a record."""
+    body = {"value": [
+        {"IndicatorCode": "NCD_HYP_CONTROL_A", "SpatialDim": "XNV", "TimeDim": 2021,
+         "Dim1": "SEX_BTSX", "Value": "see report"},
+        {"IndicatorCode": "NCD_HYP_CONTROL_A", "SpatialDim": "XNV", "TimeDim": 2022,
+         "Dim1": "SEX_BTSX", "Value": None},
+    ]}  # fmt: skip
+    records = WhoGho("x").parse("NCD_HYP_CONTROL_A", json.dumps(body).encode())
+    assert [(r.year, r.value_as_written) for r in records] == [(2021, "")]

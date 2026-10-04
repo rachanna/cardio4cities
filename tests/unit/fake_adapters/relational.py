@@ -9,6 +9,7 @@ INDICATOR_CODES: dict[str, str] = {"world_bank.POP_TOTAL": "SP.POP.TOTL"}
 FAIL: bool = False
 PLACES: list[dict[str, Any]] = []  # search_places rows, best first
 RUNS: dict[str, dict[str, Any]] = {}
+PLACE_COUNT = 34_152  # a loaded gazetteer; set to 0 to test the start-up check
 closed: list[bool] = []
 
 
@@ -17,6 +18,9 @@ class FakeReference:
         if FAIL:
             raise ConnectionError("database unreachable")
         return list(SLOT_IDS)
+
+    async def place_count(self) -> int:
+        return PLACE_COUNT
 
     async def indicator_codes(self) -> dict[str, str]:
         return dict(INDICATOR_CODES)

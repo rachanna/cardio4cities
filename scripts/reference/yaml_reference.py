@@ -52,14 +52,21 @@ def read_indicators(directory: Path = REFERENCE_DIR) -> list[IndicatorDef]:
     return indicators
 
 
-def read_sources(directory: Path, indicator_codes: set[str]) -> Sources:
-    """Split providers into ready ones and ones still holding placeholder codes (BD-03)."""
+def read_sources(
+    directory: Path, indicator_codes: set[str], slot_ids: set[str] | None = None
+) -> Sources:
+    """Split providers into ready ones and ones still holding placeholder codes (BD-03).
+    `slot_ids`: when given, every indicator's slot must be one of them (BD-34)."""
     sources = _load(directory / "sources.yaml", list[SourceProvider])
     ready, pending = [], {}
     for source in sources:
         unknown = set(source.indicators) - indicator_codes
         if unknown:
             raise ReferenceError(f"sources.yaml {source.provider}: unknown indicators {unknown}")
+        if slot_ids is not None:
+            stray = {s.slot for s in source.indicators.values() if s.slot} - slot_ids
+            if stray:
+                raise ReferenceError(f"sources.yaml {source.provider}: unknown slots {stray}")
         placeholders = [
             name
             for name, spec in source.indicators.items()

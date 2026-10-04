@@ -4,14 +4,19 @@ verification, and region matching for sub-national records. Fictional data only.
 import pytest
 
 from app.domain.models import SourceIndicator
+from app.domain.vocab import GeographyLevel, MeasureType
 from app.ports.structured import StructuredRecord
 from app.workflow.rules.region_match import region_matches
 from app.workflow.rules.wave0 import age_text, canonical_line, code_check, select_record
 
-CONTROL = SourceIndicator(code="NCD_HYP_CONTROL_A", slot="S04", age=(30, 79), sex="SEX_BTSX")
+CONTROL = SourceIndicator(
+    code="NCD_HYP_CONTROL_A", slot="S04", measure=MeasureType.CASCADE_CONTROL, age=(30, 79),
+    sex="SEX_BTSX",
+)  # fmt: skip
 DIABETES = SourceIndicator(
     code="NCD_DIABETES_PREVALENCE_AGESTD",
     slot="S05",
+    measure=MeasureType.MEASURED_PREVALENCE,
     age=(18, None),
     age_group="AGEGROUP_YEARS18-PLUS",
     sex="SEX_BTSX",
@@ -120,3 +125,40 @@ def test_region_matching(
     provider_region: str, admin1: str | None, aliases: dict[str, list[str]], matches: bool
 ) -> None:
     assert region_matches(provider_region, admin1, aliases) is matches
+
+
+# --- BD-34: never guessed (code review RV-033, RV-082) -----------------------------------------
+
+
+def test_only_the_registry_indicator_is_used() -> None:
+    other = [rec(2021, "40.0", code="NCD_HYP_DIAGNOSIS_A"), rec(2019, "14.8")]
+    chosen = select_record(other, CONTROL, "XNV")
+    assert chosen is not None
+    assert chosen.year == 2019
+
+
+def test_two_records_for_the_latest_year_give_none() -> None:
+    """Dimensions the registry does not name (urban and rural, say) are never picked."""
+    tied = [rec(2021, "14.8"), rec(2021, "16.2"), rec(2019, "13.9")]
+    assert select_record(tied, CONTROL, "XNV") is None
+
+
+def test_a_latest_year_without_a_value_never_falls_back_to_an_older_one() -> None:
+    gap = [rec(2021, ""), rec(2019, "13.9")]
+    assert select_record(gap, CONTROL, "XNV") is None
+
+
+def test_the_registry_refuses_claim_indicators_without_labels() -> None:
+    from pydantic import ValidationError
+
+    from app.domain.models import SourceProvider
+
+    with pytest.raises(ValidationError, match="needs a measure and a sex code"):
+        SourceIndicator(code="NCD_HYP_CONTROL_A", slot="S04", sex="SEX_BTSX")
+    SourceIndicator(code="SP.POP.TOTL")  # a source only: no slot, no labels needed
+    with pytest.raises(ValidationError, match="never city-level"):
+        SourceProvider(
+            provider="x", adapter="who_gho", publisher_class="multilateral",
+            publisher_name="X", attribution="X", geography=GeographyLevel.CITY_WIDE,
+            indicators={},
+        )  # fmt: skip

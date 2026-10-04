@@ -58,6 +58,13 @@ async def check_reference_data(container: Container) -> None:
             ]
         ) from exc
     problems = [*check_reference_slots(slot_ids), *check_indicator_codes(codes)]
+    if not codes:  # BD-34: no official sources means no Wave 0
+        problems.append("ref_source is empty: run `poe reference` against DATABASE_URL")
+    try:
+        if await reference.place_count() == 0:  # BD-34: no city can be researched
+            problems.append("ref_place is empty: run `poe reference` (it loads GeoNames)")
+    except Exception as exc:
+        problems.append(f"ref_place could not be read ({type(exc).__name__})")
     if problems:
         raise ConfigError(problems)
 

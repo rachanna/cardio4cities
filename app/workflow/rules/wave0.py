@@ -38,16 +38,26 @@ def record_value(value_as_written: str, unit: str | None) -> ParsedValue:
 def select_record(
     records: Sequence[StructuredRecord], indicator: SourceIndicator, country_iso3: str
 ) -> StructuredRecord | None:
-    """The latest record for the country, the registry's sex and, when the indicator has
-    an age dimension, its age group."""
+    """The latest record of the registry's own indicator for the country, sex and, when
+    the indicator has an age dimension, age group. Never guessed (BD-34; code review
+    RV-033): two records for the latest year (dimensions the registry does not name), or
+    a latest value code cannot read, give no record, never an older year. A year the
+    provider did not publish is not a record at all."""
     matching = [
         r
         for r in records
-        if r.area_code == country_iso3
+        if r.indicator_code == indicator.code
+        and r.area_code == country_iso3
         and r.sex == indicator.sex
         and (indicator.age_group is None or r.age_group == indicator.age_group)
     ]
-    return max(matching, key=lambda r: r.year) if matching else None
+    if not matching:
+        return None
+    latest = max(r.year for r in matching)
+    newest = [r for r in matching if r.year == latest]
+    if len(newest) != 1 or not newest[0].value_as_written:
+        return None
+    return newest[0]
 
 
 def age_text(indicator: SourceIndicator) -> str:

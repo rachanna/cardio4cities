@@ -115,7 +115,7 @@ Cookie: signed token (HMAC with `SESSION_SECRET`), `HttpOnly; Secure; SameSite=S
 }
 ```
 
-Trigram search on name and alternate names, ranked by similarity then population, top 5. `exact = true` only when one candidate matches exactly and no other candidate is within similarity 0.1. The UI always shows the chosen identity before starting (HD-02, AT-24).
+Trigram search on name and alternate names, ranked by similarity then population, top 5. `exact = true` only when one candidate matches exactly and no other candidate is within similarity 0.1. Since BD-34 every place whose name is the query is listed first (up to 20, by population), then trigram matches up to 5; candidates carry `lat` and `lon`, so places of one name in one region can be told apart; both parts use the indexes (`%` on `ascii_name`, `@>` on `alternate_names`). The UI always shows the chosen identity before starting (HD-02, AT-24).
 
 **`POST /api/v1/runs`**: starts a fresh run (R-83)
 

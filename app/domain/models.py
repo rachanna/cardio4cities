@@ -36,6 +36,11 @@ from app.domain.vocab import (
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
 
 
+# Levels no provider's records describe (BD-34)
+CITY_LEVELS = frozenset(
+    {GeographyLevel.CITY_WIDE, GeographyLevel.SUB_CITY_AREA, GeographyLevel.SUB_CITY_POPULATION}
+)
+
 # Free-text settings stored before BD-22, read back as the vocabulary
 LEGACY_SETTINGS: dict[str, Setting] = {
     "hospital": Setting.HEALTH_FACILITY,
@@ -95,6 +100,13 @@ class SourceIndicator(BaseModel):
     denominator: str | None = None
     unit: str | None = None
 
+    @model_validator(mode="after")
+    def _claims_need_labels(self) -> "SourceIndicator":
+        """An indicator that becomes a claim states its measure and sex (BD-34)."""
+        if self.slot is not None and (self.measure is None or not self.sex.strip()):
+            raise ValueError(f"indicator {self.code}: a slot needs a measure and a sex code")
+        return self
+
 
 class SourceProvider(BaseModel):
     """One official data provider for Wave 0 (LLD-1 §3.4). Keyed by provider, never by city."""
@@ -111,6 +123,14 @@ class SourceProvider(BaseModel):
     method: Method = Method.NOT_STATED
     note: str | None = None  # e.g. "age-standardised WHO estimate"
     indicators: dict[str, SourceIndicator]
+
+    @field_validator("geography")
+    @classmethod
+    def _wider_than_the_city(cls, level: GeographyLevel) -> GeographyLevel:
+        """Providers report countries and regions: never city-level by registry (BD-34)."""
+        if level in CITY_LEVELS:
+            raise ValueError("a provider's geography is never city-level")
+        return level
 
 
 class IndicatorDef(BaseModel):

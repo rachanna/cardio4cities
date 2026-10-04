@@ -483,7 +483,7 @@ The stream endpoint always reads from Postgres after `Last-Event-ID`, then follo
 |---|---|
 | `run_started` | `run_id`, `city_id`, `budget` |
 | `identity_confirmed` | `CityIdentity` |
-| `wave0_finding` | `claim_id`, `indicator_code`, `value_as_written`, `geography_level`, `provider` |
+| `wave0_finding` | `claim_id`, `indicator_code`, `value_as_written`, `geography_level`, `provider`; also `slot_id`, `year`, `status`, `graph_edge` (BD-34: the code used other names) |
 | `slot_planned` | `slot_id`, `round`, `queries` (text and language) |
 | `search_done` | `slot_id`, `query_id`, `result_count` |
 | `crawl_decision` | `url`, `domain`, `outcome`, `reason` |
@@ -582,7 +582,7 @@ Global concurrency limits, shared by every slot branch: model calls `llm.concurr
 ## 13. Wave 0 (R-85, HD-03)
 
 1. Look up `ref_source` providers. For each provider and indicator: call the structured-data adapter with the country code (and the city's first-level region for providers that support sub-national data).
-2. For each indicator, take the most recent record for both sexes and the registry's age band.
+2. For each indicator, take the most recent record for both sexes and the registry's age band. Since BD-34 the record must carry the registry's own indicator code, exactly one record may hold the latest year (two mean dimensions the registry does not name, so none is used), and a published value code cannot read gives no record rather than an older year. A year the provider did not publish is not a record.
 3. Store the raw response as a `structured_api` source and snapshot. `parsed_text` is a canonical one-line rendering of the record used, for example `HTN_CONTROL | GHA | 2019 | both sexes | 30-79 | 12.3`.
 4. Create a statistic claim whose `quote` is that rendering, `value_as_written` is the record's value as text, and labels come from the registry (`geography_level`, `representativeness`, age band, `method`). Code reads the value (`rules/wave0.record_value`): a bare decimal from the API is a number, and the registry unit is named as the parser names it (`%` is `percent`), so Wave 0 figures get a comparability key and meet web figures in §5.4 (BD-19). Any other form stays flagged unparsed.
 5. **Code verification:** the record is re-read from the snapshot, and the claim's indicator, area, period and value must equal it exactly. Pass → `verdict(label = supported, verifier_model = "code:record_match", verifier_family = "code")`. Fail → `insufficient`.

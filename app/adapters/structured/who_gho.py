@@ -39,9 +39,11 @@ class WhoGho:
         records = []
         for row in rows:
             display = row.get("Value")
-            match = _LEADING_NUMBER.match(display) if isinstance(display, str) else None
-            if match is None or row.get("TimeDim") is None:
-                continue  # no published value
+            if row.get("TimeDim") is None or not isinstance(display, str) or not display.strip():
+                continue  # no published value for that year: not data
+            match = _LEADING_NUMBER.match(display)
+            # A published value code cannot read stays, with an empty value, so the latest
+            # year is never silently replaced by an older one (BD-34)
             records.append(
                 StructuredRecord(
                     indicator_code=str(row.get("IndicatorCode", code)),
@@ -49,7 +51,7 @@ class WhoGho:
                     year=int(row["TimeDim"]),
                     sex=str(row.get("Dim1") or ""),
                     age_group=row.get("Dim2") if row.get("Dim2Type") == "AGEGROUP" else None,
-                    value_as_written=match.group(1),
+                    value_as_written=match.group(1) if match else "",
                     display=display.strip(),
                 )
             )

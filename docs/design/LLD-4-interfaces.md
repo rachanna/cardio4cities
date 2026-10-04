@@ -590,7 +590,7 @@ Not built (BD-36): `ollama`, `tavily`, `browser_print`, `otel` and `langsmith`; 
 | AT-38 | `tests/acceptance/test_breadth.py` (sparse run with an unreachable source; thin-slice counts) | Automated |
 | Resume after a crash (LLD-2 §17) | `tests/acceptance/checkpointed/test_resume.py` | Automated (real checkpointer; BD-14) |
 | AT-39 to AT-46 | `tests/acceptance/test_ask.py`, `tests/unit/test_query_rules.py` (D3-2; AT-41 at rule level: the thin slice has no contested pair) | Automated (CHG-01) |
-| AT-47 | `tests/acceptance/test_retrieval_eval.py` | Automated (CHG-01) |
+| AT-47 | `tests/acceptance/test_retrieval_eval.py` (D3-2b: faithful and faulty scripted answerers, and two controls) | Automated (CHG-01) |
 | R-14 exploration, DS-1 to DS-7 | `docs/REHEARSAL.md` checklist | Demo rehearsal |
 
 Tests that would call paid providers use recorded responses in CI; `scripts/eval_prompts.py` and the deployed smoke test are the only live runs.

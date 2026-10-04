@@ -1,0 +1,275 @@
+# Retrieval evaluation fixture (LLD-5 §12.1, D3-2b, BD-39): a researched fictional city,
+# Halden Bay, Norvania, loaded straight into the stores. It holds, across all six
+# dimensions: a contested pair (S03), a national-only figure for S04, an outdated figure
+# (S05), a superseded GOVERNS edge and its successor (S01), a refuted and an insufficient
+# claim, a claim of an older run and an unchecked one (none may ever appear), an entity
+# known by name and by acronym (HBHO), and one known only by its initials (NHF).
+#
+# Claims: `period` is a year (or [from, to]); `status` is supported unless given; `verdict`
+# follows the status (supported, contested and superseded claims carry a supported verdict).
+# Relations name entities by key; `superseded_on` ends an edge in the graph.
+
+city: {gazetteer_id: "9000001", run_id: run_rag_latest, old_run_id: run_rag_old}
+
+sources:
+  - {id: src_rag_survey, publisher: government, title: Halden Bay Household Health Survey 2024}
+  - {id: src_rag_herald, publisher: news, title: Halden Bay Herald}
+  - {id: src_rag_ministry, publisher: government, title: Norvania Ministry of Health annual report}
+  - {id: src_rag_who, publisher: multilateral, title: World Health Organization country profile}
+  - {id: src_rag_office, publisher: government, title: Halden Bay Health Office website}
+  - {id: src_rag_ngo, publisher: ngo, title: Norvania Heart Foundation annual review}
+
+entities:
+  place: {type: Place, name: Halden Bay}
+  hbho: {type: Organization, name: Halden Bay Health Office, aliases: [HBHO]}
+  cdo: {type: Organization, name: Coastal District Office}
+  hearts: {type: Programme, name: Halden Bay HEARTS hypertension programme}
+  nhf: {type: Organization, name: Norvania Heart Foundation}
+  ministry: {type: Organization, name: Norvania Ministry of Health}
+  plan: {type: Policy, name: Norvania NCD Action Plan 2023-2030}
+  hospital: {type: Organization, name: Halden Bay General Hospital}
+
+claims:
+  # --- D1 governance -------------------------------------------------------------------
+  - id: clm_rag_gov_old
+    slot: S01
+    status: superseded
+    source: src_rag_office
+    statement: The Coastal District Office ran public health in Halden Bay until March 2024.
+    quote: public health in Halden Bay was run by the Coastal District Office until March 2024
+    relation: {type: GOVERNS, subject: cdo, object: place, valid_to: 2024-03-31, superseded_on: 2024-04-01}
+  - id: clm_rag_gov_new
+    slot: S01
+    source: src_rag_office
+    statement: The Halden Bay Health Office (HBHO) has run public health in Halden Bay since April 2024.
+    quote: Since April 2024 the Halden Bay Health Office (HBHO) has run public health services in Halden Bay
+    relation: {type: GOVERNS, subject: hbho, object: place, valid_from: 2024-04-01}
+  - id: clm_rag_reorg
+    slot: S02
+    source: src_rag_office
+    statement: The Coastal District Office was replaced by the Halden Bay Health Office in April 2024.
+    quote: the Coastal District Office was replaced by the Halden Bay Health Office in April 2024
+    relation: {type: REPLACED_BY, subject: cdo, object: hbho, valid_from: 2024-04-01}
+
+  # --- D2 health figures -------------------------------------------------------------------
+  - id: clm_rag_prev_a
+    slot: S03
+    status: contested
+    source: src_rag_survey
+    indicator: HTN_PREV
+    value: "31.2%"
+    period: 2024
+    statement: In Halden Bay, 31.2% of adults had hypertension in 2024.
+    quote: Hypertension affected 31.2% of adults in Halden Bay in 2024
+  - id: clm_rag_prev_b
+    slot: S03
+    status: contested
+    source: src_rag_herald
+    indicator: HTN_PREV
+    value: "27.5%"
+    period: 2024
+    statement: In Halden Bay, 27.5% of adults were living with hypertension in 2024.
+    quote: 27.5% of adults in Halden Bay were living with hypertension in 2024
+  - id: clm_rag_prev_national
+    slot: S03
+    source: src_rag_who
+    indicator: HTN_PREV
+    value: "29.0%"
+    period: 2021
+    level: national
+    geography: Norvania
+    representativeness: modelled
+    statement: In Norvania, 29.0% of adults aged 30-79 had hypertension in 2021.
+    quote: an estimated 29.0% of adults aged 30-79 in Norvania had hypertension in 2021
+  - id: clm_rag_control_national
+    slot: S04
+    source: src_rag_who
+    indicator: HTN_CONTROL
+    value: "24.1%"
+    period: 2021
+    level: national
+    geography: Norvania
+    representativeness: modelled
+    statement: In Norvania, 24.1% of adults with hypertension had it under control in 2021.
+    quote: 24.1% of adults in Norvania with hypertension had it under control in 2021
+  - id: clm_rag_aware_national
+    slot: S04
+    source: src_rag_who
+    indicator: HTN_AWARE
+    value: "55.0%"
+    period: 2021
+    level: national
+    geography: Norvania
+    representativeness: modelled
+    statement: In Norvania, 55.0% of adults with hypertension knew they had it in 2021.
+    quote: 55.0% of adults with hypertension in Norvania were aware of their condition in 2021
+  - id: clm_rag_diabetes_old
+    slot: S05
+    source: src_rag_survey
+    indicator: DM_PREV
+    value: "9.1%"
+    period: 2012
+    statement: In Halden Bay, 9.1% of adults had diabetes in 2012.
+    quote: diabetes affected 9.1% of adults in Halden Bay in 2012
+  - id: clm_rag_diabetes_refuted
+    slot: S05
+    status: refuted
+    source: src_rag_herald
+    indicator: DM_PREV
+    value: "15%"
+    period: 2023
+    statement: In Halden Bay, 15% of adults had diabetes in 2023.
+    quote: as many as 15% of adults may have diabetes, the Herald estimated
+  - id: clm_rag_diabetes_insufficient
+    slot: S05
+    status: insufficient
+    source: src_rag_herald
+    indicator: DM_PREV
+    value: "12.0%"
+    period: 2022
+    statement: In Halden Bay, 12.0% of adults had diabetes in 2022.
+    quote: diabetes is common in Halden Bay
+  - id: clm_rag_stroke
+    slot: S06
+    source: src_rag_ministry
+    indicator: STROKE_MORT
+    value: "112 per 100,000"
+    period: 2023
+    statement: In Halden Bay, stroke mortality was 112 per 100,000 people in 2023.
+    quote: stroke mortality in Halden Bay was 112 per 100,000 people in 2023
+  - id: clm_rag_cvd_national
+    slot: S06
+    source: src_rag_who
+    indicator: CVD_MORT
+    value: "310 per 100,000"
+    period: 2021
+    level: national
+    geography: Norvania
+    representativeness: modelled
+    statement: In Norvania, cardiovascular mortality was 310 per 100,000 people in 2021.
+    quote: cardiovascular mortality in Norvania was 310 per 100,000 people in 2021
+
+  # --- D3 programmes and services ----------------------------------------------------------
+  - id: clm_rag_runs_hearts
+    slot: S07
+    source: src_rag_office
+    period: 2025
+    statement: The Halden Bay Health Office runs the Halden Bay HEARTS hypertension programme.
+    quote: the Halden Bay Health Office runs the Halden Bay HEARTS hypertension programme
+    relation: {type: RUNS, subject: hbho, object: hearts, valid_from: 2025-01-01}
+  - id: clm_rag_hearts_city
+    slot: S07
+    source: src_rag_office
+    period: 2025
+    statement: The Halden Bay HEARTS hypertension programme operates in Halden Bay.
+    quote: the HEARTS hypertension programme operates in all Halden Bay clinics
+    relation: {type: OPERATES_IN, subject: hearts, object: place, valid_from: 2025-01-01}
+  - id: clm_rag_screening
+    slot: S08
+    source: src_rag_office
+    period: 2025
+    statement: Primary-care clinics in Halden Bay check the blood pressure of every adult over 30 at each visit.
+    quote: primary-care clinics check the blood pressure of every adult over 30 at each visit
+
+  # --- D4 policy -----------------------------------------------------------------------------
+  - id: clm_rag_plan_target
+    slot: S09
+    source: src_rag_ministry
+    period: [2023, 2030]
+    level: national
+    geography: Norvania
+    statement: The Norvania NCD Action Plan 2023-2030 sets a 25% relative reduction in premature NCD deaths.
+    quote: the Norvania NCD Action Plan 2023-2030 sets a 25% relative reduction in premature NCD deaths
+  - id: clm_rag_plan_issued
+    slot: S09
+    source: src_rag_ministry
+    period: 2023
+    level: national
+    geography: Norvania
+    statement: The Norvania NCD Action Plan 2023-2030 was issued by the Norvania Ministry of Health.
+    quote: the Norvania NCD Action Plan 2023-2030, issued by the Norvania Ministry of Health
+    relation: {type: ISSUED_BY, subject: plan, object: ministry, valid_from: 2023-01-01}
+  - id: clm_rag_protocol
+    slot: S10
+    source: src_rag_office
+    period: 2022
+    statement: Halden Bay clinics follow the national hypertension treatment protocol of 2022.
+    quote: clinics follow the national hypertension treatment protocol of 2022
+
+  # --- D5 stakeholders -----------------------------------------------------------------------
+  - id: clm_rag_hospital
+    slot: S13
+    source: src_rag_office
+    period: 2025
+    statement: Halden Bay General Hospital works with the Halden Bay Health Office on hypertension referrals.
+    quote: Halden Bay General Hospital works with the Halden Bay Health Office on hypertension referrals
+    relation: {type: PARTNERS_WITH, subject: hospital, object: hbho, valid_from: 2025-01-01}
+  - id: clm_rag_ngo_funds
+    slot: S14
+    source: src_rag_ngo
+    period: 2025
+    statement: The Norvania Heart Foundation funds the Halden Bay HEARTS hypertension programme.
+    quote: the Norvania Heart Foundation funds the Halden Bay HEARTS hypertension programme
+    relation: {type: FUNDS, subject: nhf, object: hearts, valid_from: 2025-01-01}
+  - id: clm_rag_ngo_partner
+    slot: S14
+    source: src_rag_ngo
+    period: 2025
+    statement: The Norvania Heart Foundation partners with the Halden Bay Health Office on screening days.
+    quote: the Norvania Heart Foundation partners with the Halden Bay Health Office on screening days
+    relation: {type: PARTNERS_WITH, subject: nhf, object: hbho, valid_from: 2025-01-01}
+
+  # --- D6 data ---------------------------------------------------------------------------------
+  - id: clm_rag_bulletin
+    slot: S15
+    source: src_rag_office
+    period: 2025
+    statement: The Halden Bay Health Office publishes an annual health statistics bulletin.
+    quote: the Health Office publishes an annual health statistics bulletin
+  - id: clm_rag_his
+    slot: S16
+    source: src_rag_office
+    period: 2025
+    statement: Halden Bay clinics record blood pressure readings in the district health information system.
+    quote: clinics record blood pressure readings in the district health information system
+
+  # --- never shown: an older run, and a claim never checked --------------------------------------
+  - id: clm_rag_old_run
+    slot: S03
+    run: old
+    source: src_rag_survey
+    indicator: HTN_PREV
+    value: "33.0%"
+    period: 2019
+    statement: In Halden Bay, 33.0% of adults had hypertension in 2019.
+    quote: 33.0% of adults in Halden Bay had hypertension in 2019
+  - id: clm_rag_unchecked
+    slot: S08
+    status: extracted
+    source: src_rag_herald
+    statement: Halden Bay pharmacies offer free blood pressure checks.
+    quote: pharmacies offer free blood pressure checks
+
+contested:
+  - [clm_rag_prev_a, clm_rag_prev_b]
+
+slot_results:
+  S01: {status: answered, best: [clm_rag_gov_new]}
+  S02: {status: answered, best: [clm_rag_reorg]}
+  S03: {status: answered, best: [clm_rag_prev_a, clm_rag_prev_b], flags: [conflicting]}
+  S04: {status: answered_wider_geo, best: [clm_rag_control_national],
+        gap_note: "No city-level figure found. Best available is national (Norvania, 2021)."}
+  S05: {status: answered, best: [clm_rag_diabetes_old], flags: [stale]}
+  S06: {status: answered, best: [clm_rag_stroke]}
+  S07: {status: answered, best: [clm_rag_runs_hearts]}
+  S08: {status: answered, best: [clm_rag_screening]}
+  S09: {status: answered, best: [clm_rag_plan_target]}
+  S10: {status: answered, best: [clm_rag_protocol]}
+  S11: {status: answered_negative, best: [],
+        gap_note: "Searched 6 queries in English and checked 5 sources; nothing acceptable found for this question."}
+  S12: {status: answered_negative, best: [],
+        gap_note: "Searched 6 queries in English and checked 4 sources; nothing acceptable found for this question."}
+  S13: {status: answered, best: [clm_rag_hospital]}
+  S14: {status: answered, best: [clm_rag_ngo_funds]}
+  S15: {status: answered, best: [clm_rag_bulletin]}
+  S16: {status: answered, best: [clm_rag_his]}

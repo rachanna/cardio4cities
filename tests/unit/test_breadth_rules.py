@@ -199,3 +199,30 @@ def test_purge_graph_refuses_the_deployed_environment(
     assert purge_graph.main() == 2
     assert called == []
     assert "refuses" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("uri", "local"),
+    [
+        ("bolt://127.0.0.1:7687", True),
+        ("bolt://localhost:7687", True),
+        ("bolt://[::1]:7687", True),
+        ("neo4j+s://graph.halden-bay.test:7687", False),
+        ("bolt://10.0.0.5:7687", False),
+    ],
+)
+def test_purge_graph_takes_only_a_graph_on_this_machine(uri: str, local: bool) -> None:
+    """RV-094: the guard checks the target, not only APP_ENV."""
+    assert purge_graph.is_local(uri) is local
+
+
+def test_purge_graph_refuses_a_remote_graph(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("APP_ENV", "local")
+    monkeypatch.setattr(purge_graph, "graph_uri", lambda: "neo4j+s://graph.halden-bay.test")
+    called: list[Any] = []
+    monkeypatch.setattr(purge_graph, "purge", lambda uri: called.append(uri))
+    assert purge_graph.main() == 2
+    assert called == []
+    assert "not on this machine" in capsys.readouterr().err

@@ -221,6 +221,10 @@ class ResearchRepo(Protocol):
 
     async def invalidate_graph_link(self, claim_id: str) -> None: ...
 
+    async def clear_graph_links(self) -> int:
+        """Delete every graph link, for an emptied graph (`poe purge-graph`, local only)."""
+        ...
+
     async def claims_without_graph_link(self, run_id: str) -> list[str]:
         """Supported, contested or superseded claims that should have an edge but have none."""
         ...

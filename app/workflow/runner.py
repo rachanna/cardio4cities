@@ -448,7 +448,7 @@ class RunManager:
             badge=BadgeParams(**cfg.badge.model_dump()),
             geography=GeographyParams(nearby_km=cfg.geography.nearby_km),
             chunk=ChunkParams(**cfg.chunk.model_dump()),
-            window=WindowParams(**cfg.extract.model_dump()),
+            window=WindowParams(**cfg.extract.model_dump()),  # BD-29 cap and reserve
             max_new_urls=cfg.select.max_new_urls_per_slot_round,
             max_reused_urls=cfg.select.max_reused_per_slot_round,
             replan=ReplanParams(

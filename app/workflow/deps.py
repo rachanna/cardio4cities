@@ -56,6 +56,8 @@ class RoleBinding:
 class WindowParams:
     window_tokens: int  # extract.window_tokens [tunable]
     overlap_tokens: int  # extract.overlap_tokens [tunable]
+    max_windows_per_source: int  # extract.max_windows_per_source [tunable] (BD-29)
+    stop_windows_below_s: float  # extract.stop_windows_below_s [tunable] (BD-29)
 
 
 @dataclass
@@ -96,6 +98,8 @@ class RunDeps:
     stages: StageClock = field(default_factory=StageClock)  # busy time per stage (AT-38)
     places: PlaceMatcher | None = None  # the other-place rule, built once per run (BD-15)
     checkpointed: bool = True  # False when no checkpoint can be saved: no resume (BD-25)
+    # (slot, source) pairs this process extracted: a later round never repeats one (BD-29)
+    extracted: set[tuple[str, str]] = field(default_factory=set)
 
     @property
     def collection(self) -> str:

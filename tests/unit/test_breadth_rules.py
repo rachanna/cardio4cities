@@ -12,8 +12,8 @@ from app.domain.vocab import ProgrammeStatus, SlotStatus
 from app.main import check_graph_marker
 from app.prompts.planner import context
 from app.prompts.planner.schema import PlannedQuery, PlannerOutput, SlotQueries, validate
-from app.settings import ConfigError
 from app.workflow.fetch_cache import FetchCache
+from app.workflow.graph_marker import GraphNotReadyError, ensure_graph_marker
 from app.workflow.limits import StageClock
 from app.workflow.rules.gap_notes import gap_note
 from app.workflow.rules.programme_status import programme_status_update
@@ -158,9 +158,9 @@ class Graph:
 
 async def test_an_empty_graph_takes_the_configured_marker() -> None:
     graph = Graph(None, entities=False)
-    await check_graph_marker(graph, "st_test_v1")  # type: ignore[arg-type]
+    assert await check_graph_marker(graph, "st_test_v1") is None  # type: ignore[arg-type]
     assert graph.marker == "st_test_v1"
-    await check_graph_marker(graph, "st_test_v1")  # type: ignore[arg-type]
+    await ensure_graph_marker(graph, "st_test_v1")  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize(
@@ -168,20 +168,26 @@ async def test_an_empty_graph_takes_the_configured_marker() -> None:
     [
         (Graph("openai_test_v1", entities=True), "made with 'openai_test_v1'"),
         (Graph(None, entities=True), "no embedding marker"),
+        (Graph(None, entities=False, fail=True), "could not be reached"),
     ],
 )
-async def test_start_up_refuses_a_graph_from_another_embedding_model(
-    graph: Graph, says: str
-) -> None:
-    with pytest.raises(ConfigError) as refused:
-        await check_graph_marker(graph, "st_test_v1")  # type: ignore[arg-type]
-    message = str(refused.value)
-    assert says in message
-    assert "poe purge-graph" in message
+async def test_a_graph_from_another_model_refuses_runs_not_the_app(graph: Graph, says: str) -> None:
+    """BD-25 (code review RV-014): start-up only warns; every run start refuses."""
+    problem = await check_graph_marker(graph, "st_test_v1")  # type: ignore[arg-type]
+    assert problem is not None
+    assert says in problem
+    with pytest.raises(GraphNotReadyError, match=says):
+        await ensure_graph_marker(graph, "st_test_v1")  # type: ignore[arg-type]
 
 
-async def test_an_unreachable_graph_is_left_to_the_health_check() -> None:
-    await check_graph_marker(Graph(None, entities=False, fail=True), "st_test_v1")  # type: ignore[arg-type]
+async def test_a_graph_down_at_first_start_gets_its_marker_on_the_first_run() -> None:
+    """RV-014: Neo4j still starting at the first boot used to leave the graph unmarked
+    forever; the marker is now set on the write path."""
+    graph = Graph(None, entities=False, fail=True)
+    assert await check_graph_marker(graph, "st_test_v1") is not None  # type: ignore[arg-type]
+    graph.fail = False  # the graph is up by the time a run starts
+    await ensure_graph_marker(graph, "st_test_v1")  # type: ignore[arg-type]
+    assert graph.marker == "st_test_v1"
 
 
 def test_purge_graph_refuses_the_deployed_environment(

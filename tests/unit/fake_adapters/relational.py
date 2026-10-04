@@ -32,6 +32,9 @@ class FakeRuns:
     async def stranded_runs(self) -> list[dict[str, Any]]:
         return []  # nothing left behind: start-up resumes nothing
 
+    async def heartbeat(self, owner: str) -> None:
+        pass
+
 
 class FakeRelational:
     def __init__(self) -> None:

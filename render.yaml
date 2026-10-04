@@ -29,7 +29,7 @@ services:
     branch: main
     dockerfilePath: ./Dockerfile
     autoDeployTrigger: "off"
-    healthCheckPath: /api/v1/health
+    healthCheckPath: /api/v1/live   # liveness only; /api/v1/health stays for AT-29 (BD-25)
     # Migrations and reference loading run before each release starts (BD-04).
     preDeployCommand: sh scripts/predeploy.sh
     envVars:

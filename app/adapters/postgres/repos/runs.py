@@ -46,15 +46,27 @@ class PostgresRunRepo:
         return CityIdentity.model_validate(row.identity)
 
     async def create_run(
-        self, run_id: str, city_id: str, budget: dict[str, Any], versions: dict[str, str]
+        self,
+        run_id: str,
+        city_id: str,
+        budget: dict[str, Any],
+        versions: dict[str, str],
+        owner: str | None = None,
     ) -> None:
         async with self._engine.begin() as conn:
             await conn.execute(
                 text(
-                    "INSERT INTO run (run_id, city_id, status, budget, versions)"
-                    " VALUES (:r, :c, 'queued', :b, :v)"
+                    "INSERT INTO run (run_id, city_id, status, budget, versions, owner,"
+                    " heartbeat_at) VALUES (:r, :c, 'queued', :b, :v, :o,"
+                    " CASE WHEN CAST(:o AS text) IS NULL THEN NULL ELSE now() END)"
                 ),
-                {"r": run_id, "c": city_id, "b": json.dumps(budget), "v": json.dumps(versions)},
+                {
+                    "r": run_id,
+                    "c": city_id,
+                    "b": json.dumps(budget),
+                    "v": json.dumps(versions),
+                    "o": owner,
+                },
             )
             await conn.execute(text("INSERT INTO run_seq (run_id) VALUES (:r)"), {"r": run_id})
 
@@ -221,15 +233,39 @@ class PostgresRunRepo:
         async with self._engine.connect() as conn:
             rows = await conn.execute(
                 text(
-                    "SELECT run_id, city_id, status, resume_attempts, budget FROM run"
+                    "SELECT run_id, city_id, status, resume_attempts, budget, owner,"
+                    " extract(epoch FROM now() - heartbeat_at) AS quiet_s FROM run"
                     " WHERE status IN ('queued', 'running') ORDER BY run_id"
                 )
             )
             return [dict(r) for r in rows.mappings()]
 
-    async def note_resume(self, run_id: str) -> None:
+    async def heartbeat(self, owner: str) -> None:
+        """The owner's active runs are alive (BD-25)."""
         async with self._engine.begin() as conn:
             await conn.execute(
-                text("UPDATE run SET resume_attempts = resume_attempts + 1 WHERE run_id = :r"),
-                {"r": run_id},
+                text(
+                    "UPDATE run SET heartbeat_at = now()"
+                    " WHERE owner = :o AND status IN ('queued', 'running')"
+                ),
+                {"o": owner},
             )
+
+    async def claim_stale(self, run_id: str, owner: str, stale_after_s: float) -> bool:
+        """Take over a stranded run whose owner has gone quiet, counting the resume. One
+        atomic update: two processes can never both take it (BD-25)."""
+        async with self._engine.begin() as conn:
+            row = (
+                await conn.execute(
+                    text(
+                        "UPDATE run SET owner = :o, heartbeat_at = now(),"
+                        " resume_attempts = resume_attempts + 1"
+                        " WHERE run_id = :r AND status IN ('queued', 'running')"
+                        " AND (heartbeat_at IS NULL"
+                        "      OR heartbeat_at < now() - make_interval(secs => :s))"
+                        " RETURNING run_id"
+                    ),
+                    {"o": owner, "r": run_id, "s": stale_after_s},
+                )
+            ).first()
+            return row is not None

@@ -140,6 +140,7 @@ async def brief_ready(state: RunState, config: RunnableConfig) -> dict[str, Any]
         graph_retry,
         failure_counts(events),
     )
+    summary["checkpointed"] = d.checkpointed  # False: this run could not have resumed
     await d.relational.runs.save_budget_used(run_id, budget)
     # A run is stopped by its budget when the budget refused a call it wanted to make
     status = "stopped_by_budget" if budget["refused"] else "completed"

@@ -25,6 +25,9 @@ class HealthResponse(BaseModel):
     components: dict[str, ComponentHealth]
     checker_independence: Literal["different_family", "same_family_allowed"]
     versions: dict[str, str]
+    # "off": no checkpoints in this process (Windows' Proactor loop), so a run cannot
+    # resume after a restart (BD-14, BD-25). Shown, not counted against the status.
+    resume: Literal["on", "off"] | None = None
 
 
 # --- Cities and runs (LLD-4 §3.2) ---------------------------------------------------

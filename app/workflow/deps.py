@@ -95,12 +95,21 @@ class RunDeps:
     fetch_cache: FetchCache = field(default_factory=FetchCache)  # one fetch per URL per run
     stages: StageClock = field(default_factory=StageClock)  # busy time per stage (AT-38)
     places: PlaceMatcher | None = None  # the other-place rule, built once per run (BD-15)
+    checkpointed: bool = True  # False when no checkpoint can be saved: no resume (BD-25)
 
     @property
     def collection(self) -> str:
-        return f"source_chunks__{self.embeddings.key}"
+        return chunk_collection(self.embeddings.key)
 
     @property
     def claim_collection(self) -> str:
         """Confirmed claims for the semantic route (CHG-01, LLD-5 §4.2)."""
-        return f"claim_index__{self.embeddings.key}"
+        return claim_collection(self.embeddings.key)
+
+
+def chunk_collection(embedding_key: str) -> str:
+    return f"source_chunks__{embedding_key}"
+
+
+def claim_collection(embedding_key: str) -> str:
+    return f"claim_index__{embedding_key}"

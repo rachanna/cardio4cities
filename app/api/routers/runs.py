@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import re
 import time
 from collections.abc import AsyncIterator
 from typing import Annotated, Any
@@ -10,7 +11,7 @@ from fastapi import APIRouter, Depends, Header, Request
 from fastapi.responses import StreamingResponse
 
 from app.api.auth import Session, current_session
-from app.api.errors import ApiError
+from app.api.errors import ApiError, dependency_unavailable
 from app.api.schemas import (
     PlaceCandidate,
     ResolveRequest,
@@ -21,6 +22,7 @@ from app.api.schemas import (
 )
 from app.domain.vocab import EventType
 from app.ports.repos import RelationalPort
+from app.workflow.graph_marker import GraphNotReadyError
 from app.workflow.runner import (
     DailyRunLimitError,
     PlaceNotFoundError,
@@ -33,12 +35,13 @@ SessionDep = Annotated[Session, Depends(current_session)]
 EXACT_MARGIN = 0.1  # LLD-4 §3.2: no other candidate within this similarity
 RETRY_MS = 2000  # LLD-4 §4: retry hint sent once
 TERMINAL = frozenset({"completed", "stopped_by_budget", "failed"})
+LAST_EVENT_ID = re.compile(r"\d{1,18}")  # an event sequence number that fits a bigint
 
 
 def _relational(request: Request) -> RelationalPort:
     relational: RelationalPort | None = request.app.state.container.relational
     if relational is None:
-        raise ApiError(503, "unavailable", "The research store is not available.")
+        raise dependency_unavailable("postgres", "The research store is not available.")
     return relational
 
 
@@ -62,6 +65,10 @@ async def start_run(body: StartRunRequest, request: Request, _: SessionDep) -> S
     manager: RunManager = request.app.state.runs
     try:
         started = await manager.start(body.gazetteer_id)
+    except GraphNotReadyError as exc:  # BD-25: the run is refused, the app keeps serving
+        raise dependency_unavailable(
+            "neo4j", f"The knowledge graph cannot take a new run yet: {exc}"
+        ) from exc
     except RunInProgressError as exc:
         raise ApiError(
             409,
@@ -75,12 +82,26 @@ async def start_run(body: StartRunRequest, request: Request, _: SessionDep) -> S
         ) from exc
     except PlaceNotFoundError as exc:
         raise ApiError(404, "place_not_found", "That place is not in the gazetteer.") from exc
+    except Exception as exc:
+        if not await _reachable(_relational(request)):  # a store outage is a 503, not a 500
+            raise dependency_unavailable(
+                "postgres", "The research store is not available. Try again in a minute."
+            ) from exc
+        raise
     return StartRunResponse(
         run_id=started.run_id,
         city_id=started.city_id,
         status="queued",
         events_url=f"/api/v1/runs/{started.run_id}/events",
     )
+
+
+async def _reachable(relational: RelationalPort) -> bool:
+    try:
+        await relational.ping()
+    except Exception:
+        return False
+    return True
 
 
 async def _run_row(request: Request, run_id: str) -> dict[str, Any]:
@@ -123,7 +144,11 @@ async def event_frames(
             continue
         run = await relational.runs.run_row(run_id)
         if run is None or run["status"] in TERMINAL:
-            return  # run_finished was stored before the status, so nothing is left
+            # run_finished is stored before the status, but it may have landed after the
+            # read above: read once more, so the stream always ends with it (RV-036)
+            for row in await relational.runs.events_after(run_id, last_seq):
+                yield _frame(row)
+            return
         if disconnected is not None and await disconnected():
             return
         if time.monotonic() - last_sent >= heartbeat_s:
@@ -139,11 +164,13 @@ async def run_events(
     _: SessionDep,
     last_event_id: Annotated[str | None, Header()] = None,
 ) -> StreamingResponse:
+    if last_event_id and not LAST_EVENT_ID.fullmatch(last_event_id):
+        # Not silently 0: that replays everything as duplicates (code review RV-036, RV-070)
+        raise ApiError(
+            400, "invalid_last_event_id", "Last-Event-ID must be the number of an event."
+        )
+    after = int(last_event_id) if last_event_id else 0
     await _run_row(request, run_id)
-    try:
-        after = int(last_event_id) if last_event_id else 0
-    except ValueError:
-        after = 0
     stream = request.app.state.container.settings.config.stream
     frames = event_frames(
         _relational(request),

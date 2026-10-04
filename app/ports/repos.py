@@ -101,8 +101,15 @@ class RunRepo(Protocol):
     async def city_identity(self, city_id: str) -> CityIdentity: ...
 
     async def create_run(
-        self, run_id: str, city_id: str, budget: dict[str, Any], versions: dict[str, str]
-    ) -> None: ...
+        self,
+        run_id: str,
+        city_id: str,
+        budget: dict[str, Any],
+        versions: dict[str, str],
+        owner: str | None = None,
+    ) -> None:
+        """`owner`: the process that runs it; its heartbeat starts now (BD-25)."""
+        ...
 
     async def active_run(self) -> str | None: ...
 
@@ -131,10 +138,16 @@ class RunRepo(Protocol):
     async def save_budget_used(self, run_id: str, used: dict[str, Any]) -> None: ...
 
     async def stranded_runs(self) -> list[dict[str, Any]]:
-        """Runs left `queued` or `running` when the process stopped."""
+        """Runs `queued` or `running`, with `owner` and `quiet_s` (seconds since the last
+        heartbeat; None when none was ever recorded)."""
         ...
 
-    async def note_resume(self, run_id: str) -> None: ...
+    async def heartbeat(self, owner: str) -> None: ...
+
+    async def claim_stale(self, run_id: str, owner: str, stale_after_s: float) -> bool:
+        """Take over a run whose heartbeat is older than `stale_after_s`, counting one
+        resume; False when its owner is still alive or another process took it."""
+        ...
 
 
 class ResearchRepo(Protocol):

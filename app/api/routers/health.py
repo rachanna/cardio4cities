@@ -28,6 +28,7 @@ class HealthService:
     probes: list[HealthProbe]
     same_family_checker: bool
     app_version: str
+    checkpoints: bool | None = None  # False: runs cannot resume here (BD-25)
 
     async def report(self) -> HealthResponse:
         checks: dict[str, Callable[[], Awaitable[ComponentHealth]]] = {
@@ -49,6 +50,7 @@ class HealthService:
                 "same_family_allowed" if self.same_family_checker else "different_family"
             ),
             versions={"app": self.app_version},
+            resume=None if self.checkpoints is None else ("on" if self.checkpoints else "off"),
         )
 
     async def _postgres(self) -> ComponentHealth:
@@ -84,6 +86,20 @@ def _timed(check: Callable[[], Awaitable[None]]) -> Callable[[], Awaitable[Compo
 
 async def _not_configured() -> ComponentHealth:
     return ComponentHealth(status="not_configured")
+
+
+@router.get("/live")
+async def live(request: Request) -> JSONResponse:
+    """Liveness for the platform (BD-25): the process answers and Postgres, the only
+    store without which nothing works, is reachable. A Neo4j or Qdrant restart degrades
+    /health but must not make the platform restart the app and kill a run."""
+    relational: RelationalPort | None = request.app.state.container.relational
+    try:
+        if relational is not None:
+            await asyncio.wait_for(relational.ping(), CHECK_TIMEOUT_S)
+    except Exception:
+        return JSONResponse({"status": "down"}, status_code=503)
+    return JSONResponse({"status": "ok"})
 
 
 @router.get("/health", response_model=HealthResponse, response_model_exclude_none=True)

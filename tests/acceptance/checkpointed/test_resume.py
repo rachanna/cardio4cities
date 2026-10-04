@@ -142,7 +142,7 @@ async def test_a_crashed_run_resumes_once_without_duplicates(
 
             resumed_ports = ports(checker)
             restarted = RunManager(resumed_ports, settings)  # a new process
-            assert await restarted.resume_stranded() == [run_id]
+            assert await restarted.resume_stranded(stale_after_s=0) == [run_id]  # a new process
             await restarted.wait(run_id)
             # From the checkpoint, not from the start: the plan made before the stop holds
             scripted = resumed_ports.llm["anthropic"]
@@ -202,7 +202,7 @@ async def test_a_crashed_run_resumes_once_without_duplicates(
     # Resumed once already: a second stop is not resumed again
     await relational.runs.set_status(run_id, "running")
     again = RunManager(no_ports(relational, checkpointer), settings)
-    assert await again.resume_stranded() == []
+    assert await again.resume_stranded(stale_after_s=0) == []
     failed = await relational.runs.run_row(run_id)
     assert failed is not None
     assert failed["error"] == ("interrupted by a restart (already resumed once)")
@@ -309,7 +309,7 @@ async def test_a_stop_after_a_verdict_is_stored_keeps_that_verdict(
             research.set_claim_status = original  # type: ignore[method-assign]
             resumed_ports = ports(checker)  # this checker would say supported
             restarted = RunManager(resumed_ports, settings)
-            assert await restarted.resume_stranded() == [run_id]
+            assert await restarted.resume_stranded(stale_after_s=0) == [run_id]  # a new process
             await restarted.wait(run_id)
     finally:
         research.set_claim_status = original  # type: ignore[method-assign]

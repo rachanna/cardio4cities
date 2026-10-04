@@ -106,6 +106,7 @@ select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "S", "PT"]
 "app/adapters/postgres/repos/reference.py" = ["S608"]
 # These modules exist to map typographic quotes, dashes and spaces (LLD-2 §4.1, §4.2)
 "app/workflow/rules/{quotes,numbers}.py" = ["RUF001"]
+"app/domain/text.py" = ["RUF001"]
 "tests/unit/test_{quote_match,numbers}.py" = ["RUF001"]
 "tests/contract/test_sources_snapshots.py" = ["RUF001"]
 

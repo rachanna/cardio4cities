@@ -99,6 +99,37 @@ class PostgresEntityRepo:
             )
             return [_entity(dict(r)) for r in rows.mappings()]
 
+    async def match_names(
+        self, city_id: str, texts: list[str], keys: list[str], min_similarity: float
+    ) -> list[str]:
+        """Entities a question names, by lookup only (LLD-5 §4.1, §4.3; nothing created):
+        an alias written the same way, the same normalised key, or trigram similarity of
+        at least `min_similarity` with the name or an alias."""
+        if not texts:
+            return []
+        sql = (
+            "SELECT DISTINCT e.entity_id FROM entity e"
+            " LEFT JOIN entity_alias a ON a.entity_id = e.entity_id"
+            " WHERE e.city_id = :c AND (e.normalized_key = ANY(:k) OR EXISTS ("
+            "  SELECT 1 FROM unnest(CAST(:t AS text[])) t WHERE lower(a.surface_form) = lower(t)"
+            "  OR similarity(e.canonical_name, t) >= :m"
+            "  OR similarity(coalesce(a.surface_form, ''), t) >= :m))"
+            " ORDER BY e.entity_id"
+        )
+        params = {"c": city_id, "t": texts, "k": keys, "m": min_similarity}
+        async with self._engine.connect() as conn:
+            rows = await conn.execute(text(sql), params)
+            return [str(x) for x in rows.scalars()]
+
+    async def names(self, city_id: str) -> list[tuple[str, str]]:
+        """(entity_id, canonical name) of every entity of the city (acronym lookup)."""
+        async with self._engine.connect() as conn:
+            rows = await conn.execute(
+                text("SELECT entity_id, canonical_name FROM entity WHERE city_id = :c"),
+                {"c": city_id},
+            )
+            return [(str(r.entity_id), str(r.canonical_name)) for r in rows]
+
     async def with_fact_counts(self, city_id: str) -> list[tuple[Entity, int]]:
         """Entities named by at least one fact of the city's latest run, with how many
         (D3-1): an entity only an unconfirmed claim named is not shown."""

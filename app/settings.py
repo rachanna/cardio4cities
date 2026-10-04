@@ -183,6 +183,22 @@ class BudgetSection(_Section):
     wind_down_at: float
 
 
+class RetrievalSection(_Section):
+    """Question answering (LLD-5 §14, CHG-01; budget per question: owner, BD-38)."""
+
+    rrf_k: int
+    r2_top: int
+    r2_trigram_min: float
+    r3_top: int
+    r3_mentions_top: int
+    max_facts: int
+    max_mentions: int
+    max_per_slot: int
+    mentions_only_if_facts_below: int
+    wall_clock_s: float  # one question's own budget ledger (BD-38)
+    max_cost_micro_usd: int
+
+
 class LimitsSection(_Section):
     runs_per_day: int
     ask_per_min: int
@@ -274,6 +290,8 @@ class GeographySection(_Section):
 class EvalSection(_Section):
     checker_agreement_min: float
     recall_min: float  # owner, BD-26: share of expected claims found [tunable]
+    classifier_min: float  # BD-38: share of classifier golden cases passed [tunable]
+    answerer_min: float  # BD-38: share of answerer golden cases passed [tunable]
 
 
 class StructuredProvider(_Section):
@@ -309,6 +327,7 @@ class Config(_Section):
     tracing: TracingSection
     budget: BudgetSection
     limits: LimitsSection
+    retrieval: RetrievalSection
     fetch: FetchSection
     verify: VerifySection
     select: SelectSection

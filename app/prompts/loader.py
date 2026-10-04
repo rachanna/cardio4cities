@@ -19,7 +19,13 @@ class Prompt:
 
 
 # The version each role runs now; earlier files stay for the record (R-62).
-CURRENT = {"planner": 4, "extractor": 4, "checker": 4}  # v4: BD-26; planner v4: BD-31
+CURRENT = {
+    "planner": 4,
+    "extractor": 4,
+    "checker": 4,
+    "classifier": 2,
+    "answerer": 2,
+}  # BD-38: question answering
 
 
 @cache

@@ -305,6 +305,25 @@ retrieval:
 
 The local embedding model must be multilingual; start-up validation refuses a local Sentence Transformers model not on the configured multilingual list `[verify the model name in the profiles task]`.
 
+Added by BD-38 (owner): `wall_clock_s: 45` and `max_cost_micro_usd: 50000`, one question's own budget.
+
+### 14.1 As built (D3-2, BD-38)
+
+| Part | As built |
+|---|---|
+| Code | `app/query/`: `understand.py`, `routes/` (`structured.py`, `keyword.py`, `semantic.py`, `graph.py`), `revalidate.py`, `fuse.py` (fusion and anchors), `bundle.py`, `postcheck.py`, `pipeline.py`, `llm.py`, `types.py`. `app/query` may not import `app/workflow`, so `app/api/asking.py` builds each question's dependencies, and the pure text normalisation (LLD-2 §4.1) and entity name keys moved to `app/domain/text.py` and `app/domain/entity_names.py` |
+| Budget (owner) | Each question has its own budget ledger: `retrieval.wall_clock_s` (45) and `retrieval.max_cost_micro_usd` (50,000, $0.05). Every model call and the question's embedding reserve on it first. `limits.ask_per_min` is enforced per session. A refused or failed model call is 503 `dependency_unavailable` (`component: llm`) |
+| Understanding | A date the user gave is read as its last day ("2023" is 2023-12-31). A follow-up takes the previous turn's slots, indicators and entities for whatever it names none of; a follow-up the classifier called out of scope takes the previous turn's type when it inherits slots. The classifier sees the previous classification as one line, never the previous answer |
+| R2 | Entities are matched by alias, normalised key, trigram similarity (`r2_trigram_min`), or an acronym that is the initials of an entity's name (AT-42). Their relation claims follow the keyword matches |
+| R3 | One embedding call per question. Mentions are chunks that hold no confirmed claim's quote span |
+| R4 | Edges of the slots' relation types from the city partition by Cypher (no embedding call); with entity mentions resolved, only edges touching them (all edges when none resolved to a graph node). The two graph-only questions (LLD-1 §6.4) are these type-filtered reads |
+| Graph off or down | For relationship and change questions, every claim except those of an asked slot that is not a relationship slot is set aside (counted as `graph_unavailable`), and relationship slots abstain with a fixed sentence (LLD-2 §15.3; RD-06) |
+| Time scope | With a date: a relation must have started by then and not been ended (`superseded_on` or `valid_to`) by then; a statistic or statement must start by then, and only the latest per slot and indicator is kept |
+| Bundle | An anchored claim goes first within its slot and is never cut by the size limits; a contested pair is added whole or not at all |
+| Post-check | Check 2 skips a four-digit year written alone. Check 3 accepts the level word or the wider area's own name. Check 4 also allows the city, country and region names. Check 7 adds, for a slot whose confirmed fact is in the bundle, that fact's stored statement (after the wider-area gap note where it applies); otherwise the abstention. A removed sentence's slot gets its abstention when nothing else covers it. Abstentions keep one per slot |
+| Trace | Also `stores_read` (Postgres, Qdrant, Neo4j; AT-11), `mentions` and the question's `budget`. `graph_used` is true when the graph route ran and succeeded |
+| Golden set | `tests/prompts/golden/classifier.yaml` and `answerer.yaml`; answerer cases are graded after the real post-check (`scripts/eval_answers.py`); pass bars `eval.classifier_min`, `eval.answerer_min` |
+
 ---
 
 ## 15. Data changes (applied through LLD-1 by CHG-01)

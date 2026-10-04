@@ -286,6 +286,20 @@ class ExtractorOutput(BaseModel):
 
 `app/prompts/extractor/v2.md` replaces v1 for new runs. Changes: the quote is one continuous piece of the source (never "…", never joined cells or sentences; a table value is quoted from its row's first cell to the value); `geography_name` names one area as the source does; a new optional `label_quotes {period, geography, population}` holds 6 to 40 words that state a label outside the quote (LLD-2 §4.1a); a worked table-row example. Schema: `ClaimOut.label_quotes: LabelQuotesOut | None`.
 
+### 4.3b Extractor v3 (BD-22)
+
+`app/prompts/extractor/v3.md` replaces v2. Changes:
+- Code checks every number in a label (ages, sample size, the numbers of a case definition, years) against the quote and the located label quotes, and clears a label whose numbers it cannot find (LLD-2 §4.1b). The prompt says so.
+- The city in the task is not evidence. An area is named only when the source names it, in the quote or in a geography label quote. A figure whose area the source does not name gives no claim.
+- `population.subgroup` (true for a part chosen by more than age, sex or area). A cascade denominator such as "adults with hypertension" is not a subgroup; it goes in `denominator_text`.
+- `setting` takes the `Setting` vocabulary.
+- `representativeness` takes `not_stated` unless the source says how it sampled.
+- `sample_size_as_written` replaces `sample_size: int`, so models never produce numbers (LD-04). Code reads it (`rules/numbers.read_sample_size`: exactly one whole number, or empty).
+- A programme an organisation runs, funds or plans is a relation, with its status as stated.
+- Two worked examples change and one trap is added: no area named, so no claim.
+
+`quote_lang` is normalised to its primary subtag ("en-GB", "eng" and "English" are "en"), because a non-exact "en" failed the repair check twice on gpt-6-luna (code review RV-096).
+
 ### 4.4 Code validation
 
 | Check | On failure |
@@ -335,6 +349,8 @@ passage stating the period:     # v2 (BD-10): one block per located label quote,
 v2 changes (BD-10, measured on the golden set): unstated labels read "not stated", never a default such as "general" that asserts something; the period is shown at the precision the source stated ("2024", not "2024-01-01 to 2024-12-31", which made the checker report a period mismatch); levels are plain words; v2 rules add that a "not stated" label is not a mismatch, that a label passage must refer to the same figure, that passages are read together, and that a planned programme described as running is refuted.
 
 The checker never receives the extractor's prompt, output reasoning, other claims, the run's other sources or the slot question. Code asserts this slice structure in a test.
+
+Checker v3 (BD-22): the context adds `case definition:` and `sample size:` lines ("not stated" when empty), and the "supported" definition names both. Measured on the golden set: three new pairs (case definition supported, case definition differs, sample size differs) all judged as expected.
 
 ### 5.2 System prompt (v1)
 

@@ -100,6 +100,7 @@ class PostgresResearchRepo:
                 "population_age_max",
                 "population_sex",
                 "population_group",
+                "population_subgroup",
                 "setting",
                 "sample_size",
                 "case_definition",

@@ -209,3 +209,35 @@
     In 2023, the age-standardised cardiovascular death rate in Halden Bay was 212 per
     100,000 population, according to the civil registration office.
   expected: supported
+
+# --- v3 (BD-22): the case definition and sample size are labels too --------------------
+
+- id: case-definition-supported
+  statement: In Halden Bay, 18.4% of adults with hypertension had it controlled in 2024.
+  value: "18.4%"
+  labels: {geography_level: city_wide, geography_name: Halden Bay, measure_type: cascade_control,
+           period: "2024", case_definition: below 140/90 mmHg}
+  passage: |
+    Among adults in Halden Bay who had hypertension, 18.4% had their blood pressure
+    controlled (below 140/90 mmHg) in the 2024 household survey.
+  expected: supported
+
+- id: case-definition-differs
+  statement: In Halden Bay, 18.4% of adults with hypertension had it controlled in 2024.
+  value: "18.4%"
+  labels: {geography_level: city_wide, geography_name: Halden Bay, measure_type: cascade_control,
+           period: "2024", case_definition: below 130/80 mmHg}
+  passage: |
+    Among adults in Halden Bay who had hypertension, 18.4% had their blood pressure
+    controlled (below 140/90 mmHg) in the 2024 household survey.
+  expected: refuted
+
+- id: sample-size-differs
+  statement: In Halden Bay, 31.2% of adults had hypertension in 2023.
+  value: "31.2%"
+  labels: {geography_level: city_wide, geography_name: Halden Bay,
+           measure_type: measured_prevalence, period: "2023", sample_size: 2410}
+  passage: |
+    The 2023 Halden Bay household survey measured the blood pressure of a random sample of
+    1,204 adults in their homes; 31.2% of them had hypertension.
+  expected: refuted

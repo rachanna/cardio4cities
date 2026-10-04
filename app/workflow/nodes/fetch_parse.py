@@ -111,7 +111,7 @@ async def _one(d: RunDeps, state: SlotState, candidate: Candidate) -> tuple[str 
         title=doc.title if doc else None,
         language=doc.language if doc else None,
         published_date=doc.published_date if doc else None,
-        published_precision=None,
+        published_precision=doc.published_precision if doc else None,
         retrieved_at=datetime.now(UTC),
         http_status=collected.http_status,
         content_type=collected.content_type,

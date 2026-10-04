@@ -18,6 +18,7 @@ from lxml import etree
 from lxml import html as lxml_html
 
 from app.domain.charset import decode_text
+from app.domain.vocab import DatePrecision
 from app.ports.parse import ParsedDocument
 from app.settings import Settings
 
@@ -146,6 +147,29 @@ def _date(value: str | None) -> date | None:
         return None
 
 
+_LANG = re.compile(r"""<html[^>]*?\blang\s*=\s*["']?([A-Za-z]{2,3})\b""", re.IGNORECASE)
+HEAD_SCAN_CHARS = 20_000
+
+
+def _lang(html: str) -> str | None:
+    """The page's declared language (`<html lang>`), primary subtag only."""
+    found = _LANG.search(html[:HEAD_SCAN_CHARS])
+    return found.group(1).lower() if found else None
+
+
+def _precision(html: str, published: date | None) -> DatePrecision | None:
+    """As precise as the page's own head states the date: a full date, a month, or only
+    the year (a metadata "2024" read as 2024-01-01 is a year, not a day)."""
+    if published is None:
+        return None
+    head = html[:HEAD_SCAN_CHARS]
+    if published.isoformat() in head:
+        return DatePrecision.DAY
+    if published.strftime("%Y-%m") in head:
+        return DatePrecision.MONTH
+    return DatePrecision.YEAR
+
+
 class DocumentParser:
     def parse_html(self, content: bytes, url: str, charset: str | None = None) -> ParsedDocument:
         try:
@@ -172,14 +196,18 @@ class DocumentParser:
             include_links=False,
             favor_precision=True,
         )
-        meta = trafilatura.extract_metadata(html, default_url=url)
+        # Metadata only: `extensive` date search reads body text, so "31 % in 2019" became
+        # a publication date of 2019-01-01 (BD-22; never infer labels)
+        meta = trafilatura.extract_metadata(html, default_url=url, extensive=False)
         info = meta.as_dict() if meta else {}
+        published = _date(info.get("date"))
         body = (text or "").replace(" \n", "\n")
         return ParsedDocument(
             text=body,
             title=info.get("title"),
-            language=info.get("language"),
-            published_date=_date(info.get("date")),
+            language=info.get("language") or _lang(html),
+            published_date=published,
+            published_precision=_precision(html, published),
             tables=_table_spans(body),
         )
 

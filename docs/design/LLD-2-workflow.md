@@ -224,6 +224,20 @@ After the quote is located, `match_quotes` applies two more code steps before wr
 
 `effective_level(claim)` (`domain/geography.py`) is the level a claim counts as for the city: its labelled level, except that a `nearby` figure counts as at least `district`, and a figure about an area containing the city (`contains_city`) counts as at least `metro_region` even when labelled city-wide (BD-17). Gap notes name the effective level, or "a nearby place". Ranking (§5.3), badges (§8), confidence (§7) and slot status (§11) use it, so a nearby town's own city-wide figure is never shown as the city's.
 
+### 4.1b Labels the evidence states (BD-22)
+
+After the label quotes are located (§4.1a), `rules/label_evidence.keep_located` checks the labels' numbers against the located text: the quote and the located label passages. A number must stand as a whole number ("30" is not in "130" or "30.5"). Decimal commas and thousands separators are accepted as the source writes them, and a year may be the short end of a span ("2023-24"). Code clears, never guesses, and flags the claim `label_not_located`:
+- an age band with an age the evidence does not state (both ages are cleared);
+- a sample size the evidence does not state;
+- a case definition whose numbers the evidence does not state, together with its threshold code, so it gets no comparability key;
+- a stated period whose years the evidence does not state. It becomes a publication-date proxy. Before, an empty label quote was trusted as "stated in the quote".
+
+A case definition with no numbers is left to the checker, which now sees it (LLD-3 §5).
+
+**The area must be named (owner, BD-22).** A claim labelled `city_wide`, `metro_region` or `district` is dropped before checking, as `claim_dropped` / `geography_not_stated`, unless the located text names its area as whole words: the label as written, the label without area words, or, for the city itself, the city's name or ASCII name (`rules/geography_fit.area_named`). The city in the extractor's context is not evidence. Sub-city levels already need the city named (D2-4).
+
+**Publication dates (BD-22).** Only page metadata dates a source (`extract_metadata(extensive=False)`): a year in the body text ("31 % in 2019", "Copyright 2014-2023") is never a publication date. `published_precision` is as precise as the page head writes the date (day, month or year), and `language` comes from `<html lang>` when the metadata gives none.
+
 ### 4.4 Comparability key (R-35)
 
 ```python

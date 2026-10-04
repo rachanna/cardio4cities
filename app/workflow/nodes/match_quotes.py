@@ -41,15 +41,17 @@ from app.workflow.nodes._deps import deps
 from app.workflow.problems import step_failed
 from app.workflow.rules.entity_resolution import acronym_pairs
 from app.workflow.rules.geography_fit import (
+    NAMED_LEVELS,
     PlaceCandidate,
+    area_named,
     city_named,
     geography_fit,
     lookup_names,
     region_named,
 )
-from app.workflow.rules.label_evidence import clear_labels, locate_label_quotes
+from app.workflow.rules.label_evidence import clear_labels, keep_located, locate_label_quotes
 from app.workflow.rules.labels import apply_reference_period_rule, derive_flags
-from app.workflow.rules.numbers import parse_value
+from app.workflow.rules.numbers import parse_value, read_sample_size
 from app.workflow.rules.quotes import QuoteDrop, match_quote
 from app.workflow.rules.thresholds import threshold_code
 from app.workflow.state import SlotState
@@ -149,7 +151,9 @@ async def match_quotes(state: SlotState, config: RunnableConfig) -> dict[str, An
                 continue
             start, end = draft.window_start + found.span_start, draft.window_start + found.span_end
             labels, period_unparsed = to_labels(
-                out.labels, threshold_code(out.labels.case_definition, d.thresholds)
+                out.labels,
+                threshold_code(out.labels.case_definition, d.thresholds),
+                read_sample_size(out.labels.sample_size_as_written),
             )
             label_quotes: dict[LabelKind, str | None] = (
                 out.label_quotes.model_dump() if out.label_quotes else {}  # type: ignore[assignment]
@@ -159,6 +163,22 @@ async def match_quotes(state: SlotState, config: RunnableConfig) -> dict[str, An
             )
             labels = clear_labels(labels, evidence.cleared)
             located = [text[start:end], *(text[a:b] for a, b in evidence.spans.values())]
+            kept = keep_located(labels, located)  # numbers the evidence does not state (BD-22)
+            labels = kept.labels
+            if labels.geography_level in NAMED_LEVELS and not area_named(
+                labels.geography_name, state["city"], located
+            ):  # the area is not named in the evidence: the context city is not evidence
+                await d.events.emit(
+                    state["run_id"],
+                    EventType.CLAIM_DROPPED,
+                    {
+                        "claim_id": draft.claim_id,
+                        "reason": "geography_not_stated",
+                        "statement": out.statement,
+                        "geography_name": labels.geography_name,
+                    },
+                )
+                continue
             if draft.source_id not in regions:
                 regions[draft.source_id] = region_named(state["city"], text)
             fit = await fit_for(d, state["city"], labels, located, regions[draft.source_id])
@@ -186,6 +206,8 @@ async def match_quotes(state: SlotState, config: RunnableConfig) -> dict[str, An
             flags = set(derive_flags(out.kind, labels, out.quote_lang, parsed, d.badge))
             if period_unparsed:
                 flags.add(ClaimFlag.PERIOD_NOT_STATED)
+            if kept.cleared:
+                flags.add(ClaimFlag.LABEL_NOT_LOCATED)
             claim = Claim(
                 claim_id=draft.claim_id,
                 run_id=state["run_id"],

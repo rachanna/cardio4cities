@@ -107,6 +107,9 @@ def build_user_message(
         f"  measure: {labels.measure_type.value}",
         f"  period: {_period(labels)}",
         f"  denominator: {labels.denominator_text or 'not stated'}",
+        # checker v3 (BD-22): the labels that set the threshold and the sample
+        f"  case definition: {labels.case_definition or 'not stated'}",
+        f"  sample size: {labels.sample_size if labels.sample_size is not None else 'not stated'}",
         f"source: publisher {publisher_class}; "
         f"published {published.isoformat() if published else 'unknown'}",
         "</context>",

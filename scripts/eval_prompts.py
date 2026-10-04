@@ -46,6 +46,7 @@ from app.workflow.budget import BudgetExhaustedError, BudgetLedger, BudgetLimits
 from app.workflow.deps import RoleBinding, RunDeps
 from app.workflow.llm import call_checker, call_role
 from app.workflow.rules.label_evidence import locate_label_quotes
+from app.workflow.rules.numbers import read_sample_size
 from app.workflow.rules.quotes import QuoteDrop, match_quote, normalise_text
 from app.workflow.runner import role_bindings
 from scripts.reference.yaml_reference import read_indicators, read_slots
@@ -115,7 +116,10 @@ def _field(out: ClaimOut, name: str, want: Any, text: str, quote: QuoteParams) -
         "denominator_stated": lambda: lab.denominator_stated is want,
         "period_year": lambda: want in _year_of(out),
         "period_none": lambda: not _year_of(out),
-        "sample_size": lambda: lab.sample_size == want,
+        "sample_size": lambda: read_sample_size(lab.sample_size_as_written) == want,
+        "representativeness": lambda: lab.representativeness.value == want,
+        "setting": lambda: (lab.setting.value if lab.setting else None) == want,
+        "subgroup": lambda: lab.population.subgroup is want,
         "population_group": lambda: str(want).casefold() in (lab.population.group or "").casefold(),
         "relation_type": lambda: rel is not None and rel.relation_type.value == want,
         "programme_status": lambda: (
@@ -180,7 +184,9 @@ async def run_extractor(d: RunDeps, quote: QuoteParams, tally: Tally) -> None:
             )
         except PortError as exc:
             tally.failures += 1
-            tally.lines.append(f"- {case['id']}: model call failed ({type(exc).__name__})")
+            tally.lines.append(
+                f"- {case['id']}: model call failed ({type(exc).__name__}: {str(exc)[:160]})"
+            )
             continue
         claims = [c for c in out.parsed.claims if keep_claim(c, set(case.get("slots", ["S04"])))]
         notes: list[str] = []
@@ -202,7 +208,10 @@ async def run_extractor(d: RunDeps, quote: QuoteParams, tally: Tally) -> None:
             tally.expected += 1
             found = _find(claims, expect)
             if found is None:
-                notes.append(f"missing {expect.get('value') or expect.get('match')}")
+                got = [
+                    c.statistic.value_as_written if c.statistic else c.kind.value for c in claims
+                ]
+                notes.append(f"missing {expect.get('value') or expect.get('match')} (got {got})")
                 continue
             tally.found += 1
             wrong = []
@@ -241,6 +250,7 @@ def _labels(raw: dict[str, Any]) -> Labels:
         period_type=PeriodType.PERIOD if year else PeriodType.PUBLICATION_DATE_PROXY,
         population_age_min=raw.get("age_min"), population_age_max=raw.get("age_max"),
         population_group=raw.get("group"), representativeness="not_applicable",
+        case_definition=raw.get("case_definition"), sample_size=raw.get("sample_size"),
         denominator_text=raw.get("denominator"), denominator_stated=bool(raw.get("denominator")),
     )  # fmt: skip
 
@@ -258,7 +268,9 @@ async def run_checker(d: RunDeps, tally: Tally) -> None:
             out = await call_checker(d, prompt.system, user, CheckerOutput)
         except PortError as exc:
             tally.failures += 1
-            tally.lines.append(f"- {case['id']}: model call failed ({type(exc).__name__})")
+            tally.lines.append(
+                f"- {case['id']}: model call failed ({type(exc).__name__}: {str(exc)[:160]})"
+            )
             continue
         got = final_label(out.parsed)
         tally.checker_all += 1

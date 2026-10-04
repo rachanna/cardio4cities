@@ -24,7 +24,7 @@ def test_crlf_and_lf_checkouts_give_the_same_version(
     assert versions[0].startswith("checker@v1+")
 
 
-def test_current_versions_are_the_bd10_prompts() -> None:
-    assert loader.load_prompt("extractor").version == 2
-    assert loader.load_prompt("checker").version == 2
+def test_current_versions_are_the_bd22_prompts() -> None:
+    assert loader.load_prompt("extractor").version == 3  # BD-22: located labels, v3 vocabulary
+    assert loader.load_prompt("checker").version == 3  # BD-22: case definition and sample size
     assert loader.load_prompt("planner").version == 3  # BD-15: queries per slot from config

@@ -88,6 +88,27 @@ def city_named(city: CityIdentity, texts: Sequence[str]) -> bool:
     return any(_mentions(t, n) for t in texts for n in (city.name, city.ascii_name))
 
 
+# Levels whose area must be named in the evidence (owner, BD-22): the city, its metro
+# region or a district. Sub-city levels already need the city named (D2-4); a country or
+# state is checked by name against the city's own.
+NAMED_LEVELS = frozenset(
+    {GeographyLevel.CITY_WIDE, GeographyLevel.METRO_REGION, GeographyLevel.DISTRICT}
+)
+
+
+def area_named(geography_name: str, city: CityIdentity, texts: Sequence[str]) -> bool:
+    """The labelled area is named, as whole words, in the located quote or a located
+    label passage: the label as written, its name without area words ("Halden Bay" for
+    "Halden Bay City"), or, for the city itself, the city's name or ASCII name. The city
+    in the extractor's context is not evidence (BD-22)."""
+    names = [geography_name, _core(geography_name)]
+    if _same_name(geography_name, city.name, AREA_WORDS) or _same_name(
+        geography_name, city.ascii_name, AREA_WORDS
+    ):
+        names += [city.name, city.ascii_name]
+    return any(_mentions(t, n) for t in texts for n in names if n and n.strip())
+
+
 def region_named(city: CityIdentity, text: str) -> bool:
     """The city's own region (admin-1) named, as whole words, in `text` (rule 3)."""
     return _mentions(text, city.admin1_name)

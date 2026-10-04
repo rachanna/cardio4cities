@@ -1,0 +1,61 @@
+# Local OpenAI profile (BD-23; owner 2026-10-03): the local profile with every model role
+# on OpenAI, for development runs and the golden set while the owner's budget is OpenAI
+# only. One family for every role needs the labelled same-family exception (BD-02): it is
+# shown on every verdict and in /health. The final test runs on different families.
+app:
+  public_base_url: http://localhost:8000
+  user_agent: "CARDIO4CitiesResearchBot/0.1 (+https://github.com/rachanna/cardio4cities)"
+access:
+  access_code_env: ACCESS_CODE
+  admin_code_env: ADMIN_CODE
+  session_secret_env: SESSION_SECRET
+llm:
+  # Model bindings (BD-23): the GPT-6 models take effort, not temperature. Luna for the
+  # cheap roles; Sol on low effort judges, as deployed; Luna on high effort as its fallback.
+  roles:
+    planner:    { provider: openai, model: gpt-6-luna, family: openai, effort: low }
+    extractor:  { provider: openai, model: gpt-6-luna, family: openai, effort: medium }
+    checker:    { provider: openai, model: gpt-6.1-sol, family: openai, effort: low,
+                  fallback: { provider: openai, model: gpt-6-luna, family: openai, effort: high } }
+    classifier: { provider: openai, model: gpt-6-luna, family: openai, effort: low }
+    answerer:   { provider: openai, model: gpt-6-luna, family: openai, effort: low }
+    reporter:   { provider: openai, model: gpt-6-luna, family: openai, effort: low }
+  providers:
+    anthropic: { api_key_env: ANTHROPIC_API_KEY }
+    openai:    { api_key_env: OPENAI_API_KEY }
+    ollama:    { base_url_env: OLLAMA_BASE_URL }   # required only when a role uses it
+  concurrency: 4
+  allow_same_family_checker: true    # BD-02, BD-23: shown on every verdict and in /health
+# Multilingual: sources and quotes stay in their original language. Own Qdrant collection by key.
+embeddings: { provider: sentence_transformers, model: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2, dimension: 384, key: st_multiling_minilm_v1, concurrency: 4 }
+search:     { provider: searxng, mode: links_only, base_url: http://127.0.0.1:8888, rate_per_s: 1 }   # base_url: BD-02
+relational: { dsn_env: DATABASE_URL }
+vector:     { provider: qdrant, url_env: QDRANT_URL }   # no API key locally
+graph:      { provider: graphiti_neo4j, uri_env: NEO4J_URI, user_env: NEO4J_USER, password_env: NEO4J_PASSWORD }
+snapshots:  { provider: postgres, max_bytes: 10485760 }
+renderer:   { provider: weasyprint }
+tracing:    { providers: [events] }
+# Estimate ~$0.15 a run (BD-23); the owner's cap for every profile (BD-15)
+budget:     { wall_clock_s: 420, searches: 64, fetches: 60, tokens: 1500000, cost_micro_usd: 3000000, wind_down_at: 0.85 }   # BD-15
+limits:     { runs_per_day: 20, ask_per_min: 20, resolve_per_min: 30 }
+fetch:      { concurrency: 6, min_interval_s: 1, max_bytes: 10485760, connect_timeout_s: 5, read_timeout_s: 20, allowed_ports: [80, 443], robots_timeout_s: 15, crawl_delay_cap_s: 30 }
+verify:     { max_claims_per_slot: 5, label_margin_chars: 200 }   # BD-05, BD-10
+select:     { max_new_urls_per_slot_round: 3, max_reused_per_slot_round: 2, other_place_min_population: 15000 }   # BD-14, BD-15
+replan:     { max_rounds: 2, max_rounds_wider_geo: 1, priority: [S04, S03, S05, S06] }   # priority: BD-15
+plan:       { queries_per_slot: 2 }   # BD-15
+extract:    { window_tokens: 12000, overlap_tokens: 500 }
+quote:      { min_words: 6, max_words: 60, min_words_unique: 3 }   # LLD-2 §4.1 [tunable] (BD-06, BD-08)
+chunk:      { prose_tokens: 400, overlap_tokens: 60, table_max_tokens: 1200 }   # LLD-1 §5.3 [tunable] (BD-07)
+consistency: { agree_pp: 0.5, agree_rel: 0.02 }
+entity:     { merge_threshold: 0.92, candidate_threshold: 0.85 }
+badge:      { stale_years: 5, stale_years_people: 2, small_sample: 300 }
+confidence: { recent_years: 5 }
+analytics:  { enabled: false }
+stream:     { poll_interval_s: 0.5, heartbeat_s: 15 }   # LLD-4 §4 [tunable]
+# Official APIs for Wave 0 (LLD-2 §13, BD-13): reached through the collector's API path
+structured:
+  providers:
+    who_gho:    { base_url: https://ghoapi.azureedge.net/api }
+    world_bank: { base_url: https://api.worldbank.org/v2 }
+eval:       { checker_agreement_min: 0.9 }   # LLD-3 §9 golden-set pass bar
+geography:  { nearby_km: 75 }   # figures from places this close may answer for the city (BD-10)

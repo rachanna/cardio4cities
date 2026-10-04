@@ -22,8 +22,10 @@ REPRESENTATIVENESS_RANK: dict[Representativeness, int] = {
     Representativeness.CENSUS: 0,
     Representativeness.REPRESENTATIVE_SAMPLE: 1,
     Representativeness.MODELLED: 2,
-    Representativeness.NON_REPRESENTATIVE: 3,
-    Representativeness.NOT_APPLICABLE: 1,
+    # Unknown sampling ranks after modelled, before non-representative (owner, BD-22)
+    Representativeness.NOT_STATED: 3,
+    Representativeness.NOT_APPLICABLE: 3,
+    Representativeness.NON_REPRESENTATIVE: 4,
 }
 
 

@@ -170,8 +170,12 @@ def test_national_and_old_figure_is_not_city_level_first_then_outdated() -> None
 @pytest.mark.parametrize(
     ("label_overrides", "badge"),
     [
-        ({"population_group": "university staff"}, Badge.NOT_CITY_LEVEL),
-        ({"setting": "Hospital"}, Badge.NOT_CITY_LEVEL),
+        (
+            {"population_group": "university staff", "population_subgroup": True},
+            Badge.NOT_CITY_LEVEL,
+        ),
+        ({"setting": "health_facility"}, Badge.NOT_CITY_LEVEL),
+        ({"setting": "Hospital"}, Badge.NOT_CITY_LEVEL),  # stored before BD-22: still read
         ({"representativeness": "non_representative"}, Badge.LIMITED_SAMPLE),
         ({"sample_size": 120}, Badge.LIMITED_SAMPLE),
     ],
@@ -181,7 +185,9 @@ def test_each_badge_condition(label_overrides: dict[str, object], badge: Badge) 
 
 
 def test_general_population_wording_is_city_level() -> None:
-    for group in ("adults", "All ages", "general population"):
+    """BD-22: a group only narrows the figure when it is a subgroup; a cascade's
+    denominator, such as "adults with hypertension", is not."""
+    for group in ("adults", "All ages", "general population", "adults with hypertension"):
         assert (
             badges(claim(labels={"population_group": group}), CITY_SLOT, TODAY, badge_params()).main
             is None

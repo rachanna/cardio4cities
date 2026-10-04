@@ -107,7 +107,7 @@ def test_invalid_app_env_refused(valid_env: dict[str, str]) -> None:
     valid_env["APP_ENV"] = "staging"
 
     assert _problems(valid_env) == [
-        "APP_ENV must be one of local, local-quality, deployed, not 'staging'"
+        "APP_ENV must be one of local, local-quality, local-openai, deployed, not 'staging'"
     ]
 
 

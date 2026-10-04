@@ -4,7 +4,7 @@ provider carries no length limits; code enforces them here."""
 import re
 from datetime import date
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from app.domain.models import Labels
 from app.domain.vocab import (
@@ -19,10 +19,12 @@ from app.domain.vocab import (
     ProgrammeStatus,
     RelationType,
     Representativeness,
+    Setting,
     Sex,
 )
 
 MAX_CLAIMS = 12
+ENGLISH = frozenset({"en", "eng", "english"})
 MAX_STATEMENT_CHARS = 300
 
 
@@ -36,6 +38,9 @@ class PopulationOut(BaseModel):
     age_max: int | None
     sex: Sex
     group: str | None
+    # v3 (BD-22): true when the people measured are a part chosen by more than age, sex or
+    # area (students, patients, workers, one community); a cascade denominator is not
+    subgroup: bool | None = None
 
 
 class LabelsOut(BaseModel):
@@ -44,8 +49,8 @@ class LabelsOut(BaseModel):
     measure_type: MeasureType
     reference_period: PeriodOut | None
     population: PopulationOut
-    setting: str | None
-    sample_size: int | None
+    setting: Setting | None
+    sample_size_as_written: str | None  # v3: copied; code reads the number (BD-22)
     case_definition: str | None
     method: Method
     representativeness: Representativeness
@@ -88,6 +93,14 @@ class ClaimOut(BaseModel):
     statistic: StatisticOut | None
     relation: RelationOut | None
     label_quotes: LabelQuotesOut | None
+
+    @field_validator("quote_lang")
+    @classmethod
+    def _language_code(cls, value: str) -> str:
+        """The primary language subtag: "en-GB", "EN", "eng" and "English" are all "en"
+        (BD-22; code review RV-096). Other languages keep their code, lower-cased."""
+        code = value.strip().lower().replace("_", "-").split("-")[0]
+        return "en" if code in ENGLISH else code
 
 
 class ExtractorOutput(BaseModel):
@@ -145,8 +158,11 @@ def parse_partial_date(value: str | None, end: bool) -> tuple[date | None, DateP
         return None, None
 
 
-def to_labels(out: LabelsOut, threshold_code: str | None) -> tuple[Labels, bool]:
-    """Domain labels; the bool is True when a stated period did not parse (§4.4)."""
+def to_labels(
+    out: LabelsOut, threshold_code: str | None, sample_size: int | None = None
+) -> tuple[Labels, bool]:
+    """Domain labels; the bool is True when a stated period did not parse (§4.4).
+    `sample_size`: read by code from `sample_size_as_written` (BD-22)."""
     period = out.reference_period
     start, p_start = parse_partial_date(period.start if period else None, end=False)
     end_, p_end = parse_partial_date(period.end if period else None, end=True)
@@ -167,8 +183,9 @@ def to_labels(out: LabelsOut, threshold_code: str | None) -> tuple[Labels, bool]
         population_age_max=out.population.age_max,
         population_sex=out.population.sex,
         population_group=out.population.group,
+        population_subgroup=out.population.subgroup,
         setting=out.setting,
-        sample_size=out.sample_size,
+        sample_size=sample_size,
         case_definition=out.case_definition,
         threshold_code=threshold_code,
         method=out.method,

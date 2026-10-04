@@ -9,7 +9,7 @@ import yaml
 from app.settings import CONFIG_DIR, ConfigError, load_settings
 from tests.conftest import ConfigWriter
 
-PROFILES = ("local", "local-quality", "deployed")
+PROFILES = ("local", "local-quality", "local-openai", "deployed")
 MODEL_SECTIONS = ("llm", "embeddings")
 
 
@@ -126,3 +126,22 @@ def test_unknown_effort_value_refused(
 
     with pytest.raises(ConfigError, match=r"llm\.roles\.checker\.effort"):
         load_settings(valid_env, config_dir)
+
+
+def test_local_openai_is_local_with_every_role_on_openai() -> None:
+    """BD-23: development on the owner's OpenAI budget. Only the model bindings and the
+    labelled same-family exception differ from local."""
+    local, dev = _raw("local"), _raw("local-openai")
+    assert set(dev) == set(local)
+    for section in dev:
+        if section == "llm":
+            other = ("roles", "allow_same_family_checker")
+            assert {k: v for k, v in dev["llm"].items() if k not in other} == {
+                k: v for k, v in local["llm"].items() if k not in other
+            }
+        else:
+            assert dev[section] == local[section], section
+    assert all(b["provider"] == "openai" for b in _bindings(dev))
+    assert dev["llm"]["allow_same_family_checker"] is True
+    checker = dev["llm"]["roles"]["checker"]
+    assert (checker["model"], checker["effort"]) == ("gpt-6.1-sol", "low")

@@ -30,8 +30,9 @@ MIN_ACCESS_CODE_LENGTH = 12
 EXPECTED_SLOT_IDS = frozenset(f"S{n:02d}" for n in range(1, 17))
 
 # local-quality: local stores with the deployed model bindings (BD-05)
-AppEnv = Literal["local", "local-quality", "deployed"]
-APP_ENVS: tuple[str, ...] = ("local", "local-quality", "deployed")
+# local-openai: local stores with every model role on OpenAI (BD-23)
+AppEnv = Literal["local", "local-quality", "local-openai", "deployed"]
+APP_ENVS: tuple[str, ...] = ("local", "local-quality", "local-openai", "deployed")
 
 
 class ConfigError(Exception):

@@ -98,10 +98,10 @@ PERIOD_QUOTE = (
     "between March and October 2024"
 )
 EN_QUERY = "Halden Bay hypertension control survey"
-NV_QUERY = "Halden Bay blodtrykk kontroll"
+SECOND_QUERY = "Halden Bay blood pressure control report"
 GOV_URL = f"http://{HOST}/public-health"
 EN_GOV_QUERY = "Halden Bay public health authority"
-NV_GOV_QUERY = "Halden Bay helsemyndighet"
+SECOND_GOV_QUERY = "Halden Bay health authority services"
 OLD_GOV_SENTENCE = (
     "Until March 2024, public health in Halden Bay was run by the Coastal District Office."
 )
@@ -281,14 +281,14 @@ def planner(_: str) -> PlannerOutput:
                 slot_id="S04",
                 queries=[
                     PlannedQuery(text=EN_QUERY, lang="en", purpose="city survey"),
-                    PlannedQuery(text=NV_QUERY, lang="nv", purpose="primary language"),
+                    PlannedQuery(text=SECOND_QUERY, lang="en", purpose="city report"),
                 ],
             ),
             SlotQueries(
                 slot_id="S01",
                 queries=[
                     PlannedQuery(text=EN_GOV_QUERY, lang="en", purpose="authority"),
-                    PlannedQuery(text=NV_GOV_QUERY, lang="nv", purpose="primary language"),
+                    PlannedQuery(text=SECOND_GOV_QUERY, lang="en", purpose="authority page"),
                 ],
             ),
         ]
@@ -331,7 +331,7 @@ async def run_slice(
     openai = ScriptedLLM(
         "openai", openai_roles if openai_roles is not None else {"checker": checker}
     )
-    search = ListSearch([URL], by_query={EN_GOV_QUERY: [GOV_URL], NV_GOV_QUERY: [GOV_URL]})
+    search = ListSearch([URL], by_query={EN_GOV_QUERY: [GOV_URL], SECOND_GOV_QUERY: [GOV_URL]})
     vector = MemoryVector()
     graph = await reachable_graph()
     snapshots = PostgresSnapshots(database_url, settings.config.snapshots.max_bytes)

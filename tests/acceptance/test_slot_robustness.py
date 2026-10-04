@@ -38,7 +38,7 @@ from tests.support.workflow_fakes import ListSearch, MemoryVector
 
 OLD_URL = f"http://{HOST}/old-survey"
 ALIAS_URL = f"http://{HOST}/survey-2024"
-(EN_QUERY, _), (NV_QUERY, _) = queries_for("S04", 0)
+(EN_QUERY, _), (SECOND_QUERY, _) = queries_for("S04", 0)
 INVERTED_STATEMENT = "Families of adults aged 70 to 30 in Halden Bay took part in the survey."
 
 
@@ -84,7 +84,7 @@ async def test_one_bad_item_never_costs_the_slot_its_round(
         "/old-survey": Reply(301, b"", None, {"location": URL}),
         "/survey-2024": Reply(301, b"", None, {"location": URL}),
     })  # fmt: skip
-    search = FailingSearch({EN_QUERY: [OLD_URL, ALIAS_URL]}, failing={NV_QUERY})
+    search = FailingSearch({EN_QUERY: [OLD_URL, ALIAS_URL]}, failing={SECOND_QUERY})
     graph = await reachable_graph()
     try:
         async with ports_for(relational, settings, world, search,
@@ -116,16 +116,16 @@ async def test_one_bad_item_never_costs_the_slot_its_round(
     dropped = [e["payload"] for e in events if e["type"] == EventType.CLAIM_DROPPED]
     assert "invalid_labels" in {p["reason"] for p in dropped}
     failed = [e["payload"] for e in events if e["type"] == EventType.STEP_FAILED]
-    assert {(p["stage"], p["item"]) for p in failed} >= {("search", NV_QUERY)}
+    assert {(p["stage"], p["item"]) for p in failed} >= {("search", SECOND_QUERY)}
     assert any(p["stage"] == "verify" and p["error"] == "RuntimeError" for p in failed)
     assert all("crashed" not in str(p) for p in failed)  # a type, never a message
 
     # RV-041: the failed search was tried twice and is not a query tried
-    assert search.queries.count(NV_QUERY) == 2
+    assert search.queries.count(SECOND_QUERY) == 2
     tried = await query_rows(
         relational, "SELECT query FROM search_query WHERE run_id = :r", r=run_id
     )
-    assert NV_QUERY not in {t["query"] for t in tried}
+    assert SECOND_QUERY not in {t["query"] for t in tried}
 
     # RV-051: the summary counts what was lost, by stage
     (row,) = await query_rows(

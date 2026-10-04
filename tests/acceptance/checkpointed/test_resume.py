@@ -28,7 +28,7 @@ from tests.support.thin_slice import (
     EN_GOV_QUERY,
     GOV_URL,
     HOST,
-    NV_GOV_QUERY,
+    SECOND_GOV_QUERY,
     URL,
     checker,
     extractor,
@@ -100,7 +100,7 @@ async def test_a_crashed_run_resumes_once_without_duplicates(
     graph = await reachable_graph()
     vector = MemoryVector()
     snapshots = PostgresSnapshots(migrated, settings.config.snapshots.max_bytes)
-    search = ListSearch([URL], by_query={EN_GOV_QUERY: [GOV_URL], NV_GOV_QUERY: [GOV_URL]})
+    search = ListSearch([URL], by_query={EN_GOV_QUERY: [GOV_URL], SECOND_GOV_QUERY: [GOV_URL]})
     web = world()
 
     def ports(check: Any) -> Ports:
@@ -264,7 +264,7 @@ async def test_a_stop_after_a_verdict_is_stored_keeps_that_verdict(
     settings = settings_for(migrated, valid_env)
     graph = await reachable_graph()
     snapshots = PostgresSnapshots(migrated, settings.config.snapshots.max_bytes)
-    search = ListSearch([URL], by_query={EN_GOV_QUERY: [GOV_URL], NV_GOV_QUERY: [GOV_URL]})
+    search = ListSearch([URL], by_query={EN_GOV_QUERY: [GOV_URL], SECOND_GOV_QUERY: [GOV_URL]})
     web = world()
     research = relational.research
     original = research.set_claim_status

@@ -11,7 +11,13 @@ from pydantic import BaseModel
 from app.domain.models import CityIdentity
 from app.ports.errors import ProviderUnavailableError
 from app.ports.llm import LLMParams, LLMResult
-from app.prompts.planner.schema import PlannedQuery, PlannerOutput, SlotQueries, validate
+from app.prompts.planner.schema import (
+    PlannedQuery,
+    PlannerOutput,
+    SlotQueries,
+    usable_slots,
+    validate,
+)
 from app.workflow.budget import BudgetLedger, BudgetLimits
 from app.workflow.deps import Binding
 from app.workflow.llm import _call_once
@@ -45,7 +51,7 @@ def test_the_planner_gives_exactly_the_configured_number_of_queries() -> None:
             )
         ]
     )  # fmt: skip
-    assert validate(three, {"S04"}, ["en"], per_slot=2) == ["S04: give exactly 2 new queries"]
+    assert validate(three, {"S04"}, per_slot=2) == ["S04: give exactly 2 new queries"]
 
 
 # --- other-place rule (owner: down-rank, never exclude) ----------------------------------
@@ -123,3 +129,41 @@ async def test_a_model_call_is_cut_off_when_the_run_has_no_time_left() -> None:
     with pytest.raises(ProviderUnavailableError, match="time ran out"):
         await _call_once(deps, "checker", binding, "system", "user", BaseModel)
     assert slow.timeout == pytest.approx(0.05, abs=0.01)
+
+
+# --- English only, per-slot fallback (BD-31) ------------------------------------------------
+
+
+def test_every_query_is_in_english() -> None:
+    """Owner, 2026-10-04: the PoC searches in English only."""
+    local = PlannerOutput(slots=[SlotQueries(slot_id="S04", queries=[
+        PlannedQuery(text="Halden Bay blodtrykk", lang="nv", purpose="t"),
+        PlannedQuery(text="Halden Bay survey", lang="en", purpose="t"),
+    ])])  # fmt: skip
+    assert validate(local, {"S04"}) == ['S04: write every query in English (lang "en")']
+
+
+def test_one_bad_slot_no_longer_sends_every_slot_to_the_template() -> None:
+    """RV-057: after the repair, the slots usable on their own keep their plans."""
+    good = SlotQueries(slot_id="S04", queries=[
+        PlannedQuery(text="Halden Bay hypertension survey", lang="en", purpose="t"),
+        PlannedQuery(text="Norvania STEPS survey", lang="en", purpose="t"),
+    ])  # fmt: skip
+    bad = SlotQueries(slot_id="S03", queries=[
+        PlannedQuery(text="Halden Bay prevalence", lang="en", purpose="t"),
+    ])  # fmt: skip
+    raw = PlannerOutput(slots=[good, bad]).model_dump_json()
+    kept = usable_slots(raw, {"S03", "S04"})
+    assert [s.slot_id for s in kept] == ["S04"]
+    assert usable_slots("output did not fit the schema", {"S04"}) == []
+
+
+def test_the_template_gives_two_english_queries() -> None:
+    from app.domain.models import SlotDef
+    from app.prompts.planner.context import fallback_queries
+    from scripts.reference.yaml_reference import read_slots
+
+    slot: SlotDef = next(s for s in read_slots() if s.slot_id == "S04")
+    queries = fallback_queries(CITY, slot)
+    assert len(queries) == 2
+    assert {lang for _, lang in queries} == {"en"}

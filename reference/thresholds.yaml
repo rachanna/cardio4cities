@@ -2,17 +2,22 @@
 # Patterns are Python regular expressions, searched in the case definition after quote
 # normalisation (LLD-2 §4.1) and lower-casing. Rules are tried in order; first match wins.
 # No match gives no threshold code, and the claim is not comparable (§4.4).
+# "≥", "⩾", "≤" and "⩽" are read as ">=" and "<=" before matching. A number ends where a
+# digit does not follow, so "≥140mmHg" matches (BD-33). `exclude`: a rule never applies
+# to a case definition that matches it (a glucose test is not a blood pressure).
 - code: bp_140_90
+  exclude: 'glucose|mg ?/ ?dl|mmol|hba1c'
   patterns:
-    - '(>=|≥) ?140\b'
-    - '\b140 ?/ ?90\b'
-    - '< ?140\b\D{0,40}< ?90\b'   # control: systolic below 140 and diastolic below 90 (BD-10)
+    - '>= ?140(?!\d)'
+    - '(?<!\d)140 ?/ ?90(?!\d)'
+    - '< ?140(?!\d)\D{0,40}< ?90(?!\d)'   # control: systolic below 140 and diastolic below 90 (BD-10)
 - code: bp_130_80
+  exclude: 'glucose|mg ?/ ?dl|mmol|hba1c'
   patterns:
-    - '(>=|≥) ?130\b'
-    - '\b130 ?/ ?80\b'
-    - '< ?130\b\D{0,40}< ?80\b'
+    - '>= ?130(?!\d)'
+    - '(?<!\d)130 ?/ ?80(?!\d)'
+    - '< ?130(?!\d)\D{0,40}< ?80(?!\d)'
 - code: fpg_7_0
   patterns:
-    - '(>=|≥) ?7[.,]0 ?mmol'
-    - '(>=|≥) ?126 ?mg'
+    - '>= ?7[.,]0 ?mmol'
+    - '>= ?126 ?mg'

@@ -34,7 +34,11 @@ _WITH_CI = re.compile(
 _RANGE_PCT = re.compile(rf"^(?P<lo>{_NUM})\s*{_PCT}?\s*{_TO}\s*(?P<hi>{_NUM})\s*{_PCT}$")
 _PERCENT = re.compile(rf"^(?P<v>{_NUM})\s*{_PCT}$")
 _PER_100K = re.compile(rf"^(?P<v>{_NUM})\s*per\s*100(?:[ ,.]?000)$")
-_GROUPED_INT = re.compile(r"^\d{1,3}(?:(?:,\d{3})+|(?:\.\d{3})+|(?: \d{3})+)$")
+# Thousands groups: the first group has no leading zero, so "0.125" is a decimal (BD-33)
+_GROUPED_INT = re.compile(r"^[1-9]\d{0,2}(?:(?:,\d{3})+|(?:\.\d{3})+|(?: \d{3})+)$")
+# One separator before exactly three digits: thousands or a decimal? For a percentage it
+# is never guessed: "1.000%" and "0,125%" stay unparsed (code review RV-022)
+_ONE_GROUP = re.compile(r"^[1-9]\d{0,2}[.,]\d{3}$")
 
 
 def parse_number(token: str) -> Decimal | None:
@@ -48,6 +52,8 @@ def parse_number(token: str) -> Decimal | None:
         return Decimal(t)
     if _GROUPED_INT.fullmatch(t):
         return Decimal(re.sub(r"[,. ]", "", t))
+    if re.fullmatch(r"0[.,]\d+", t):  # a leading zero is never a thousands group (BD-33)
+        return Decimal(t.replace(",", "."))
     if re.fullmatch(r"\d{1,3}(?:,\d{3})+\.\d+", t):  # 1,234.5
         return Decimal(t.replace(",", ""))
     if re.fullmatch(r"\d{1,3}(?:\.\d{3})+,\d+", t):  # 1.234,5
@@ -91,14 +97,20 @@ def parse_value(value_as_written: str) -> ParsedValue:
     text = _clean(value_as_written)
 
     if m := _WITH_CI.match(text):
+        if m["pct"] and any(_ONE_GROUP.match(m[k]) for k in ("v", "lo", "hi")):
+            return UNPARSED
         nums = _numbers(m["v"], m["lo"], m["hi"])
         if nums:
             return ParsedValue(nums[0], PERCENT if m["pct"] else None, nums[1], nums[2])
         return UNPARSED
     if m := _RANGE_PCT.match(text):
+        if any(_ONE_GROUP.match(m[k]) for k in ("lo", "hi")):
+            return UNPARSED
         nums = _numbers(m["lo"], m["hi"])
         return ParsedValue(None, PERCENT, nums[0], nums[1]) if nums else UNPARSED
     if m := _PERCENT.match(text):
+        if _ONE_GROUP.match(m["v"]):
+            return UNPARSED
         nums = _numbers(m["v"])
         return ParsedValue(nums[0], PERCENT) if nums else UNPARSED
     if m := _PER_100K.match(text):

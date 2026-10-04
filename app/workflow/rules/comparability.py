@@ -25,8 +25,11 @@ PART_NAMES = (
 
 
 def slug(text: str) -> str:
-    folded = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode().casefold()
-    return re.sub(r"[^a-z0-9]+", "-", folded).strip("-")
+    """Accents dropped, letters of every script kept: an ASCII-only slug turned a
+    non-Latin district name into "", so two districts shared a key (BD-33, RV-085)."""
+    decomposed = unicodedata.normalize("NFKD", text)
+    bare = "".join(c for c in decomposed if not unicodedata.combining(c)).casefold()
+    return re.sub(r"[\W_]+", "-", bare).strip("-")
 
 
 def _needs_threshold(indicator_code: str) -> bool:

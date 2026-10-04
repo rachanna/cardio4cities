@@ -26,6 +26,10 @@ from app.domain.models import (
 class ReferenceRepo(Protocol):
     async def slot_ids(self) -> list[str]: ...
 
+    async def place_count(self) -> int:
+        """Places in the gazetteer (BD-34): start-up refuses an empty one."""
+        ...
+
     async def indicator_codes(self) -> dict[str, str]:
         """Registry indicator codes keyed 'provider.INDICATOR' (LLD-1 §3.4)."""
         ...

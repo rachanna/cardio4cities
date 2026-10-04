@@ -28,7 +28,7 @@ async def load(directory: Path, strict: bool) -> int:
     indicators = read_indicators(directory)
     codes = {i.code for i in indicators}
     check_slot_targets(slots, codes)
-    sources = read_sources(directory, codes)
+    sources = read_sources(directory, codes, {s.slot_id for s in read_slots(directory)})
     if strict and sources.pending:
         raise ReferenceError(f"placeholder indicator codes (--strict): {sources.pending}")
 

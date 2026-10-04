@@ -44,6 +44,8 @@ class PlaceCandidate(BaseModel):
     country_name: str
     country_iso2: str
     population: int | None
+    lat: float | None = None  # tells apart places of one name in one region (BD-34)
+    lon: float | None = None
 
 
 class ResolveResponse(BaseModel):

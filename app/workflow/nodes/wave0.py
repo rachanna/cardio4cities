@@ -241,10 +241,11 @@ async def _claim(
         EventType.WAVE0_FINDING,
         {
             "claim_id": claim.claim_id,
+            "indicator_code": key,  # names as LLD-2 §10.2 (BD-34)
+            "value_as_written": record.value_as_written,
+            "geography_level": provider.geography.value,
             "provider": provider.provider,
-            "indicator": key,
             "slot_id": indicator.slot,
-            "value": record.value_as_written,
             "year": record.year,
             "status": status.value,
             "graph_edge": graph_edge,

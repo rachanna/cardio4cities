@@ -42,3 +42,24 @@ class SentenceTransformerEmbeddings:
 def make(settings: Settings) -> SentenceTransformerEmbeddings:
     e = settings.config.embeddings
     return SentenceTransformerEmbeddings(e.model, e.dimension, e.key)
+
+
+class LocalEmbeddingsProbe:
+    """Health (BD-42): embeds one word with the local model; no network, no cost."""
+
+    component = "embeddings"
+
+    def __init__(self, embeddings: SentenceTransformerEmbeddings) -> None:
+        self._embeddings = embeddings
+
+    async def check(self) -> None:
+        await self._embeddings.embed(["health"])
+
+    async def close(self) -> None:
+        pass
+
+
+def make_probe(
+    settings: Settings, embeddings: SentenceTransformerEmbeddings
+) -> LocalEmbeddingsProbe:
+    return LocalEmbeddingsProbe(embeddings)

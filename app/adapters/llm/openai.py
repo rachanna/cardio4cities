@@ -78,6 +78,33 @@ class OpenAILLM:
         return LLMResult(parsed=parsed, raw_text=raw, family=self.family, **used.model_dump())
 
 
+class OpenAIProbe:
+    """Health (LLD-4 §7, BD-42): looks up each OpenAI model the roles use (or the
+    embedding model). A model lookup is free; an unknown model or a bad key fails it."""
+
+    def __init__(
+        self, component: str, api_key: str, models: list[str], base_url: str | None = None
+    ) -> None:
+        self.component = component
+        self._client = openai.AsyncOpenAI(api_key=api_key, base_url=base_url, max_retries=0)
+        self._models = models
+
+    async def check(self) -> None:
+        for model in self._models:
+            await self._client.models.retrieve(model)
+
+    async def close(self) -> None:
+        await self._client.close()
+
+
+def make_probe(settings: Settings) -> OpenAIProbe:
+    provider = settings.config.llm.providers["openai"]
+    if not provider.api_key_env:
+        raise ValueError("llm.providers.openai.api_key_env is required")
+    key = settings.secret(provider.api_key_env)
+    return OpenAIProbe("llm_openai", key, settings.models_of("openai"))
+
+
 def make(settings: Settings) -> OpenAILLM:
     provider = settings.config.llm.providers["openai"]
     if not provider.api_key_env:

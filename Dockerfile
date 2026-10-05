@@ -39,9 +39,15 @@ COPY app ./app
 COPY config ./config
 COPY reference/*.yaml ./reference/
 COPY scripts/start.sh scripts/predeploy.sh ./scripts/
+# Operator tools run from the service's shell (BD-42): `python -m scripts.purge_city`
+# removes a city (D4-7); spike S-3 measures what this host can reach (BD-36)
+COPY scripts/purge_city.py ./scripts/
+COPY scripts/spikes/__init__.py scripts/spikes/reachability.py ./scripts/spikes/
 COPY --from=web /web/out ./web/out
 
 RUN useradd --system --uid 10001 c4c
+# S-3 writes its git-ignored results here; the container's disk is replaced on each deploy
+RUN mkdir spike_results && chown c4c spike_results
 USER c4c
 
 EXPOSE 8000

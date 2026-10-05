@@ -26,7 +26,7 @@ class HealthResponse(BaseModel):
     checked_at: str
     components: dict[str, ComponentHealth]
     checker_independence: Literal["different_family", "same_family_allowed"]
-    versions: dict[str, str]
+    versions: dict[str, str | dict[str, str]]  # app; prompts by role (RV-038)
     # "off": no checkpoints in this process (Windows' Proactor loop), so a run cannot
     # resume after a restart (BD-14, BD-25). Shown, not counted against the status.
     resume: Literal["on", "off"] | None = None

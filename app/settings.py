@@ -318,6 +318,11 @@ class RunsSection(_Section):
     shutdown_grace_s: float  # BD-25: time a run gets to stop cleanly on shutdown [tunable]
 
 
+class HealthSection(_Section):
+    provider_ttl_s: float  # LLD-4 §7: a provider is checked at most this often [tunable]
+    provider_timeout_s: float  # one provider check's time limit (BD-42) [tunable]
+
+
 class StreamSection(_Section):
     poll_interval_s: float  # LLD-4 §4: live following polls run_event [tunable]
     heartbeat_s: float  # LLD-4 §4: comment line that keeps proxies from closing
@@ -353,6 +358,7 @@ class Config(_Section):
     confidence: ConfidenceSection
     analytics: AnalyticsSection
     stream: StreamSection
+    health: HealthSection
     runs: RunsSection
     structured: StructuredSection
     geography: GeographySection
@@ -371,6 +377,12 @@ class Settings:
     def secret(self, env_name: str) -> str:
         """Value of a secret the config refers to; only referenced names are held."""
         return self._secrets[env_name].get_secret_value()
+
+    def models_of(self, provider: str) -> list[str]:
+        """Every model ID the roles bind to one provider, fallbacks included."""
+        roles = self.config.llm.roles.items()
+        refs = (ref for _, role in roles for ref in role.model_refs())
+        return sorted({ref.model for ref in refs if ref.provider == provider})
 
     @property
     def same_family_checker(self) -> bool:

@@ -2,6 +2,7 @@
 
 from openai import APIError, AsyncOpenAI
 
+from app.adapters.llm.openai import OpenAIProbe
 from app.ports.errors import ProviderUnavailableError
 from app.settings import Settings
 
@@ -40,6 +41,15 @@ class OpenAIEmbeddings:
                 raise ProviderUnavailableError(f"openai embeddings: {type(exc).__name__}") from exc
             vectors += [item.embedding for item in sorted(response.data, key=lambda d: d.index)]
         return vectors
+
+
+def make_probe(settings: Settings, embeddings: object = None) -> OpenAIProbe:
+    """Health (BD-42): looks up the embedding model; free, no tokens."""
+    provider = settings.config.llm.providers["openai"]
+    if not provider.api_key_env:
+        raise ValueError("llm.providers.openai.api_key_env is required for OpenAI embeddings")
+    key = settings.secret(provider.api_key_env)
+    return OpenAIProbe("embeddings", key, [settings.config.embeddings.model])
 
 
 def make(settings: Settings) -> OpenAIEmbeddings:

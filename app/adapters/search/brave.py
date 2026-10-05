@@ -4,7 +4,7 @@ and asks for web results only. Spike S-4 confirms the live behaviour."""
 
 import httpx
 
-from app.adapters.search._common import RateLimit
+from app.adapters.search._common import RateLimit, SearchProbe
 from app.ports.errors import ProviderUnavailableError
 from app.ports.search import SearchHit
 from app.settings import Settings
@@ -46,3 +46,7 @@ def make(settings: Settings) -> BraveSearch:
     if not search.api_key_env:
         raise ValueError("search.api_key_env is required for brave")
     return BraveSearch(settings.secret(search.api_key_env), search.rate_per_s)
+
+
+def make_probe(settings: Settings, search: BraveSearch) -> SearchProbe:
+    return SearchProbe(search)

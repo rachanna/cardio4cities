@@ -1,7 +1,13 @@
-"""Shared pieces for search adapters: a per-adapter rate limit (search.rate_per_s)."""
+"""Shared pieces for search adapters: a per-adapter rate limit (search.rate_per_s) and
+the health probe."""
 
 import asyncio
 import time
+
+from app.ports.search import SearchPort
+
+# A neutral query that names no place; one link is asked for and none need come back
+PROBE_QUERY = "cardiovascular health"
 
 
 class RateLimit:
@@ -16,3 +22,19 @@ class RateLimit:
             if wait > 0:
                 await asyncio.sleep(wait)
             self._last = time.monotonic()
+
+
+class SearchProbe:
+    """Health (LLD-4 §7, BD-42): one search for one link through the run's own adapter,
+    so its rate limit applies. Links only, like every search (R-58)."""
+
+    component = "search"
+
+    def __init__(self, search: SearchPort) -> None:
+        self._search = search
+
+    async def check(self) -> None:
+        await self._search.search(PROBE_QUERY, "en", limit=1)
+
+    async def close(self) -> None:
+        pass

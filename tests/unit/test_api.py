@@ -16,7 +16,17 @@ REGISTRY = {
     "relational": {"postgres": "tests.unit.fake_adapters.relational:make"},
     "probe:vector": {"qdrant": "tests.unit.fake_adapters.probes:make_qdrant"},
     "probe:graph": {"graphiti_neo4j": "tests.unit.fake_adapters.probes:make_neo4j"},
+    "probe:llm": {
+        "anthropic": "tests.unit.fake_adapters.probes:make_anthropic",
+        "openai": "tests.unit.fake_adapters.probes:make_openai",
+    },
+    "probe:embeddings": {
+        "sentence_transformers": "tests.unit.fake_adapters.probes:make_embeddings"
+    },
+    "probe:search": {"searxng": "tests.unit.fake_adapters.probes:make_search"},
 }
+STORES = {"postgres", "qdrant", "neo4j", "reference_data"}
+PROVIDERS = {"llm_anthropic", "llm_openai", "embeddings", "search"}
 
 
 @pytest.fixture
@@ -24,6 +34,7 @@ def client(monkeypatch: pytest.MonkeyPatch, valid_env: dict[str, str]) -> Iterat
     for name, value in valid_env.items():
         monkeypatch.setenv(name, value)
     monkeypatch.setattr(fake_probes, "DOWN", set())
+    monkeypatch.setattr(fake_probes, "CALLS", [])
     with TestClient(
         create_app(env_file=None, registry=REGISTRY), base_url="https://testserver"
     ) as c:
@@ -180,16 +191,58 @@ def test_the_limiter_holds_at_most_its_cap_of_keys() -> None:
 
 
 def test_health_ok_needs_no_session_and_reports_each_component(client: TestClient) -> None:
-    """AT-29 (partial): stores and reference data reachable; no secrets in the body."""
+    """AT-29: every store and every provider a run depends on, plus reference data and
+    prompt versions (R-77, RV-038, BD-42); no secrets in the body."""
     response = client.get("/api/v1/health")
 
     body = response.json()
     assert response.status_code == 200
     assert body["status"] == "ok"
-    assert set(body["components"]) == {"postgres", "qdrant", "neo4j", "reference_data"}
+    assert set(body["components"]) == STORES | PROVIDERS
     assert body["components"]["reference_data"] == {"status": "ok", "slots": 16}
     assert body["checker_independence"] == "different_family"
     assert "latency_ms" in body["components"]["postgres"]
+    assert body["components"]["llm_openai"]["status"] == "ok"
+    prompts = body["versions"]["prompts"]
+    assert set(prompts) == {"planner", "extractor", "checker", "classifier", "answerer", "reporter"}
+    assert all(v.startswith(f"{role}@v") for role, v in prompts.items())
+
+
+def test_a_provider_down_degrades_health_without_leaking_details(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """BD-42: a bad key or an outage at a model or search provider shows as down."""
+    monkeypatch.setattr(fake_probes, "DOWN", {"search"})
+
+    response = client.get("/api/v1/health")
+
+    assert response.status_code == 503
+    assert response.json()["components"]["search"] == {"status": "down"}
+    assert "secret-host" not in response.text
+
+
+def test_providers_are_checked_at_most_once_per_cache_period(client: TestClient) -> None:
+    """LLD-4 §7, BD-42: repeated health calls, keep-alive or not, do not reach a paid
+    provider again until `health.provider_ttl_s` has passed; stores are checked each time."""
+    for _ in range(3):
+        assert client.get("/api/v1/health").status_code == 200
+
+    assert sorted(c for c in fake_probes.CALLS if c in PROVIDERS) == sorted(PROVIDERS)
+    assert fake_probes.CALLS.count("neo4j") == 3
+
+
+def test_a_provider_without_a_probe_is_not_configured_and_degrades(
+    monkeypatch: pytest.MonkeyPatch, valid_env: dict[str, str]
+) -> None:
+    """A provider a run needs is never silently left out of health."""
+    for name, value in valid_env.items():
+        monkeypatch.setenv(name, value)
+    registry = {k: v for k, v in REGISTRY.items() if k != "probe:search"}
+    with TestClient(create_app(env_file=None, registry=registry)) as c:
+        response = c.get("/api/v1/health")
+
+    assert response.status_code == 503
+    assert response.json()["components"]["search"] == {"status": "not_configured"}
 
 
 def test_health_degraded_503_when_a_store_is_down_without_leaking_details(

@@ -80,6 +80,7 @@ geonames = { cmd = "python -m scripts.reference.load_geonames --download-only", 
 web = { cmd = "python -m scripts.web build", help = "Build the web app's static export into web/out (served by the API at /)" }
 types = { cmd = "python -m scripts.web types", help = "Regenerate the web app's API types from the OpenAPI document" }
 dev = { cmd = "python -m scripts.dev", help = "API on :8000 and the web app on :3000 (next dev, proxying /api)" }
+purge = { cmd = "python -m scripts.purge_city", help = "Remove a city from every store: --list, then CITY_ID (dry run) and CITY_ID --yes (BD-42)" }
 purge-graph = { cmd = "python -m scripts.purge_graph", help = "Delete the local Neo4j graph and its embedding marker (refuses when APP_ENV=deployed)" }
 reference = { sequence = [
     "python -m scripts.reference.load_geonames",

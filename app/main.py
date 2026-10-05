@@ -191,6 +191,10 @@ def _lifespan(
                 same_family_checker=settings.same_family_checker,
                 app_version=APP_VERSION,
                 checkpoints=checkpoints,
+                providers=container.provider_probes,
+                provider_components=container.provider_components,
+                provider_ttl_s=settings.config.health.provider_ttl_s,
+                provider_timeout_s=settings.config.health.provider_timeout_s,
             )
             yield
         finally:

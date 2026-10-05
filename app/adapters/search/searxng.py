@@ -3,7 +3,7 @@ returns result links with short snippets and has no page-content feature to enab
 
 import httpx
 
-from app.adapters.search._common import RateLimit
+from app.adapters.search._common import RateLimit, SearchProbe
 from app.ports.errors import ProviderUnavailableError
 from app.ports.search import SearchHit
 from app.settings import Settings
@@ -42,3 +42,7 @@ def make(settings: Settings) -> SearxngSearch:
     if not search.base_url:
         raise ValueError("search.base_url is required for searxng")
     return SearxngSearch(search.base_url, search.rate_per_s, settings.config.app.user_agent)
+
+
+def make_probe(settings: Settings, search: SearxngSearch) -> SearchProbe:
+    return SearchProbe(search)

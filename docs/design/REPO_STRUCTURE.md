@@ -118,7 +118,7 @@ cardio4cities/
 │       ├── snapshots/            # postgres.py
 │       ├── renderer/             # fpdf2.py and fonts/ (DejaVu, open licence) (BD-40); browser_print.py (not built)
 │       ├── tracing/              # events are written by the workflow; langsmith.py, otel.py (not built, BD-36)
-│       └── postgres/             # db.py, relational.py, repos/, migrations/ (Alembic), checkpointer.py
+│       └── postgres/             # db.py, relational.py, repos/ (purge.py: BD-42), migrations/ (Alembic), checkpointer.py
 │
 ├── web/                          # Next.js, static export to web/out (BD-41); placeholder/ when not built
 │   ├── app/                      # routes (query string, BD-41): / (access + start), /city/?id=,
@@ -138,7 +138,7 @@ cardio4cities/
 │   │                             # outputs naming real
 │   │                             # places go to the git-ignored spike_results/
 │   │                             # results/ holds each spike's written outcome
-│   ├── purge_city.py             # (D3-5) LLD-1 §8, LangGraph checkpoints included (BD-36)
+│   ├── purge_city.py             # LLD-1 §8, LangGraph checkpoints included (BD-36, BD-42); in the image
 │   ├── purge_graph.py            # local only: empty Neo4j, its marker and the graph links (BD-14, BD-36)
 │   ├── eval_prompts.py           # LLD-3 §9
 │   ├── eval_answers.py           # classifier and answerer golden sets (BD-38)
@@ -163,6 +163,7 @@ cardio4cities/
 │   ├── ARCHITECTURE.md           # concise, for the panel (R-20)
 │   ├── DECISIONS.md
 │   ├── REHEARSAL.md
+│   ├── DEPLOYMENT.md             # deploy, check, operate and freeze the Render service (BD-42)
 │   ├── no_seeding_allowlist.yaml # reviewed place names in docs/ for the AT-02 scan (BD-35)
 │   └── design/                   # REQUIREMENTS, BRAINSTORM, HLD, LLD-1..4, REPO_STRUCTURE, BUILD_PLAN
 ├── deck/                         # exported slides (R-22)
@@ -232,20 +233,20 @@ Run as `uv run poe <task>`; tasks are defined in `pyproject.toml` under `[tool.p
 | `poe eval` | Prompt golden set against real models (costs money) |
 | `poe eval-rag` | Retrieval evaluation with real models (costs money; ask the owner first; CHG-01, BD-39); `--real FILE` for a researched city |
 | `poe smoke URL` | Smoke tests against a deployed URL |
-| `poe purge CITY` | Remove a city from all stores, its LangGraph checkpoints (`lg`) included (added by D3-5, BD-36) |
+| `poe purge CITY` | Remove a city from all stores, its LangGraph checkpoints (`lg`) included: `--list`, then `CITY_ID` (dry run) and `CITY_ID --yes` (BD-36, BD-42). In the deployed shell: `python -m scripts.purge_city` |
 | `poe purge-graph` | Delete the local Neo4j graph, its embedding marker and the Postgres graph links; refuses a graph not on this machine and `APP_ENV=deployed` (BD-14, BD-36) |
 
 ---
 
 ## 5. Deployment files
 
-**Dockerfile** (multi-stage): stage 1 builds `web/out` with Node 22 (`npm ci`, `npm run build`; BD-41); stage 2 is a slim Python 3.12 image (no system libraries: the PDF renderer is fpdf2, BD-40), installs with `uv`, downloads GeoNames during the build, and copies `app/`, `config/`, `reference/*.yaml`, `scripts/reference` and the web files. The start command (`scripts/start.sh`) runs Uvicorn only; migrations and reference loading run as Render's pre-deploy command (`scripts/predeploy.sh`) (BD-04).
+**Dockerfile** (multi-stage): stage 1 builds `web/out` with Node 22 (`npm ci`, `npm run build`; BD-41); stage 2 is a slim Python 3.12 image (no system libraries: the PDF renderer is fpdf2, BD-40), installs with `uv`, downloads GeoNames during the build, and copies `app/`, `config/`, `reference/*.yaml`, `scripts/reference`, the operator tools (`scripts/purge_city.py`, the S-3 script, with a writable `spike_results/`; BD-42) and the web files. The start command (`scripts/start.sh`) runs Uvicorn only; migrations and reference loading run as Render's pre-deploy command (`scripts/predeploy.sh`) (BD-04).
 
 **render.yaml** (blueprint; all services in `singapore`; plan IDs are Render's compute plans, BD-04):
 
 | Service | Type | Plan | Notes |
 |---|---|---|---|
-| `c4c-app` | Web service, Docker | `1c-2g` (2 GB) | Health check path `/api/v1/health`; pre-deploy `scripts/predeploy.sh`; auto-deploy off (R-91) |
+| `c4c-app` | Web service, Docker | `1c-2g` (2 GB) | Health check path `/api/v1/live` (BD-25; `/api/v1/health` is for AT-29 and the keep-alive); pre-deploy `scripts/predeploy.sh`; auto-deploy off (R-91) |
 | `c4c-neo4j` | Private service, image `neo4j:5.26.31-community` | `1c-2g` (2 GB) | 5 GB disk at `/data`; heap 1 GB, page cache 512 MB as in compose |
 | `c4c-qdrant` | Private service, image `qdrant/qdrant:v1.19.1` | `0.5c-512mb` | 5 GB disk at `/qdrant/storage`; API key required |
 | `c4c-db` | Managed Postgres 16 | `basic-256mb` | Private network only |

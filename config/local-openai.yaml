@@ -56,6 +56,7 @@ badge:      { stale_years: 5, stale_years_people: 2, small_sample: 300 }
 confidence: { recent_years: 5 }
 analytics:  { enabled: false }
 stream:     { poll_interval_s: 0.5, heartbeat_s: 15 }   # LLD-4 §4 [tunable]
+health:     { provider_ttl_s: 600, provider_timeout_s: 5 }   # LLD-4 §7: providers checked at most every 10 minutes (BD-42) [tunable]
 runs:       { heartbeat_s: 10, stale_after_s: 45, shutdown_grace_s: 15 }   # BD-25 [tunable]
 # Official APIs for Wave 0 (LLD-2 §13, BD-13): reached through the collector's API path
 structured:

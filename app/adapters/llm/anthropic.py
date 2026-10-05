@@ -85,6 +85,31 @@ class AnthropicLLM:
         return LLMResult(parsed=parsed, raw_text=raw, family=self.family, **used.model_dump())
 
 
+class AnthropicProbe:
+    """Health (LLD-4 §7, BD-42): looks up every Claude model the roles use. A model
+    lookup is free and spends no tokens; an unknown model ID or a bad key fails it."""
+
+    component = "llm_anthropic"
+
+    def __init__(self, api_key: str, models: list[str], base_url: str | None = None) -> None:
+        self._client = anthropic.AsyncAnthropic(api_key=api_key, base_url=base_url, max_retries=0)
+        self._models = models
+
+    async def check(self) -> None:
+        for model in self._models:
+            await self._client.models.retrieve(model)
+
+    async def close(self) -> None:
+        await self._client.close()
+
+
+def make_probe(settings: Settings) -> AnthropicProbe:
+    provider = settings.config.llm.providers["anthropic"]
+    if not provider.api_key_env:
+        raise ValueError("llm.providers.anthropic.api_key_env is required")
+    return AnthropicProbe(settings.secret(provider.api_key_env), settings.models_of("anthropic"))
+
+
 def make(settings: Settings) -> AnthropicLLM:
     provider = settings.config.llm.providers["anthropic"]
     if not provider.api_key_env:

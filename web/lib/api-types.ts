@@ -711,7 +711,9 @@ export interface components {
             checker_independence: "different_family" | "same_family_allowed";
             /** Versions */
             versions: {
-                [key: string]: string;
+                [key: string]: string | {
+                    [key: string]: string;
+                };
             };
             /** Resume */
             resume?: ("on" | "off") | null;

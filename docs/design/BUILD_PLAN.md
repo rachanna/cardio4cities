@@ -95,7 +95,7 @@ Also confirm on day 1: the OpenAI checker and embedding model IDs and the embedd
 
 | ID | Task | Load | Outputs | Done when | Est. |
 |---|---|---|---|---|---|
-| D4-1 | Trust tests and planted cases | HLD §9.5, LLD-3 §9 | Planted cases as tests and as admin endpoint; golden-set run; results in README; `poe eval-rag` with real models meets the §12.3 gates (owner approves the spend) | AT-20, AT-22; golden pass bar met | 1.5 h |
+| D4-1 | Trust tests and planted cases | HLD §9.5, LLD-3 §9, §11.1 | Planted cases as tests and as admin endpoint; golden-set run on the demo models, including the classifier change for questions about the past if the run still needs it (LLD-3 §11.1); results in README; `poe eval-rag` with real models meets the §12.3 gates (owner approves the spend) | AT-20, AT-22; golden pass bar met | 1.5 h |
 | D4-2 | Hardening | LLD-2 §17 | Retries, fallback checker, graph-write retry, error messages | A run with one provider failing still ends with statuses | 1 h |
 | D4-3 | Example output | DEC-16 | Report from the deployed system in `samples/` with run ID and date | Unedited, complete | 0.5 h |
 | D4-4 | ARCHITECTURE.md and README | R-19, R-20 | Concise architecture for the panel; README with URL, access, quick start, trust-test results | Covers components, agents, data, retrieval, trade-offs, DQ answers | 1 h |

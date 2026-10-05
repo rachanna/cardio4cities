@@ -654,3 +654,42 @@ Pass bar before the demo: no golden trap mislabelled by the extractor in a way t
 | Window size and overlap on real PDFs | Closed by BD-29: sized by characters with script factors, capped at 4 windows per slot and source |
 | Golden-set content (fictional snippets) | Day 2, alongside the extractor |
 | Agreement bar for the checker | Rehearsal |
+| Classifier: questions about the past ("before …") are typed `relationship` (§11.1) | D4-1, **before the first rehearsal**: prompts and models are frozen from then on |
+
+### 11.1 Pending change: classifier on questions about the past
+
+**Status:** open; owner decision 2026-10-05: documented now, made in D4-1 with the golden-set evidence.
+
+**Observed.** The D3-2 real-model golden run (`local-openai`, classifier on GPT-6 Luna; BD-38) passed 10 of 11 classifier cases. The miss was golden case `what-changed` in `tests/prompts/golden/classifier.yaml`:
+
+> "Who ran public health in Halden Bay before the current office took over?" (expected `change_over_time`, slot S01)
+
+The classifier returned `relationship`.
+
+**Why it matters.** The question type decides which facts may support the answer. `app/query/revalidate.py` allows **superseded** facts (relationships a newer source replaced, BD-12, BD-19) only when the type is `change_over_time` or an `as_of` date is given. Typed `relationship`, the question sees current facts only, so the answer cannot name the earlier office: it names the current one or abstains. Nothing false is shown (re-validation and the post-check hold), but the question goes unanswered, and "who ran it before?" is a natural panel question.
+
+**Not yet known.** The demo classifier is Claude Haiku 4.5 (`config/deployed.yaml`), not GPT-6 Luna. The miss may not occur on Haiku.
+
+**Required changes, in order.**
+
+1. **Measure first (paid; owner approves the cap).** Run the classifier golden set on the demo models: `APP_ENV=deployed` bindings (or `local-quality`, which has the same models), `uv run poe eval --only classifier --max-usd <cap>`. If every case passes, including `what-changed`, record the result in a BD row and stop: no prompt change.
+2. **If `what-changed` still fails, change the prompt as a new version, `app/prompts/classifier/v3.md`.** v2 stays for the record (R-62).
+   - **Definition.** Extend the `change_over_time` line: questions about an earlier state (*before*, *previously*, *used to*, *former*, *until*, *no longer*, *replaced*, *who was … in <year>*) are `change_over_time`.
+   - **Tie-break.** When a question is both about who runs something and about an earlier time, choose `change_over_time`. That type still sees current facts; it also sees superseded ones.
+   - **Example.** Add a second example in the fictional city: a "before …" question with `"question_type": "change_over_time"`, slot S01, `"as_of": null`.
+   - **Version.** Set `CURRENT["classifier"] = 3` in `app/prompts/loader.py`. The prompt hash changes, and every answer records `classifier@v3+<hash>`.
+3. **Widen the golden set** in `tests/prompts/golden/classifier.yaml` (fictional Halden Bay only):
+   - a question with "used to": expected `change_over_time`;
+   - one with "until <year>": expected `change_over_time`, `as_of` prefix the year;
+   - one with "replaced": expected `change_over_time`;
+   - a control, "Who runs public health in Halden Bay now?": expected `relationship`, so the tie-break does not swallow present-tense questions.
+4. **Re-run the classifier set on the demo models.** Pass bar: `eval.classifier_min` (0.9) **and** `what-changed` passes **and** no case that passed on v2 fails on v3. Then run the answerer set once (`--only answerer`) to confirm answers to change-over-time questions are unaffected.
+5. **Unit tests** (free) still pass: `uv run poe test`. The prompt's version is part of what the tests check (BD-26).
+6. **Record:**
+   - a BD row with both runs' results and cost;
+   - this section's status set to closed;
+   - the classifier version in the README's trust-test results (D4-4).
+
+**Alternative, not chosen.** A code rule that allows superseded facts whenever the question contains a time word would be deterministic, but brittle on wording. It would also widen the evidence for questions that only mention a date in passing. Consider it only if the prompt change fails twice; it needs its own BD row.
+
+**Freeze.** This change must land **before the first rehearsal** (D4-6). After that, prompts and models are frozen: a change would mean re-running the golden sets and the rehearsal.

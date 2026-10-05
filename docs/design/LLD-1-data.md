@@ -865,7 +865,7 @@ ORDER BY sr.slot_id;
 | A city's runs | Kept; `latest_run_id` points at the newest completed or budget-stopped run | Re-research appends a new run, never overwrites |
 | Snapshots | Kept with their source; 10 MB per source `[tunable]` | Oversized sources get `parse_outcome = too_large` and no snapshot |
 | Failed runs | Kept for diagnosis; never become `latest_run_id` | |
-| Rehearsal cities | Removed before the demo, except the named fallback city | `scripts/purge_city.py <city_id>`: deletes Postgres rows in dependency order, the city's Qdrant points by `city_id` filter, and the Graphiti partition by `group_id` |
+| Rehearsal cities | Removed before the demo, except the named fallback city | `scripts/purge_city.py <city_id>`: deletes Postgres rows in dependency order, the city's Qdrant points by `city_id` filter, and the Graphiti partition by `group_id`. As built (D3-5, BD-42): `poe purge --list`, then `poe purge CITY_ID` (a dry run) and `--yes`; Qdrant and the graph first, then Postgres and the runs' LangGraph checkpoints in one transaction; a city with a queued or running run is refused |
 
 ---
 

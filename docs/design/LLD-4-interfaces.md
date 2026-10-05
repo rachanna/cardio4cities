@@ -430,7 +430,7 @@ Messages are written for the City Lead: they say what happened and what to do, w
 | Rule | Detail |
 |---|---|
 | Stores | A trivial query each (`SELECT 1`, collection info, `RETURN 1`) |
-| Providers | A cached lightweight check (model list or a one-token call) at most every 10 minutes, so health checks do not burn budget. Not built yet: the provider components and prompt versions arrive with D3-5 (BD-36; code review RV-038); until then `/health` reports the stores and reference data |
+| Providers | A cached lightweight check (model list or a one-token call) at most every 10 minutes, so health checks do not burn budget. As built (D3-5, BD-42): `llm_<provider>` for each model provider the roles use, `embeddings` and `search`; each cached for `health.provider_ttl_s` with limit `health.provider_timeout_s`. Models and OpenAI embeddings: a lookup of each configured model ID (free). Search: one placeless query for one link (owner). A needed provider without a probe is `not_configured`. `versions.prompts` gives each role's prompt version (RV-038) |
 | Overall status | `ok` only if every component is `ok`; otherwise `degraded` with HTTP 503 |
 | Keep-alive | A scheduled job calls `/health` every 6 hours during the evaluation window `[tunable]`, which also keeps any free-tier store awake |
 | Resume | `resume: "off"` when this process cannot save checkpoints (Windows' Proactor loop, local only), so a run cannot resume after a restart; shown, not counted against the status. The run summary carries `checkpointed` (BD-25) |

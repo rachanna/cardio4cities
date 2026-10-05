@@ -1,7 +1,10 @@
 name: CI
 
+# Pull requests, and main after a merge: a push to a branch with an open pull request
+# would otherwise run everything twice (BD-43)
 on:
   push:
+    branches: [main]
   pull_request:
 
 permissions:
@@ -10,7 +13,58 @@ permissions:
 # Actions are pinned to commit SHAs, with the tag in a comment (BD-36; code review RV-075)
 
 jobs:
+  changes:
+    # Documentation-only changes skip the code jobs; they still get the secret scan and
+    # the AT-02 city-name scan (docs-scan), since a document can leak either (BD-43)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+        with:
+          fetch-depth: 0
+      - id: diff
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            echo "code=true" >> "$GITHUB_OUTPUT"; exit 0  # unknown base: run everything
+          fi
+          changed=$(git diff --name-only "$BASE" "$GITHUB_SHA")
+          echo "$changed"
+          if [ -n "$changed" ] && ! echo "$changed" | grep -qvE '^(docs/|deck/|samples/|README\.md$|CLAUDE\.md$)'; then
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  docs-scan:
+    needs: changes
+    if: needs.changes.outputs.code == 'false'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - id: month
+        run: echo "value=$(date +%Y-%m)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6
+        with:
+          path: |
+            reference/geonames/cities15000.zip
+            reference/geonames/admin1CodesASCII.txt
+            reference/geonames/countryInfo.txt
+          key: geonames-${{ steps.month.outputs.value }}
+      - run: uv run poe geonames
+      - run: uv run pytest tests/acceptance/test_no_seeding.py -p no:randomly
+
   lint-test:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     services:
@@ -95,6 +149,8 @@ jobs:
 
   image:
     # Build only, never pushed or deployed (auto-deploy stays off, R-91)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

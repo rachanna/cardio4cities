@@ -23,7 +23,8 @@ cardio4cities/
 ├── .python-version               # 3.12 (uv)
 ├── .gitattributes                # * text=auto eol=lf (BD-01)
 ├── .pre-commit-config.yaml       # gitleaks, ruff, import-linter
-├── .github/workflows/ci.yml      # lint and tests, secret scan, image build; actions pinned to SHAs (BD-36)
+├── .github/workflows/ci.yml      # lint and tests, secret scan, image build; actions pinned to SHAs (BD-36);
+│                                 # docs-only changes run the secret and city-name scans only (BD-43)
 ├── Dockerfile                    # Node stage builds web/out, then the Python image (BD-41)
 ├── .dockerignore
 ├── docker-compose.yml            # local: postgres, qdrant, neo4j, searxng, app

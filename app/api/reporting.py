@@ -124,7 +124,7 @@ async def _prose(
     for d, name in DIMENSION_NAMES.items():
         mine = [f for f in facts if rows_dimension(rows, f.claim.slot_id) == d]
         gaps = [r.gap_note for r in rows if r.dimension == d and r.gap_note]
-        if not mine and not gaps:
+        if not mine:  # nothing confirmed: the report says so in code, never in model prose (D4-3)
             continue
         refs = [
             context.FactRef(f.claim.claim_id, f.claim.statement, _badge(cards[f.claim.claim_id]))

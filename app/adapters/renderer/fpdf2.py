@@ -20,11 +20,33 @@ FACES = {"": "DejaVuSans.ttf", "B": "DejaVuSans-Bold.ttf", "I": "DejaVuSans.ttf"
 
 
 INK = "#1f2937"  # headings in a dark neutral, not fpdf2's default red
+MUTED = (110, 116, 125)
 HEADINGS = {
     "h1": FontFace(color=INK, size_pt=20, emphasis="BOLD"),
-    "h2": FontFace(color=INK, size_pt=15, emphasis="BOLD"),
-    "h3": FontFace(color=INK, size_pt=12, emphasis="BOLD"),
+    "h2": FontFace(color=INK, size_pt=14, emphasis="BOLD"),
+    "h3": FontFace(color=INK, size_pt=11.5, emphasis="BOLD"),
+    "h4": FontFace(color=INK, size_pt=10.5, emphasis="BOLD"),
 }
+RUNNING_TITLE = "Cardiovascular landscape brief · CARDIO4Cities"
+
+
+class _Pages(FPDF):
+    """A running title from page 2 and "Page n of m" on every page (D4-3)."""
+
+    def header(self) -> None:
+        if self.page_no() > 1:
+            self.set_font(FAMILY, size=8)
+            self.set_text_color(*MUTED)
+            self.cell(0, 6, RUNNING_TITLE, align="L")
+            self.ln(8)
+            self.set_text_color(0, 0, 0)
+
+    def footer(self) -> None:
+        self.set_y(-12)
+        self.set_font(FAMILY, size=8)
+        self.set_text_color(*MUTED)
+        self.cell(0, 6, f"Page {self.page_no()} of {{nb}}", align="R")
+        self.set_text_color(0, 0, 0)
 
 
 class Fpdf2Renderer:
@@ -32,14 +54,17 @@ class Fpdf2Renderer:
         self._size = font_size
 
     def _render(self, html: str) -> bytes:
-        pdf = FPDF(format="A4")
+        pdf = _Pages(format="A4")
         pdf.set_margins(18, 18, 18)
         pdf.set_auto_page_break(auto=True, margin=18)
         for style, name in FACES.items():
             pdf.add_font(FAMILY, style, str(FONTS / name))
         pdf.set_font(FAMILY, size=self._size)
         pdf.add_page()
-        pdf.write_html(html, font_family=FAMILY, tag_styles=HEADINGS)
+        pdf.write_html(
+            html, font_family=FAMILY, tag_styles=HEADINGS, li_prefix_color=MUTED,
+            table_line_separators=True,
+        )  # fmt: skip
         return bytes(pdf.output())
 
     async def to_pdf(self, html: str) -> bytes:

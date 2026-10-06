@@ -95,7 +95,7 @@ async def test_sparse_city_lists_what_was_searched_and_invents_nothing(
         assert rows[slot_id]["sources_checked"]  # the page that held nothing
     assert rows["S12"]["status"] == "blocked"
     assert rows["S12"]["gap_note"] == (
-        "1 candidate sources refuse automated access (robots.txt disallows (1))."
+        "1 candidate source refuses automated access (robots.txt disallows (1))."
     )
 
 
@@ -168,7 +168,7 @@ async def test_the_run_summary_shows_outcomes_sources_cost_and_time(
     assert summary["slots"] == {"answered_negative": 2, "blocked": 1, "unreachable": 1}
     # A page whose server fails is unreachable, not merely unread (BD-35)
     assert (await slot_rows(relational, run_id))["S09"]["gap_note"] == (
-        "1 candidate sources could not be reached (server error (1))."
+        "1 candidate source could not be reached (server error (1))."
     )
     assert summary["models"]["claude-haiku-4-5-20251001"]["calls"] >= 3  # planner rounds
     assert summary["cost_usd"] > 0

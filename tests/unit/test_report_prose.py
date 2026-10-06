@@ -61,3 +61,14 @@ def test_analysis_points_must_rest_on_summary_facts() -> None:
     assert [p.text for p in check_points(points, EVIDENCE, CTX, 5)] == [
         "City figures exist, 31.2% of adults."
     ]
+
+
+def test_failed_steps_are_named_so_an_incomplete_run_is_not_read_as_an_empty_city() -> None:
+    """D4-3: a run that lost steps says so on the cover and in the run details."""
+    from app.report.render import counts, failed_steps
+
+    summary = {"failed_steps": {"extract": 55, "fetch_parse": 1, "verify": 0}}
+    assert failed_steps(summary) == "55 extraction steps, 1 page reading step"
+    assert "Failed steps: 55 extraction steps, 1 page reading step" in counts(summary)
+    assert failed_steps({"failed_steps": {"extract": 0}}) is None
+    assert failed_steps({}) is None

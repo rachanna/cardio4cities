@@ -1,62 +1,115 @@
+{#- The report (LLD-2 §16, D4-3 layout). One template for the screen and the PDF: with `pdf`
+    the head and styles are left out, since fpdf2 reads a plain subset of HTML; widths are
+    attributes so fpdf2 lays out the tables too. -#}
 {% if not pdf %}<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{ r.city_name }}: cardiovascular research brief</title>
+<title>{{ r.city_name }}: cardiovascular landscape brief</title>
 <style>
-:root { --text: #1d1f23; --muted: #5b616b; --line: #d9dce1; --bg: #ffffff; --flag: #8a4b00; }
-@media (prefers-color-scheme: dark) { :root { --text: #e8eaed; --muted: #a3a9b3; --line: #3a3f47; --bg: #15171a; --flag: #f0b46a; } }
-body { font: 15px/1.55 system-ui, sans-serif; color: var(--text); background: var(--bg); max-width: 52rem; margin: 0 auto; padding: 1.5rem 1rem; }
-h1 { font-size: 1.6rem; } h2 { margin-top: 2rem; border-bottom: 1px solid var(--line); } h3 { font-size: 1.05rem; }
-.muted { color: var(--muted); } .flag { color: var(--flag); font-weight: 600; }
-a { overflow-wrap: anywhere; }
-@media print { body { max-width: none; } a { color: inherit; } }
+:root { --text: #1f2937; --muted: #5b616b; --line: #d9dce1; --head: #eef1f4; --bg: #ffffff; --accent: #0f5c8c; --flag: #8a4b00; }
+@media (prefers-color-scheme: dark) { :root { --text: #e8eaed; --muted: #a3a9b3; --line: #3a3f47; --head: #22262b; --bg: #15171a; --accent: #6cb3e3; --flag: #f0b46a; } }
+body { font: 15px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--text); background: var(--bg); max-width: 56rem; margin: 0 auto; padding: 2rem 1rem 4rem; }
+h1 { font-size: 1.9rem; margin: 0; } .subtitle { font-size: 1.1rem; color: var(--muted); margin: 0.2rem 0 1.2rem; }
+h2 { font-size: 1.3rem; margin-top: 2.2rem; padding-bottom: 0.25rem; border-bottom: 2px solid var(--text); }
+h3 { font-size: 1.08rem; margin: 1.6rem 0 0.4rem; } h4 { font-size: 0.98rem; margin: 1.1rem 0 0.3rem; }
+p { margin: 0 0 0.7rem; } .muted { color: var(--muted); } .note { font-size: 0.92rem; color: var(--muted); }
+table { border-collapse: collapse; width: 100%; margin: 0.4rem 0 1rem; font-size: 0.93rem; }
+th, td { border: 1px solid var(--line); padding: 0.4rem 0.55rem; text-align: left; vertical-align: top; }
+th { background: var(--head); font-weight: 600; }
+table.meta th { width: 11rem; } td.num { text-align: right; white-space: nowrap; }
+.status { font-size: 0.85rem; font-weight: 600; color: var(--flag); }
+a { color: var(--accent); overflow-wrap: anywhere; }
+@media print { body { max-width: none; padding: 0; } h2 { break-after: avoid; } table { break-inside: avoid; } a { color: inherit; } }
 </style>
 </head>
 <body>{% endif %}
-<h1>{{ r.city_name }}: cardiovascular research brief</h1>
-<p class="muted">{{ r.city_name }}{% if r.region_name %}, {{ r.region_name }}{% endif %}, {{ r.country_name }}. Researched live on {{ date(r.run_date) }} (run {{ r.run_id }}, {{ r.run_status }}). Every fact below was checked against its source; the number in brackets is its source in the list at the end.</p>
+{%- set t = r.totals %}
+<h1>{{ r.city_name }}</h1>
+<p class="subtitle">Cardiovascular landscape brief · {% if r.region_name %}{{ r.region_name }}, {% endif %}{{ r.country_name }}</p>
+{% if pdf %}<br>{% endif %}
+<table class="meta" width="100%">
+<tr><th width="25%" align="left">Prepared for</th><td width="75%" align="left">CARDIO4Cities City Lead, ahead of engagement with city stakeholders</td></tr>
+<tr><th align="left">Researched</th><td align="left">Live on {{ date(r.run_date) }} · run {{ r.run_id }} ({{ r.run_status | replace("_", " ") }})</td></tr>
+<tr><th align="left">Coverage</th><td align="left">{{ plural(t.city_level, "question", "questions") }} of {{ t.city_level + t.wider_area + t.not_found + t.blocked_or_unreachable }} answered at city level · {{ t.wider_area }} with wider-area figures only · {{ t.not_found }} not found · {{ t.blocked_or_unreachable }} blocked or unreachable</td></tr>
+{% set lost = failed_steps(r.counts) %}{% if lost %}<tr><th align="left">Incomplete run</th><td align="left">Some research steps failed ({{ lost }}). Questions shown as not found may have been missed for that reason; run the research again before relying on the gaps.</td></tr>
+{% endif %}<tr><th align="left">How to read it</th><td align="left">Every finding quotes its source and passed code checks; findings from web pages were also confirmed by an independent checker model, and official statistics were matched by code to the published record. Numbers in brackets refer to the sources at the end. Figures for a wider area than the city are marked "Not city-level".</td></tr>
+</table>
 
-<h2>Summary</h2>
-{% for dimension, name, cited in r.summary %}
-<p><b>{{ name }}</b></p>
-<ul>{% for c in cited %}<li>{{ fact(c) }}</li>{% endfor %}</ul>
+<h2>At a glance</h2>
+<h3>Key findings</h3>
+{% set key = [] %}{% for dimension, name, cited in r.summary %}{% for c in cited %}{% set _ = key.append((name, c)) %}{% endfor %}{% endfor %}
+{% if key %}
+<table width="100%">
+<tr><th width="15%" align="left">Area</th><th width="48%" align="left">Finding</th><th width="14%" align="left">Confidence</th><th width="16%" align="left">Caveats</th><th width="7%" align="left">Ref.</th></tr>
+{% for name, c in key %}<tr><td align="left">{{ name }}</td><td align="left">{{ c.card.statement }}</td><td align="left">{{ confidence(c) }}</td><td align="left">{{ caveats(c) }}</td><td align="left">[{{ c.citation }}]</td></tr>
+{% endfor %}</table>
 {% else %}
-<p>No fact reached High or Medium confidence.</p>
-{% endfor %}
+<p>No finding reached High or Medium confidence.</p>
+{% endif %}
+<h3>Coverage by area</h3>
+<table width="100%">
+<tr><th width="28%" align="left">Area</th><th width="18%" align="left">City level</th><th width="18%" align="left">Wider area only</th><th width="18%" align="left">Not found</th><th width="18%" align="left">Blocked or unreachable</th></tr>
+{% for c in r.coverage %}<tr><td align="left">{{ c.name }}</td><td align="left">{{ c.city_level }}</td><td align="left">{{ c.wider_area }}</td><td align="left">{{ c.not_found }}</td><td align="left">{{ c.blocked_or_unreachable }}</td></tr>
+{% endfor %}<tr><th align="left">All questions</th><th align="left">{{ t.city_level }}</th><th align="left">{{ t.wider_area }}</th><th align="left">{{ t.not_found }}</th><th align="left">{{ t.blocked_or_unreachable }}</th></tr>
+</table>
 
+<h2>Findings by area</h2>
 {% for s in r.sections %}
-<h2>{{ s.dimension }} {{ s.name }}</h2>
+<h3>{{ s.name }}</h3>
 {% if s.intro %}<p>{% for p in s.intro %}{% if p.kind == "analysis" %}<b>Analysis:</b> {% endif %}{{ p.text }}{{ r.cite(p.refs) }} {% endfor %}</p>{% endif %}
-{% if not s.slots %}<p class="muted">No question of this dimension was researched in this run.</p>{% endif %}
-{% for b in s.slots %}
-<h3>{{ b.row.slot_id }} {{ b.row.question }} ({{ b.row.status_word }})</h3>
-{% if b.facts %}<ul>{% for c in b.facts %}<li>{{ fact(c) }}</li>{% endfor %}</ul>
-{% if b.row.gap_note %}<p class="muted">{{ b.row.gap_note }}</p>{% endif %}
-{% else %}<p class="muted">{{ b.row.gap_note or "Nothing confirmed." }}</p>{% endif %}
+{% if not s.answered %}<p class="muted">Nothing was confirmed in this area. The questions and what was tried are listed under "What we could not find".</p>{% endif %}
+{% for b in s.answered %}
+<h4>{{ b.row.question }}</h4>
+<table width="100%">
+<tr><th width="57%" align="left">Finding</th><th width="14%" align="left">Confidence</th><th width="21%" align="left">Caveats</th><th width="8%" align="left">Ref.</th></tr>
+{% for c in b.facts %}<tr><td align="left">{{ c.card.statement }}</td><td align="left">{{ confidence(c) }}</td><td align="left">{{ caveats(c) }}</td><td align="left">[{{ c.citation }}]</td></tr>
+{% endfor %}</table>
+{% if b.row.gap_note %}<p class="note">{{ b.row.gap_note }}</p>{% endif %}
 {% endfor %}
+{% if s.answered and s.open %}<p class="note">Not established in this area: {% for row in s.open %}{{ row.question }}{% if not loop.last %} · {% endif %}{% endfor %}</p>{% endif %}
 {% endfor %}
 
 {% if r.analysis %}
-<h2>Opportunities, risks and gaps (analysis)</h2>
+<h2>Opportunities, risks and gaps</h2>
+<p class="note">Analysis written from the findings above; each point cites the findings it rests on. It is interpretation, not a finding.</p>
 <ul>{% for p in r.analysis %}<li><b>{{ p.kind | capitalize }}:</b> {{ p.text }}{{ r.cite(p.refs) }}</li>{% endfor %}</ul>
 {% endif %}
 
-<h2>What we could not find</h2>
-<ul>{% for g in r.gaps %}<li><b>{{ g.slot_id }} {{ g.question }}</b> ({{ g.status_word }}): {{ g.gap_note or "Nothing confirmed." }}</li>{% else %}<li>Every question was answered.</li>{% endfor %}</ul>
-
 <h2>Handle with care</h2>
-<ul>{% for e in r.care %}<li>{{ e.item.card.statement }} [{{ e.citation }}]: <span class="flag">{{ e.item.reason }}</span>.</li>{% else %}<li>Nothing flagged.</li>{% endfor %}</ul>
+{% if r.care %}
+<table width="100%">
+<tr><th width="64%" align="left">Finding</th><th width="28%" align="left">Why</th><th width="8%" align="left">Ref.</th></tr>
+{% for e in r.care %}<tr><td align="left">{{ e.item.card.statement }}</td><td align="left">{{ e.item.reason }}</td><td align="left">[{{ e.citation }}]</td></tr>
+{% endfor %}</table>
+{% else %}<p>Nothing flagged.</p>{% endif %}
+
+<h2>What we could not find</h2>
+{% if r.gaps %}
+<table width="100%">
+<tr><th width="16%" align="left">Area</th><th width="32%" align="left">Question</th><th width="16%" align="left">Result</th><th width="36%" align="left">What was tried</th></tr>
+{% for g in r.gaps %}<tr><td align="left">{{ r.sections | selectattr("dimension", "equalto", g.dimension) | map(attribute="name") | first }}</td><td align="left">{{ g.question }}</td><td align="left">{{ g.status_word }}</td><td align="left">{{ g.gap_note or "Nothing confirmed." }}</td></tr>
+{% endfor %}</table>
+{% else %}<p>Every question was answered at city level.</p>{% endif %}
 
 <h2>Sources</h2>
-<ol>{% for s in r.sources %}<li>{{ s.title or "Untitled" }} ({{ s.publisher_class }}). <a href="{{ s.url }}">{{ s.url }}</a>. Published {{ s.published_date or "date not stated" }}; retrieved {{ s.retrieved_at }}.</li>{% endfor %}</ol>
+<ol>{% for s in r.sources %}<li><b>{{ s.title or "Untitled" }}</b> ({{ s.publisher_class }}). <a href="{{ s.url }}">{{ short_url(s.url) }}</a>. Published {{ s.published_date or "date not stated" }}; retrieved {{ s.retrieved_at }}.</li>{% endfor %}</ol>
+
+<h2>About this report</h2>
+<p>This brief was researched live from public sources at the time shown. Every page was fetched only where the site permits automated access. Each finding quotes its source exactly, and numbers are read by code, not by a model. For web pages, an independent checker model confirmed that the quoted passage supports the finding; official statistics were matched by code to the record the provider published. Findings that failed any check are not shown. Questions without an acceptable answer are reported with what was searched.</p>
 
 <h2>Run details</h2>
-<ul>
-<li>Run: {{ r.run_id }}, {{ r.run_status }}, {{ date(r.run_date) }}</li>
-{% for role, version in r.models.items() %}<li>{{ role }}: {{ version }}</li>{% endfor %}
-{% for line in counts(r.counts) %}<li>{{ line }}</li>{% endfor %}
-</ul>
+<table width="100%">
+<tr><th width="30%" align="left">Run</th><td width="70%" align="left">{{ r.run_id }} · {{ r.run_status | replace("_", " ") }} · {{ date(r.run_date) }}</td></tr>
+{% for line in counts(r.counts) %}{% set k, _, v = line.partition(": ") %}<tr><th align="left">{{ k }}</th><td align="left">{{ v }}</td></tr>
+{% endfor %}</table>
+{% if r.models %}
+<h4>Models and prompts</h4>
+<table width="100%">
+<tr><th width="20%" align="left">Role</th><th width="38%" align="left">Model</th><th width="42%" align="left">Prompt version</th></tr>
+{% for role, model, prompt in roles(r.models) %}<tr><td align="left">{{ role }}</td><td align="left">{{ model }}</td><td align="left">{{ prompt }}</td></tr>
+{% endfor %}</table>
+{% endif %}
 {% if not pdf %}</body>
 </html>{% endif %}

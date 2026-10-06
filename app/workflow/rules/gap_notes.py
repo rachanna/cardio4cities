@@ -21,6 +21,11 @@ OUTCOME_WORDS: dict[CrawlOutcome, str] = {
 TOP_REASONS = 3
 
 
+def _count(n: int, one: str, many: str) -> str:
+    """'1 source', '3 sources': gap notes are read by people (D4-3)."""
+    return f"{n} {one if n == 1 else many}"
+
+
 def _join(items: Sequence[str]) -> str:
     if len(items) <= 1:
         return "".join(items)
@@ -67,8 +72,9 @@ def gap_note(
         )
     elif status is SlotStatus.ANSWERED_NEGATIVE:
         note = (
-            f"Searched {n_queries} queries in {_join(list(languages)) or 'no language'} and "
-            f"checked {n_sources} sources; nothing acceptable found for this question."
+            f"Searched {_count(n_queries, 'query', 'queries')} in "
+            f"{_join(list(languages)) or 'no language'} and checked "
+            f"{_count(n_sources, 'source', 'sources')}; nothing acceptable found for this question."
         )
     else:
         wanted = "blocked" if status is SlotStatus.BLOCKED else "unreachable"
@@ -78,8 +84,13 @@ def gap_note(
             if o.value.startswith(wanted)
             or (wanted == "unreachable" and o is CrawlOutcome.RATE_LIMITED)
         ]
-        verb = "refuse automated access" if status is SlotStatus.BLOCKED else "could not be reached"
-        note = f"{len(relevant)} candidate sources {verb} ({_top_reasons(relevant)})."
+        one = len(relevant) == 1
+        if status is SlotStatus.BLOCKED:
+            verb = "refuses automated access" if one else "refuse automated access"
+        else:
+            verb = "could not be reached"
+        sources = _count(len(relevant), "candidate source", "candidate sources")
+        note = f"{sources} {verb} ({_top_reasons(relevant)})."
     if unconfirmed and status is not SlotStatus.ANSWERED:
         found = "1 claim was" if unconfirmed == 1 else f"{unconfirmed} claims were"
         note = (note or "") + f" {found} found but could not be confirmed against their sources."

@@ -174,3 +174,30 @@ async def test_a_report_needs_a_session_and_a_researched_city(downloads: Downloa
     downloads.client.cookies.clear()
     response = await downloads.client.get(f"/api/v1/cities/{downloads.slice.city_id}/report")
     assert response.status_code == 401
+
+
+async def test_the_layout_leads_with_an_overview_and_states_each_gap_once(
+    downloads: Downloader,
+) -> None:
+    """D4-3 layout: a cover table and coverage overview first; questions as plain words,
+    not internal codes; a not-found gap note once, in "What we could not find"."""
+    md = (await downloads.get("md")).text
+    assert md.index("## At a glance") < md.index("## Findings by area")
+    assert "### Coverage by area" in md
+    assert "| **All questions** |" in md
+    assert not re.search(r"^#+ (D\d|S\d\d) ", md, re.M)  # no internal codes in headings
+    not_found = [line for line in md.splitlines() if "nothing acceptable found" in line]
+    for line in not_found:
+        note = line.split("|")[-2].strip()
+        assert md.count(note) == 1, note  # stated once, not in every section again
+
+
+async def test_the_reporter_introduces_only_areas_with_findings(downloads: Downloader) -> None:
+    """D4-3: an area with no confirmed finding gets a sentence written by code, never model
+    prose with nothing to rest on."""
+    await downloads.get("md")
+    intros = [c for c in downloads.reporter.calls if "Write the introduction" in c]
+    assert intros
+    for message in intros:
+        facts = message.split("facts in this section:\n")[1].split("\ngaps in this section")[0]
+        assert facts != "- none"

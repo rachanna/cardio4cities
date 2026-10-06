@@ -68,6 +68,7 @@ class Candidate(BaseModel):
     # The hit's title, snippet or URL names another place (BD-15): decided in `search`, so
     # search text never enters the run state or its checkpoints (BD-36; RV-090)
     names_other_place: bool = False
+    names_city: bool = False  # the hit names the city itself: read first (BD-50)
 
 
 class Draft(BaseModel):

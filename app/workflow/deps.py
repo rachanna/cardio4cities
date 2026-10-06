@@ -58,6 +58,7 @@ class WindowParams:
     overlap_tokens: int  # extract.overlap_tokens [tunable]
     max_windows_per_source: int  # extract.max_windows_per_source [tunable] (BD-29)
     stop_windows_below_s: float  # extract.stop_windows_below_s [tunable] (BD-29)
+    max_sources_without_city: int = 1  # extract.max_sources_without_city [tunable] (BD-50)
 
 
 @dataclass
@@ -98,6 +99,7 @@ class RunDeps:
     stages: StageClock = field(default_factory=StageClock)  # busy time per stage (AT-38)
     places: PlaceMatcher | None = None  # the other-place rule, built once per run (BD-15)
     checkpointed: bool = True  # False when no checkpoint can be saved: no resume (BD-25)
+    prefer_local: bool = True  # select.prefer_local [tunable] (BD-50)
     # (slot, source) pairs this process extracted: a later round never repeats one (BD-29)
     extracted: set[tuple[str, str]] = field(default_factory=set)
 

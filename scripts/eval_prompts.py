@@ -169,9 +169,13 @@ def _label_quote_located(out: ClaimOut, kind: str, text: str, quote: QuoteParams
 
 
 def _find(claims: list[ClaimOut], expect: dict[str, Any]) -> ClaimOut | None:
+    """`value`: the value as written, or a list of the forms the source writes it in
+    ("86 per 100,000" and "86 per 100,000 people" both copy the text exactly)."""
+    wanted = expect.get("value")
+    forms = {normalise_text(v) for v in (wanted if isinstance(wanted, list) else [wanted]) if v}
     for c in claims:
         value = c.statistic.value_as_written if c.statistic else None
-        if "value" in expect and value and normalise_text(value) == normalise_text(expect["value"]):
+        if forms and value and normalise_text(value) in forms:
             return c
         if "match" in expect and expect["match"].casefold() in c.statement.casefold():
             return c

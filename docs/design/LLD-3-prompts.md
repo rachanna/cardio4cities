@@ -147,6 +147,17 @@ v2 with one change: "For each slot, write exactly queries_per_slot search querie
 
 v3 with English only (owner, PoC scope): every query is in English with `"lang": "en"`, which code checks; the local-language rule and "another language" as a re-plan change are gone; the context says `language: en`. The length rule now matches the code: a query of at most 120 characters and a purpose of at most 80 (it said 15 words).
 
+### 3.2d System prompt (v5, BD-50)
+
+v4 made local first. National and WHO country figures arrive through Wave 0, so the planner's queries should find what is specific to the city:
+- **Local first:** for every slot, at least one query aims at the city's own documents and names the city: the city or local-authority health department, the city's health profile, its local health needs assessment, its annual public health report, council or health-board papers, or reports on its districts or wards. These are generic document types; the planner never guesses a title.
+- **National surveys:** at most one query per slot.
+- **Re-plans:**
+  - may turn to documents that re-quote official figures (needs assessments, annual public health reports, board or committee papers, academic reviews);
+  - each earlier attempt now lists the sites that refused access (`previous_attempt(..., refused)`, from the slot's crawl decisions);
+  - those sites are never searched again or used in a `site:` filter.
+- **Example:** Halden Bay's own needs assessment and annual public health report.
+
 ### 3.3 Output schema
 
 ```python

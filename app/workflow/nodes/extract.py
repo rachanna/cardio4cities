@@ -9,7 +9,7 @@ from typing import Any
 
 from langchain_core.runnables import RunnableConfig
 
-from app.domain.vocab import EventType
+from app.domain.vocab import SHOWABLE_STATUSES, EventType, GeographyLevel
 from app.ports.errors import PortError
 from app.prompts.extractor import context
 from app.prompts.extractor.schema import (
@@ -29,7 +29,9 @@ from app.workflow.nodes._deps import deps
 from app.workflow.nodes.fetch_parse import table_keywords
 from app.workflow.problems import step_failed
 from app.workflow.rules.chunking import pick_windows, windows
+from app.workflow.rules.geography_fit import city_named
 from app.workflow.rules.quotes import normalise_text
+from app.workflow.rules.selection import sources_to_read
 from app.workflow.state import Draft, SlotState
 
 log = logging.getLogger(__name__)
@@ -40,14 +42,30 @@ async def extract(state: SlotState, config: RunnableConfig) -> dict[str, Any]:
     Drafts are kept in source and window order, whatever order the calls finish in."""
     d = deps(config)
     slot = d.slots[state["slot_id"]]
-    jobs: list[Window] = []
+    city = state["city"]
+    loaded: list[tuple[str, dict[str, Any], str, bool]] = []
     for source_id in state.get("source_ids", []):
         if (slot.slot_id, source_id) in d.extracted:
             continue  # this slot read it in an earlier round: same claims, pure cost
         source = await d.relational.sources.source_for_extraction(source_id)
         text = str(source["parsed_text"] or "") if source else ""
-        if not source or not text:
-            continue
+        if source and text:
+            loaded.append((source_id, source, text, city_named(city, [text])))
+    # Local first (BD-50): pages naming the city are read first; once the question holds
+    # a fact it cannot accept as its answer (a national figure for a city question), only
+    # a few pages that never name the city are read, since they can only add more of it.
+    held = await _holds_wider_fact(d, state["run_id"], slot.slot_id)
+    order = sources_to_read(
+        [(sid, named) for sid, _, _, named in loaded], held, d.window.max_sources_without_city
+    )
+    if len(order) < len(loaded):
+        log.info(
+            "extract: %s skips %d pages not naming the city", slot.slot_id, len(loaded) - len(order)
+        )
+    by_id = {sid: (source, text) for sid, source, text, _ in loaded}
+    jobs: list[Window] = []
+    for source_id in order:
+        source, text = by_id[source_id]
         d.extracted.add((slot.slot_id, source_id))
         spans = windows(text, d.window.window_tokens, d.window.overlap_tokens)
         terms = [state["city"].name, state["city"].ascii_name, *table_keywords(d, slot.slot_id)]
@@ -88,6 +106,15 @@ async def extract(state: SlotState, config: RunnableConfig) -> dict[str, Any]:
                 },
             )
     return {"drafts": drafts, **_skipped(skipped)}
+
+
+async def _holds_wider_fact(d: RunDeps, run_id: str, slot_id: str) -> bool:
+    """The question already shows a fact (Wave 0's national figure counts) and does not
+    accept national evidence as its answer (BD-50)."""
+    if GeographyLevel.NATIONAL in d.slots[slot_id].accepted_levels:
+        return False  # a national plan answers a policy question: keep reading
+    claims = await d.relational.research.slot_claims(run_id, slot_id)
+    return any(c.status in SHOWABLE_STATUSES for c, _ in claims)
 
 
 def claim_key(claim: ClaimOut) -> str:

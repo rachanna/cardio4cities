@@ -34,12 +34,19 @@ async def plan_slots(state: RunState, config: RunnableConfig) -> dict[str, Any]:
     earlier: set[str] = set()
     previous: list[str] = []
     if round_no > 0:
+        reports = state.get("slot_reports", {}).values()
         for row in await d.relational.runs.slot_results(state["run_id"]):
             if row["slot_id"] in slot_ids:
                 texts = [t for t, _ in await d.relational.research.queries(row["queries_tried"])]
                 earlier |= set(texts)
+                decisions = [
+                    i for r in reports if r.slot_id == row["slot_id"] for i in r.crawl_decision_ids
+                ]
+                refused = await d.relational.sources.refused_domains(decisions)
                 previous.append(
-                    context.previous_attempt(row["slot_id"], row["status"], texts, row["gap_note"])
+                    context.previous_attempt(
+                        row["slot_id"], row["status"], texts, row["gap_note"], refused
+                    )
                 )
     sites = government_sites(d.publishers, city.country_iso2)
     prompt = load_prompt("planner")

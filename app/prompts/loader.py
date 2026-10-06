@@ -20,7 +20,7 @@ class Prompt:
 
 # The version each role runs now; earlier files stay for the record (R-62).
 CURRENT = {
-    "planner": 4,
+    "planner": 5,
     "extractor": 6,
     "checker": 4,
     "classifier": 2,

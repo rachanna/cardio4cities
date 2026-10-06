@@ -90,6 +90,11 @@ class SourceRepo(Protocol):
 
     async def crawl_outcomes(self, decision_ids: list[str]) -> list[str]: ...
 
+    async def refused_domains(self, decision_ids: list[str]) -> list[str]:
+        """Domains that blocked these decisions (robots, login, AI use), once each, for
+        the planner's re-plan (BD-50)."""
+        ...
+
     async def outcome_counts(self, run_id: str) -> dict[str, dict[str, int]]:
         """`crawl`: decisions by outcome (per URL); `parse`: pages by parse outcome."""
         ...

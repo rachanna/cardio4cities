@@ -1,7 +1,8 @@
 # Extractor golden set (LLD-3 §9, BD-10). Fictional places only: Halden Bay (the city,
 # West Coast province, Norvania), Kestrel Point (a town nearby), Port Ostra (a town far
 # away). Each case gives a source text and the claims expected from it. A claim is found
-# by its value_as_written (statistics) or by `match`, a phrase its statement must
+# by its value_as_written (statistics; a list gives the forms the text writes it in,
+# each copied exactly) or by `match`, a phrase its statement must
 # contain. Only the fields listed are graded. `trap` names the LLD-3 §9 trap a case
 # tests: a mislabelled trap claim is also sent to the checker, and the pass bar fails if
 # the checker supports it.
@@ -424,5 +425,5 @@
     In the Harbour borough of Halden Bay, the under-75 death rate from cardiovascular
     disease was 86 per 100,000 people in 2021-23, against 74 for the city as a whole.
   expect:
-    - {value: "86 per 100,000", geography_level: sub_city_area}
+    - {value: ["86 per 100,000", "86 per 100,000 people"], geography_level: sub_city_area}
     - {value: "74", geography_level: city_wide}

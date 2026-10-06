@@ -6,7 +6,10 @@ never excluded, and a national or state document, which names the country or the
 region, is unaffected. Search text only ranks candidates; it never becomes evidence (R-58).
 
 Matching is whole-word: as written in the title and snippet, case-insensitive on the
-words of the URL (names of four letters or more there, to keep short words out)."""
+words of the URL (names of four letters or more there, to keep short words out).
+
+`names_city` (BD-50): the hit names the city itself (its gazetteer names, not its region
+or country), for local-first selection."""
 
 import re
 from collections.abc import Iterable, Mapping
@@ -35,6 +38,15 @@ class PlaceMatcher:
     own_url: re.Pattern[str] | None
     other_text: re.Pattern[str] | None
     other_url: re.Pattern[str] | None
+    city_text: re.Pattern[str] | None = None
+    city_url: re.Pattern[str] | None = None
+
+    def names_city(self, title: str, snippet: str, url: str) -> bool:
+        """The hit's title, snippet or URL names the city itself (BD-50)."""
+        return bool(
+            (self.city_text is not None and self.city_text.search(f"{title}\n{snippet}"))
+            or (self.city_url is not None and self.city_url.search(_url_words(url)))
+        )
 
     def names_other_place(self, title: str, snippet: str, url: str) -> bool:
         text, words = f"{title}\n{snippet}", _url_words(url)
@@ -51,10 +63,11 @@ class PlaceMatcher:
 def place_matcher(city: CityIdentity, places: Iterable[Mapping[str, Any]]) -> PlaceMatcher:
     """`places`: the country's gazetteer rows (name, ascii_name, alternate_names)."""
     rows = list(places)
-    own = {city.name, city.ascii_name, city.admin1_name or "", city.country_name}
+    names = {city.name, city.ascii_name}
     for row in rows:
         if str(row["gazetteer_id"]) == city.gazetteer_id:
-            own |= {a for a in row.get("alternate_names") or [] if len(a) >= 3}
+            names |= {a for a in row.get("alternate_names") or [] if len(a) >= 3}
+    own = names | {city.admin1_name or "", city.country_name}
     own_folded = {n.casefold() for n in own if n}
     others = {
         n
@@ -72,4 +85,6 @@ def place_matcher(city: CityIdentity, places: Iterable[Mapping[str, Any]]) -> Pl
         own_url=_pattern(long(own), re.IGNORECASE),
         other_text=_pattern(others),
         other_url=_pattern(long(others), re.IGNORECASE),
+        city_text=_pattern(names, re.IGNORECASE),
+        city_url=_pattern(long(names), re.IGNORECASE),
     )

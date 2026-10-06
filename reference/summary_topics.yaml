@@ -1,0 +1,46 @@
+# Topics of the brief (LLD-2 §16.2, D4-3): a fact enters the report's Key findings only
+# when its statement names one of these, so a true but off-topic fact (a workforce plan
+# for another field) stays under its question and out of the summary. Generic reference
+# data: conditions, risk factors and their policies, never a place, body or figure.
+# Lower case; each entry matches at the start of a word ("hypertens" matches
+# "hypertension" and "hypertensive"). Facts still show in full under their question.
+stems:
+  - blood pressure
+  - hypertens
+  - cardiovascular
+  - cardiac
+  - cardio
+  - heart
+  - stroke
+  - cvd
+  - ncd
+  - noncommunicable
+  - non-communicable
+  - diabet
+  - glucose
+  - hyperglyc
+  - cholesterol
+  - lipid
+  - statin
+  - obes
+  - overweight
+  - body mass
+  - tobacco
+  - smok
+  - cigarette
+  - vap
+  - salt
+  - sodium
+  - sugar
+  - alcohol
+  - physical activity
+  - diet
+  - nutrition
+  - kidney
+  - health check
+  - screening
+  - primary care
+  - public health
+# Dimensions whose questions are about who governs or works on these conditions, not a
+# condition: their facts name bodies and people, so any topic is accepted.
+any_topic_dimensions: [D1, D5]

@@ -46,11 +46,16 @@ def gap_note(
     n_sources: int = 0,
     crawl_outcomes: Sequence[CrawlOutcome] = (),
     unconfirmed: int = 0,
+    unchecked: int = 0,
     unread: int = 0,
+    related: bool = False,
 ) -> str | None:
-    """`languages`: display names of the search languages; `unconfirmed`: claims found
-    but not confirmed (quote not found, refuted or insufficient); `unread`: sources the
-    gate allowed that the run's budget stopped before they were read (BD-14)."""
+    """`languages`: display names of the search languages; `unconfirmed`: claims the
+    checker did not support (refuted or insufficient); `unchecked`: claims ranked below
+    the ones checked, never sent to the checker (D4-3); `unread`: sources the gate
+    allowed that the run's budget stopped before they were read (BD-14); `related`: the
+    best claim is at the question's own level but for a related measure (BD-46), so the
+    note must not say no city figure was found (D4-3)."""
     note: str | None
     if status is SlotStatus.ANSWERED:
         note = None
@@ -66,10 +71,16 @@ def gap_note(
             if fit is not None and fit.relation is GeographyRelation.NEARBY
             else LEVEL_WORDS[effective_level(best)]
         )
-        note = (
-            f"No city-level figure found. Best available is {where} "
-            f"({labels.geography_name}, {year})."
-        )
+        if related:
+            note = (
+                f"No city-level figure for this question's own measure. Closest is a related "
+                f"{where} figure ({labels.geography_name}, {year})."
+            )
+        else:
+            note = (
+                f"No city-level figure found. Best available is {where} "
+                f"({labels.geography_name}, {year})."
+            )
     elif status is SlotStatus.ANSWERED_NEGATIVE:
         note = (
             f"Searched {_count(n_queries, 'query', 'queries')} in "
@@ -94,6 +105,13 @@ def gap_note(
     if unconfirmed and status is not SlotStatus.ANSWERED:
         found = "1 claim was" if unconfirmed == 1 else f"{unconfirmed} claims were"
         note = (note or "") + f" {found} found but could not be confirmed against their sources."
+    if unchecked and status is not SlotStatus.ANSWERED:
+        lower = (
+            "1 lower-ranked claim was"
+            if unchecked == 1
+            else f"{unchecked} lower-ranked claims were"
+        )
+        note = (note or "") + f" {lower} not checked."
     if unread and status is not SlotStatus.ANSWERED:
         sources = "1 allowed source" if unread == 1 else f"{unread} allowed sources"
         note = (note or "") + f" The run's budget ran out before {sources} could be read."

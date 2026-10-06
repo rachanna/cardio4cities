@@ -547,11 +547,12 @@ A slot is re-planned when all hold:
 
 | Status | Template |
 |---|---|
-| `answered_wider_geo` | "No city-level figure found. Best available is {level_word} ({geography_name}, {year})." |
+| `answered_wider_geo` | "No city-level figure found. Best available is {level_word} ({geography_name}, {year})." When the best figure is at the question's own level but for a related measure (BD-46): "No city-level figure for this question's own measure. Closest is a related {level_word} figure ({geography_name}, {year})." (BD-49) |
 | `answered_negative` | "Searched {n_queries} queries in {languages} and checked {n_sources} sources; nothing acceptable found for this question." |
 | `blocked` | "{n} candidate sources refuse automated access ({top_reasons})." |
 | `unreachable` | "{n} candidate sources could not be reached ({top_reasons})." |
-| Claims found but none confirmed | append: " {n} claims were found but could not be confirmed against their sources." |
+| Claims the checker did not support | append: " {n} claims were found but could not be confirmed against their sources." Refuted and insufficient claims only (BD-49) |
+| Claims never checked | append: " {n} lower-ranked claims were not checked." Claims below the `verify.max_claims_per_slot` cut (BD-49) |
 | Budget stopped allowed sources (BD-14) | append: " The run's budget ran out before {n} allowed sources could be read." Allowed but unread pages never make a slot `blocked` or `unreachable` |
 
 `level_word` comes from a fixed map: `national` → "national", `state_province` → "state or regional", and so on.
@@ -652,7 +653,7 @@ With the admin parameter `graph=off`, retrieval for `relationship` and `change_o
 ## 16. Report assembly (R-17, HD-07, AT-18)
 
 1. Load the latest run's slot results and `v_city_facts`.
-2. **Summary:** for each dimension, the best fact per slot (§5.2) with confidence High or Medium, with its main badge.
+2. **Summary:** for each dimension, the best fact per slot (§5.2) with confidence High or Medium, with its main badge, and on a topic of the brief: its statement names a stem in `reference/summary_topics.yaml`, or its dimension is listed there as about who governs or works on these conditions (BD-49).
 3. **Dimension sections D1–D6:** every supported or contested fact per slot, ranked, each with badge, confidence and a numbered citation.
 4. **Analysis:** model-written, at most 120 words per dimension `[tunable]`, given only that dimension's facts (LLD-3 §8); post-checked as in §15; on failure the paragraph is omitted.
 5. **What we could not find:** every slot not `answered`, with its gap note.
@@ -665,13 +666,15 @@ With the admin parameter `graph=off`, retrieval for `relationship` and `change_o
 
 **Layout (D4-3, BD-44):** the order of sections is:
 1. **A cover table:** prepared for, researched, coverage and how to read it.
-2. **At a glance:** key findings as a table (area, finding, confidence, caveats, reference) and coverage by area (city level, wider area only, not found, blocked or unreachable).
+2. **At a glance:** key findings as a table (area, finding, confidence, caveats, reference) and coverage by area (city level, national applies, wider area only, not found, blocked or unreachable).
 3. **Findings by area:** per question with findings, a table (finding, confidence, caveats, reference) and its wider-area note; the unanswered questions of that area named once.
 4. **Analysis**, labelled as interpretation.
 5. **Handle with care** and **What we could not find**, as tables; each gap note appears once.
 6. **Sources:** the link text is the host and path; the link keeps the full URL.
 7. **About this report:** a method paragraph written by code.
 8. **Run details**, with models and prompt versions.
+
+**Honest labels (D4-3, BD-49):** the brief, findings and report leave out a world-level fact in a question that has a narrower one, unless it is one side of a disagreement (`domain/cards.hide_global`, `api/reading.visible`); facts with the same statement and value in one question show once, citing every source (`fold_repeats`); coverage counts a question answered by a wider-area fact its definition accepts (a national plan for a policy question) as **national applies**, not city level; "Period not stated" is a caveat on figures only, since a statement is dated by its publication.
 
 Headings use plain words, never slot or dimension codes. The reporter writes an introduction only for an area with at least one finding; an area with none gets a fixed sentence written by code. Gap notes pluralise ("1 source"). The PDF has a running title and "Page n of m".
 

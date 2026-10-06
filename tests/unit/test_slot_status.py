@@ -159,3 +159,30 @@ def test_a_statistic_question_is_answered_only_by_its_own_indicators() -> None:
     assert slot_status(diabetes, [city_claim], 1, [], related) is SlotStatus.ANSWERED_WIDER_GEO
     assert slot_status(diabetes, [city_claim], 1, [], own) is SlotStatus.ANSWERED
     assert slot_status(diabetes, [city_claim], 1, []) is SlotStatus.ANSWERED  # no indicators known
+
+
+def test_a_related_city_figure_is_not_called_no_city_figure() -> None:
+    """D4-3: a city figure for a related measure (BD-46) leaves the question open, and the
+    note says what was found instead of 'No city-level figure found'."""
+    note = gap_note(SlotStatus.ANSWERED_WIDER_GEO, best=claim(), related=True)
+    assert note == (
+        "No city-level figure for this question's own measure. "
+        "Closest is a related city-wide figure (Halden Bay, 2024)."
+    )
+
+
+def test_claims_never_checked_are_not_called_unconfirmed() -> None:
+    """D4-3: claims ranked below the ones checked were never sent to the checker."""
+    note = gap_note(
+        SlotStatus.ANSWERED_NEGATIVE,
+        n_queries=2,
+        languages=["English"],
+        n_sources=3,
+        unconfirmed=2,
+        unchecked=5,
+    )
+    assert note is not None
+    assert note.endswith(
+        " 2 claims were found but could not be confirmed against their sources."
+        " 5 lower-ranked claims were not checked."
+    )

@@ -32,7 +32,7 @@ a { color: var(--accent); overflow-wrap: anywhere; }
 <table class="meta" width="100%">
 <tr><th width="25%" align="left">Prepared for</th><td width="75%" align="left">CARDIO4Cities City Lead, ahead of engagement with city stakeholders</td></tr>
 <tr><th align="left">Researched</th><td align="left">Live on {{ date(r.run_date) }} · run {{ r.run_id }} ({{ r.run_status | replace("_", " ") }})</td></tr>
-<tr><th align="left">Coverage</th><td align="left">{{ plural(t.city_level, "question", "questions") }} of {{ t.city_level + t.wider_area + t.not_found + t.blocked_or_unreachable }} answered at city level · {{ t.wider_area }} with wider-area figures only · {{ t.not_found }} not found · {{ t.blocked_or_unreachable }} blocked or unreachable</td></tr>
+<tr><th align="left">Coverage</th><td align="left">{{ plural(t.city_level, "question", "questions") }} of {{ t.city_level + t.national_applies + t.wider_area + t.not_found + t.blocked_or_unreachable }} answered at city level · {{ t.national_applies }} by national policy or data that applies to the city · {{ t.wider_area }} with wider-area figures only · {{ t.not_found }} not found · {{ t.blocked_or_unreachable }} blocked or unreachable</td></tr>
 {% set lost = failed_steps(r.counts) %}{% if lost %}<tr><th align="left">Incomplete run</th><td align="left">Some research steps failed ({{ lost }}). Questions shown as not found may have been missed for that reason; run the research again before relying on the gaps.</td></tr>
 {% endif %}<tr><th align="left">How to read it</th><td align="left">Every finding quotes its source and passed code checks; findings from web pages were also confirmed by an independent checker model, and official statistics were matched by code to the published record. Numbers in brackets refer to the sources at the end. Figures for a wider area than the city are marked "Not city-level".</td></tr>
 </table>
@@ -43,16 +43,16 @@ a { color: var(--accent); overflow-wrap: anywhere; }
 {% if key %}
 <table width="100%">
 <tr><th width="15%" align="left">Area</th><th width="48%" align="left">Finding</th><th width="14%" align="left">Confidence</th><th width="16%" align="left">Caveats</th><th width="7%" align="left">Ref.</th></tr>
-{% for name, c in key %}<tr><td align="left">{{ name }}</td><td align="left">{{ c.card.statement }}</td><td align="left">{{ confidence(c) }}</td><td align="left">{{ caveats(c) }}</td><td align="left">[{{ c.citation }}]</td></tr>
+{% for name, c in key %}<tr><td align="left">{{ name }}</td><td align="left">{{ c.card.statement }}</td><td align="left">{{ confidence(c) }}</td><td align="left">{{ caveats(c) }}</td><td align="left">{{ refs(c) }}</td></tr>
 {% endfor %}</table>
 {% else %}
 <p>No finding reached High or Medium confidence.</p>
 {% endif %}
 <h3>Coverage by area</h3>
 <table width="100%">
-<tr><th width="28%" align="left">Area</th><th width="18%" align="left">City level</th><th width="18%" align="left">Wider area only</th><th width="18%" align="left">Not found</th><th width="18%" align="left">Blocked or unreachable</th></tr>
-{% for c in r.coverage %}<tr><td align="left">{{ c.name }}</td><td align="left">{{ c.city_level }}</td><td align="left">{{ c.wider_area }}</td><td align="left">{{ c.not_found }}</td><td align="left">{{ c.blocked_or_unreachable }}</td></tr>
-{% endfor %}<tr><th align="left">All questions</th><th align="left">{{ t.city_level }}</th><th align="left">{{ t.wider_area }}</th><th align="left">{{ t.not_found }}</th><th align="left">{{ t.blocked_or_unreachable }}</th></tr>
+<tr><th width="25%" align="left">Area</th><th width="15%" align="left">City level</th><th width="15%" align="left">National applies</th><th width="15%" align="left">Wider area only</th><th width="15%" align="left">Not found</th><th width="15%" align="left">Blocked or unreachable</th></tr>
+{% for c in r.coverage %}<tr><td align="left">{{ c.name }}</td><td align="left">{{ c.city_level }}</td><td align="left">{{ c.national_applies }}</td><td align="left">{{ c.wider_area }}</td><td align="left">{{ c.not_found }}</td><td align="left">{{ c.blocked_or_unreachable }}</td></tr>
+{% endfor %}<tr><th align="left">All questions</th><th align="left">{{ t.city_level }}</th><th align="left">{{ t.national_applies }}</th><th align="left">{{ t.wider_area }}</th><th align="left">{{ t.not_found }}</th><th align="left">{{ t.blocked_or_unreachable }}</th></tr>
 </table>
 
 <h2>Findings by area</h2>
@@ -64,7 +64,7 @@ a { color: var(--accent); overflow-wrap: anywhere; }
 <h4>{{ b.row.question }}</h4>
 <table width="100%">
 <tr><th width="57%" align="left">Finding</th><th width="14%" align="left">Confidence</th><th width="21%" align="left">Caveats</th><th width="8%" align="left">Ref.</th></tr>
-{% for c in b.facts %}<tr><td align="left">{{ c.card.statement }}</td><td align="left">{{ confidence(c) }}</td><td align="left">{{ caveats(c) }}</td><td align="left">[{{ c.citation }}]</td></tr>
+{% for c in b.facts %}<tr><td align="left">{{ c.card.statement }}</td><td align="left">{{ confidence(c) }}</td><td align="left">{{ caveats(c) }}</td><td align="left">{{ refs(c) }}</td></tr>
 {% endfor %}</table>
 {% if b.row.gap_note %}<p class="note">{{ b.row.gap_note }}</p>{% endif %}
 {% endfor %}

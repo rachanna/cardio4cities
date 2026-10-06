@@ -147,7 +147,8 @@ async def _prose(
             cfg.intro_max_words,
             cfg.min_paragraph_words,
         )
-    summarised = [c.claim_id for cards_ in summary(rows, cards).values() for c in cards_]
+    topics = reading.summary_topics()
+    summarised = [c.claim_id for cards_ in summary(rows, cards, topics).values() for c in cards_]
     analysis: tuple[Prose, ...] = ()
     if summarised:
         refs = [context.FactRef(c, cards[c].statement, _badge(cards[c])) for c in summarised]
@@ -187,11 +188,17 @@ async def build(request: Request, city_row: Mapping[str, Any]) -> Built:
     results = await store.runs.slot_results(run_id)
     rows = [slot_row(r, maker.slots[r["slot_id"]]) for r in results if r["slot_id"] in maker.slots]
     pairs = await store.research.contested_pairs(run_id)
+    shown = reading.visible(cards, pairs)  # D4-3: before the prose, so it cites only these
+    facts = [f for f in facts if f.claim.claim_id in shown]
+    cards = {i: c for i, c in cards.items() if i in shown}
     run = await store.runs.run_row(run_id) or {}
     city = dict(city_row["identity"])
     intros, analysis, spent = await _prose(request, city, rows, facts, cards)
     log.info("report for %s: prose %s", run_id, spent)
-    report = assemble(city, run, rows, facts, cards, pairs, maker.slots, intros, analysis)
+    report = assemble(
+        city, run, rows, facts, cards, pairs, maker.slots, intros, analysis,
+        topics=reading.summary_topics(),
+    )  # fmt: skip
     return Built(
         report=report,
         markdown=render.markdown(report).encode("utf-8"),

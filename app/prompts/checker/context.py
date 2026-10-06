@@ -82,6 +82,7 @@ LEVEL_WORDS = {
 MEASURE_WORDS = {
     MeasureType.MEASURED_PREVALENCE: "prevalence, measured",
     MeasureType.SELF_REPORTED_PREVALENCE: "prevalence, self-reported",
+    MeasureType.PREVALENCE: "prevalence, method not stated",
     MeasureType.SCREENING_POSITIVITY: "share of people screened who tested positive",
     MeasureType.CASCADE_AWARENESS: "share of people with the condition who know they have it",
     MeasureType.CASCADE_TREATMENT: "share of people with the condition who are treated",

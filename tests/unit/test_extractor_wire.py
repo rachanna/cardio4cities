@@ -162,3 +162,22 @@ def test_blank_or_not_applicable_values_mean_what_the_enum_used_to_force() -> No
     # a statistic must still name its measure
     blank = wire.claims[1].model_copy(update={"measure_type": ""})
     assert to_output(ExtractorWire(claims=[blank]))[1][0].startswith("claim 1: measure_type ''")
+
+
+def test_a_prevalence_without_a_stated_method_is_its_own_value() -> None:
+    """BD-48: before, a statistic had to say measured, self-reported or modelled even when
+    the source did not; the model guessed and the checker rejected the claim."""
+    unstated = STATISTIC.model_copy(
+        update={
+            "labels": labels(
+                measure_type=MeasureType.PREVALENCE,
+                method=Method.NOT_STATED,
+                representativeness=Representativeness.NOT_STATED,
+            )
+        }
+    )
+    original = ExtractorOutput(claims=[unstated])
+    back, problems = to_output(ExtractorWire.from_output(original))
+    assert problems == []
+    assert back == original
+    assert back.claims[0].labels.measure_type is MeasureType.PREVALENCE

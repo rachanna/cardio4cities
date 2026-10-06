@@ -62,7 +62,7 @@
     The 2023 Halden Bay diabetes audit found that between 20-25% of adults aged 40 and
     over had diabetes, depending on the district.
   expect:
-    - {value: "20-25%", measure_type: measured_prevalence}
+    - {value: "20-25%", measure_type: prevalence}  # BD-48: "found" does not say measured
 
 - id: planned-programme
   trap: Planned programme described in future tense
@@ -385,3 +385,44 @@
     2022 220.3; 2023 216.8.
   expect:
     - {value: "216.8", period_year: 2023}
+
+# --- BD-48: claim only what the source states ----------------------------------------
+
+- id: undiagnosed-is-not-awareness
+  trap: A share undiagnosed labelled as awareness (its opposite)
+  slots: [S04]
+  text: |
+    The Coast health profile reports that among men with hypertension living in Halden
+    Bay, 26% were undiagnosed in the 2023 survey round.
+  expect:
+    - {value: "26%", measure_type: share_of_subgroup}
+
+- id: prevalence-method-not-stated
+  trap: Prevalence whose method the source does not state
+  slots: [S03]
+  text: |
+    According to the Coast health profile, 24.1% of all adults in Halden Bay had
+    hypertension in 2023, up from 22.8% five years earlier.
+  expect:
+    - {value: "24.1%", measure_type: prevalence, representativeness: not_stated}
+
+- id: table-value-without-unit
+  trap: A percentage column whose cells carry no % sign
+  slots: [S03]
+  text: |
+    Table 4. Hypertension in adults by region, Norvania, 2022
+    | Region | n | % (95% CI) |
+    | West Coast | 1590 | 36.4 (32.4-40.6) |
+    | Halden Bay | 1102 | 31.9 (28.1-35.9) |
+  expect:
+    - {value: "31.9", geography_name: Halden Bay}
+
+- id: borough-is-part-of-the-city
+  trap: A borough of the city labelled city-wide
+  slots: [S06]
+  text: |
+    In the Harbour borough of Halden Bay, the under-75 death rate from cardiovascular
+    disease was 86 per 100,000 people in 2021-23, against 74 for the city as a whole.
+  expect:
+    - {value: "86 per 100,000", geography_level: sub_city_area}
+    - {value: "74", geography_level: city_wide}

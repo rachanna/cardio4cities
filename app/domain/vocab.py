@@ -55,6 +55,7 @@ class Representativeness(StrEnum):
 class MeasureType(StrEnum):
     MEASURED_PREVALENCE = "measured_prevalence"
     SELF_REPORTED_PREVALENCE = "self_reported_prevalence"
+    PREVALENCE = "prevalence"  # how it was obtained is not stated (BD-48: never infer)
     SCREENING_POSITIVITY = "screening_positivity"  # never prevalence (T-04)
     CASCADE_AWARENESS = "cascade_awareness"
     CASCADE_TREATMENT = "cascade_treatment"
@@ -75,6 +76,7 @@ DENOMINATOR_MEASURES: frozenset[MeasureType] = frozenset(
     {
         MeasureType.MEASURED_PREVALENCE,
         MeasureType.SELF_REPORTED_PREVALENCE,
+        MeasureType.PREVALENCE,
         MeasureType.CASCADE_AWARENESS,
         MeasureType.CASCADE_TREATMENT,
         MeasureType.CASCADE_CONTROL,

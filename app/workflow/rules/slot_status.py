@@ -3,7 +3,7 @@
 Every slot always gets a status, including after a budget stop.
 """
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 
 from app.domain.geography import effective_level
 from app.domain.models import Claim, SlotDef
@@ -25,10 +25,18 @@ def slot_status(
     claims: Iterable[Claim],
     sources_fetched: int,
     crawl_outcomes: Sequence[CrawlOutcome],
+    indicator_of: Mapping[str, str] | None = None,
 ) -> SlotStatus:
-    """`claims`: every claim for the slot in this run; `crawl_outcomes`: its crawl decisions."""
+    """`claims`: every claim for the slot in this run; `crawl_outcomes`: its crawl decisions;
+    `indicator_of`: claim ID -> indicator code of its statistic. A statistic slot is
+    answered only by a figure for one of its own indicators (owner, BD-46): a related
+    figure (prediabetes for diabetes) is shown, but the question stays open."""
     supported = [c for c in claims if c.status in SHOWABLE_STATUSES]
-    if any(effective_level(c) in slot.accepted_levels for c in supported):
+    answers = supported
+    if slot.answer_kind is AnswerKind.STATISTIC and indicator_of is not None:
+        own = set(slot.indicator_codes)
+        answers = [c for c in supported if indicator_of.get(c.claim_id) in own]
+    if any(effective_level(c) in slot.accepted_levels for c in answers):
         return SlotStatus.ANSWERED
     if supported:
         return SlotStatus.ANSWERED_WIDER_GEO

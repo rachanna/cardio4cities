@@ -82,10 +82,12 @@ def test_deployed_checker_is_sol_on_low_effort_with_opus_fallback() -> None:
 
 
 def test_every_profile_caps_a_run_at_the_owners_limits() -> None:
-    """BD-15: $3 and 1.5M tokens a run, set from the S-6 measurements."""
+    """BD-15: $3 a run, set from the S-6 measurements; BD-46: 120 fetches and 3M tokens,
+    so weak questions get their re-plan rounds; the $3 cap still bounds the spend."""
     for p in PROFILES:
         budget = _raw(p)["budget"]
-        assert (budget["cost_micro_usd"], budget["tokens"]) == (3_000_000, 1_500_000), p
+        assert (budget["cost_micro_usd"], budget["tokens"]) == (3_000_000, 3_000_000), p
+        assert budget["fetches"] == 120, p
 
 
 def _ollama_checker(raw: dict[str, Any]) -> None:

@@ -83,7 +83,8 @@ async def slot_result(
     # An allowed page that was never fetched (the budget stopped it) is neither blocked
     # nor unreachable: only refusals and failures decide those statuses.
     refusals = [o for o in outcomes if o is not CrawlOutcome.ALLOWED]
-    status = slot_status(slot, claims, len(fetched), refusals)
+    indicators = await research.slot_indicators(run_id, slot_id)
+    status = slot_status(slot, claims, len(fetched), refusals, indicators)
     allowed = len(outcomes) - len(refusals)
     unread = max(allowed - len(fetched), 0) if d.ledger.refused else 0
     showable = ranked(

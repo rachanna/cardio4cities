@@ -198,3 +198,36 @@ def test_an_upper_case_title_naming_the_city_is_not_ranked_later() -> None:
     ]  # fmt: skip
     matcher = place_matcher(HALDEN, rows)
     assert not matcher.names_other_place("HALDEN BAY AND PORT OSTRA HEALTH", "", "https://a.test/")
+
+
+# --- national figures that name the city's region or the country's initials (BD-46) ---
+
+
+REPUBLIC = HALDEN.model_copy(update={"country_name": "United Norvanian Republic"})
+
+
+def national(name: str, city: CityIdentity = REPUBLIC) -> GeographyFit:
+    return geography_fit(L.NATIONAL, name, city, [], 75)
+
+
+def test_a_national_figure_may_name_the_city_s_own_region_as_a_nation() -> None:
+    """Some countries are made of nations the gazetteer lists as regions: a source calls
+    the region's figure national, and it contains the city (a live run lost 51 such)."""
+    got = national("Coast")
+    assert (got.relation, got.place_name) == (R.CONTAINS_CITY, "Coast")
+
+
+@pytest.mark.parametrize("label", ["UNR", "U.N.R.", "the UNR", "XNV"])
+def test_a_national_figure_may_name_the_country_by_its_initials_or_iso_code(label: str) -> None:
+    got = national(label)
+    assert (got.relation, got.place_name) == (R.CONTAINS_CITY, "United Norvanian Republic")
+
+
+@pytest.mark.parametrize("label", ["Ostland", "UNX", "North Coast", "Coast and Ostland"])
+def test_other_countries_regions_and_near_misses_stay_elsewhere(label: str) -> None:
+    assert national(label).relation is R.ELSEWHERE
+
+
+def test_a_one_word_country_has_no_initials_to_match() -> None:
+    assert national("N", HALDEN).relation is R.ELSEWHERE
+    assert national("Norvania", HALDEN).relation is R.CONTAINS_CITY

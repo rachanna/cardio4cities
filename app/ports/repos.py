@@ -289,6 +289,10 @@ class ResearchRepo(Protocol):
         """Every claim of the slot in the run, with its source's publisher class."""
         ...
 
+    async def slot_indicators(self, run_id: str, slot_id: str) -> dict[str, str]:
+        """Claim ID -> indicator code, for the slot's statistic claims in the run (BD-46)."""
+        ...
+
     async def contested_claim_ids(self, run_id: str) -> set[str]: ...
 
     async def queries(self, query_ids: list[str]) -> list[tuple[str, str]]:

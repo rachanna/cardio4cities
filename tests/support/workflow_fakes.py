@@ -50,6 +50,9 @@ class ScriptedLLM:
         if role not in self.handlers:
             raise ProviderUnavailableError(f"{self.family}: no script for {role}")
         parsed = self.handlers[role](user)
+        from_output = getattr(schema, "from_output", None)
+        if from_output is not None and not isinstance(parsed, schema):
+            parsed = from_output(parsed)  # scripts write the nested shape; the wire is flat (BD-45)
         if not isinstance(parsed, schema):
             raise TypeError(f"script for {role} returned {type(parsed).__name__}")
         return LLMResult(

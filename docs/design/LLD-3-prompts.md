@@ -320,6 +320,24 @@ v3 plus:
 
 Code accepts an `indicator_code` only from the slot's own list, else `OTHER`.
 
+### 4.3d Extractor v5: flat wire output (BD-45)
+
+Anthropic compiles a strict output schema into a grammar and refused the nested schema of §4.3 as v3 and v4 had grown it ("the compiled grammar is too large"): 17 nested types, 21 optional unions and 10 enums inside a list of claims. Every extractor call to Claude failed from 2026-10-04 until this change; the OpenAI profile accepted it, and the tests use recorded responses, so nothing caught it.
+
+The provider now fills `ExtractorWire`:
+- **One flat object per claim.** Every field is always present: the statistic and relation fields are plain fields, left empty when they do not apply.
+- **Empty text means not stated.** Only `age_min`, `age_max` and `subgroup` are nullable.
+- **Allowed values in descriptions.** Each vocabulary field lists its values in its description, not as an enum.
+
+`to_output` converts it into the nested `ExtractorOutput` of §4.3, which the rest of the code uses unchanged:
+- vocabulary values are matched ignoring case, spaces and hyphens;
+- a value outside its vocabulary leaves that claim out and becomes a repair problem, so code enforces what the grammar did;
+- the §4.4 kind-and-block checks follow.
+
+`ExtractorWire.from_output` is the exact inverse; a round-trip test proves nothing is lost. A guard test fails if the wire schema regains enums, nesting or more than three nullable fields.
+
+The prompt (v5) is v4 with the field names of the flat shape (`period_start`, `period_quote`, `population_group`, `subject_type`, …); every rule and example is unchanged.
+
 ### 4.4 Code validation
 
 | Check | On failure |

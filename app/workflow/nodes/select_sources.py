@@ -12,7 +12,7 @@ from app.workflow.deps import RunDeps
 from app.workflow.nodes._deps import deps
 from app.workflow.rules.crawl_gate import canonicalise
 from app.workflow.rules.selection import Candidate as Selected
-from app.workflow.rules.selection import select_urls
+from app.workflow.rules.selection import select_urls, spread_domains
 from app.workflow.state import Candidate, SlotState
 
 
@@ -48,6 +48,7 @@ async def select_sources(state: SlotState, config: RunnableConfig) -> dict[str, 
             query_id=by_url[s.url].query_id,
         )
 
-    new = [candidate(s) for s in everything if s.url not in known][: d.max_new_urls]
+    fresh = [s for s in everything if s.url not in known]
+    new = [candidate(s) for s in spread_domains(fresh, d.max_new_urls, d.max_per_domain)]
     reused = [candidate(s) for s in everything if s.url in known][: d.max_reused_urls]
     return {"candidates": new, "reused": reused}

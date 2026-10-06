@@ -47,6 +47,7 @@ async def test_thin_slice_writes_verified_cited_facts(thin_slice: Slice) -> None
         "relation": "city",
         "place_name": "Halden Bay",
         "distance_km": 0,
+        "level": None,  # BD-51: set only when a label overstates its level
     }
     planned = [EN_QUERY, SECOND_QUERY, EN_GOV_QUERY, SECOND_GOV_QUERY]
     assert sorted(s.search.queries) == sorted(planned)  # the planner's, not the template

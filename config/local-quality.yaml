@@ -47,7 +47,7 @@ retrieval:  { rrf_k: 60, r2_top: 20, r2_trigram_min: 0.4, r3_top: 20, r3_mention
               max_per_slot: 2, mentions_only_if_facts_below: 3, wall_clock_s: 45, max_cost_micro_usd: 50000 }   # LLD-5 §14; budget: BD-38
 fetch:      { concurrency: 6, min_interval_s: 1, max_bytes: 10485760, connect_timeout_s: 5, read_timeout_s: 20, allowed_ports: [80, 443], robots_timeout_s: 15, crawl_delay_cap_s: 30, total_timeout_s: 60, pdf_max_pages: 200 }
 verify:     { max_claims_per_slot: 5, label_margin_chars: 200 }   # BD-05, BD-10
-select:     { max_new_urls_per_slot_round: 3, max_reused_per_slot_round: 2, other_place_min_population: 15000, prefer_local: true }   # BD-14, BD-15
+select:     { max_new_urls_per_slot_round: 3, max_reused_per_slot_round: 2, other_place_min_population: 15000, prefer_local: true, max_per_domain_per_round: 2 }   # BD-14, BD-15
 replan:     { max_rounds: 2, max_rounds_wider_geo: 1, priority: [S04, S03, S05, S06] }   # priority: BD-15
 plan:       { queries_per_slot: 2 }   # BD-15
 extract:    { window_tokens: 12000, overlap_tokens: 500, max_windows_per_source: 4, stop_windows_below_s: 60, max_sources_without_city: 1 }   # BD-29

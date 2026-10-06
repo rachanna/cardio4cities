@@ -8,6 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.domain.models import CityIdentity
+from app.domain.place_names import real_alternate_names
 
 
 class PostgresRunRepo:
@@ -73,13 +74,24 @@ class PostgresRunRepo:
             return [dict(r) for r in rows.mappings()]
 
     async def city_identity(self, city_id: str) -> CityIdentity:
+        """The stored identity, with the gazetteer's real alternate names read now, so
+        cities created before BD-51 have them too."""
         async with self._engine.connect() as conn:
             row = (
                 await conn.execute(
-                    text("SELECT identity FROM city WHERE city_id = :c"), {"c": city_id}
+                    text(
+                        "SELECT c.identity, p.alternate_names FROM city c"
+                        " LEFT JOIN ref_place p ON p.gazetteer_id = c.gazetteer_id"
+                        " WHERE c.city_id = :c"
+                    ),
+                    {"c": city_id},
                 )
             ).one()
-        return CityIdentity.model_validate(row.identity)
+        identity = dict(row.identity)
+        identity["alternate_names"] = real_alternate_names(
+            list(row.alternate_names or []), identity["name"], identity["ascii_name"]
+        )
+        return CityIdentity.model_validate(identity)
 
     async def create_run(
         self,

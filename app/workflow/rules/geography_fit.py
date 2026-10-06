@@ -90,9 +90,9 @@ INSIDE_LEVELS = frozenset({GeographyLevel.CITY_WIDE, *SUB_CITY_LEVELS})
 
 
 def city_named(city: CityIdentity, texts: Sequence[str]) -> bool:
-    """The city's name or ASCII name, as whole words, in any of the texts. Gazetteer
-    alternate names are not used: they include codes and short forms (owner, D2-4)."""
-    return any(_mentions(t, n) for t in texts for n in (city.name, city.ascii_name))
+    """The city's name, ASCII name or a real alternate name (an older spelling), as whole words,
+    in any of the texts. Codes and short forms are not used (D2-4; owner, BD-51)."""
+    return any(_mentions(t, n) for t in texts for n in city.names)
 
 
 # Levels whose area must be named in the evidence (owner, BD-22): the city, its metro
@@ -109,10 +109,8 @@ def area_named(geography_name: str, city: CityIdentity, texts: Sequence[str]) ->
     "Halden Bay City"), or, for the city itself, the city's name or ASCII name. The city
     in the extractor's context is not evidence (BD-22)."""
     names = [geography_name, _core(geography_name)]
-    if _same_name(geography_name, city.name, AREA_WORDS) or _same_name(
-        geography_name, city.ascii_name, AREA_WORDS
-    ):
-        names += [city.name, city.ascii_name]
+    if any(_same_name(geography_name, n, AREA_WORDS) for n in city.names):
+        names += list(city.names)
     return any(_mentions(t, n) for t in texts for n in names if n and n.strip())
 
 
@@ -199,6 +197,7 @@ def _local_fit(
     candidates: Sequence[PlaceCandidate],
     nearby_km: float,
     region_in_source: bool,
+    city_named_in_evidence: bool = False,
 ) -> GeographyFit:
     rel = GeographyRelation
     segments = _segments(geography_name)
@@ -228,14 +227,35 @@ def _local_fit(
             return GeographyFit(relation=rel.UNRESOLVED)
         return _city_fit(level, _word_class(removed), city)
     # Rule 5: nothing in the gazetteer; the city's name inside the label, area words only
-    for name in (city.name, city.ascii_name):
+    for name in city.names:
         city_words = place_key(name).split()
         if city_words and _mentions(head, name):
             rest = [w for w in full.split()]
             for w in city_words:
                 rest.remove(w)
-            return _city_fit(level, _word_class(set(rest)), city)
+            words = _word_class(set(rest))
+            if words is None and city_named_in_evidence and _within_city(full, name):
+                # Rule 7 (BD-51): "a community in X", "slums of X city": a group or part
+                # of the city, never the whole city
+                return GeographyFit(
+                    relation=rel.CITY, place_name=city.name, distance_km=0,
+                    level=GeographyLevel.SUB_CITY_POPULATION,
+                )  # fmt: skip
+            return _city_fit(level, words, city)
     return GeographyFit(relation=rel.UNRESOLVED)
+
+
+WITHIN = ("in", "of", "within", "across")
+
+
+def _within_city(label_key: str, city_name: str) -> bool:
+    """The label ends with "<in|of|within|across> [the] <city> [city]" after other words."""
+    key = place_key(city_name)
+    for prep in WITHIN:
+        for tail in (f"{prep} {key}", f"{prep} the {key}", f"{prep} {key} city"):
+            if label_key.endswith(" " + tail) and len(label_key) > len(tail) + 1:
+                return True
+    return False
 
 
 _INITIALS_SKIP = frozenset(["of", "the", "and"])
@@ -274,9 +294,7 @@ CITY_REGION_WORDS = SAME_PLACE_WORDS | frozenset(["region", "regional"])
 
 
 def _region_is_the_city(geography_name: str, city: CityIdentity) -> bool:
-    return any(
-        _same_name(geography_name, name, CITY_REGION_WORDS) for name in (city.name, city.ascii_name)
-    )
+    return any(_same_name(geography_name, name, CITY_REGION_WORDS) for name in city.names)
 
 
 def geography_fit(
@@ -313,4 +331,7 @@ def geography_fit(
         if region_in_source and _region_is_the_city(geography_name, city):
             return GeographyFit(relation=rel.CITY, place_name=city.name, distance_km=0)
         return GeographyFit(relation=rel.ELSEWHERE)
-    return _local_fit(level, geography_name, city, candidates, nearby_km, region_in_source)
+    return _local_fit(
+        level, geography_name, city, candidates, nearby_km, region_in_source,
+        city_named_in_evidence,
+    )  # fmt: skip

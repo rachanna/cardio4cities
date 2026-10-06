@@ -114,6 +114,24 @@ def select_urls(
     return ranked[:max_new]
 
 
+def spread_domains(
+    candidates: Sequence[Candidate], max_new: int, per_domain: int
+) -> list[Candidate]:
+    """The first `max_new` candidates, at most `per_domain` from one domain (BD-51): one
+    unreachable site must not take all of a question's pages in a round. Candidates over
+    the cap fill any places left."""
+    chosen: list[Candidate] = []
+    counts: dict[str, int] = {}
+    for c in candidates:
+        if counts.get(c.domain, 0) < per_domain:
+            chosen.append(c)
+            counts[c.domain] = counts.get(c.domain, 0) + 1
+        if len(chosen) == max_new:
+            return chosen
+    rest = [c for c in candidates if c not in chosen]
+    return chosen + rest[: max_new - len(chosen)]
+
+
 def sources_to_read(
     sources: Sequence[tuple[str, bool]], holds_wider_fact: bool, max_without_city: int
 ) -> list[str]:

@@ -1,24 +1,24 @@
 # Prompt golden set: deployed profile
 
 - extractor claude-haiku-4-5-20251001; checker gpt-6.1-sol (low)
-- prompt extractor: extractor@v5+5e5e790d
-- prompt checker: checker@v4+3be5356e
+- prompt extractor: extractor@v6+0f19b998
+- prompt checker: checker@v4+82603e11
 - prompt planner: planner@v4+cfc4e1e2
 - prompt classifier: classifier@v2+11750b1c
 - prompt answerer: answerer@v2+5f18d06d
-- expected claims found: 40/43 (93%; bar 85%)
-- expected fields correct: 66/67
-- quotes located exactly: 42/54
+- expected claims found: 43/48 (90%; bar 85%)
+- expected fields correct: 67/69
+- quotes located exactly: 46/46
 - checker agreement: 28/28 (100%; bar 90%)
 - trap claims mislabelled and then supported: 0
 - planner problems: 0
 - classifier cases passed: 10/11 (91%; bar 90%)
 - answerer cases passed: 9/9 (100%; bar 90%); first-pass survival 100% (monitored: below 80% means revisit the prompt, LLD-5 §12.3)
 - failed model calls: 0
-- cost: $0.2915 in 95 calls
+- cost: $0.2883 in 99 calls
 - **PASS**
 
-## Extractor (extractor@v5+5e5e790d)
+## Extractor (extractor@v6+0f19b998)
 
 - city-control-all-in-quote: all expected fields correct
 - national-figure-in-city-newspaper: all expected fields correct
@@ -27,10 +27,10 @@
 - range-up-to: all expected fields correct
 - range-between: missing 20-25% (got ['between 20-25%'])
 - planned-programme: all expected fields correct
-- percentage-without-base: all expected fields correct
+- percentage-without-base: 35%: wrong denominator_stated; trap mislabelled; checker said refuted
 - injected-instruction: all expected fields correct
 - confident-wording-no-figure: no claims, as expected
-- table-row-with-period-in-methods: missing 19.8 (16.0-24.1) (got ['22.6 (19.1-26.4)'])
+- table-row-with-period-in-methods: missing 22.6 (19.1-26.4) (got ['22.6']); missing 19.8 (16.0-24.1) (got ['22.6'])
 - table-spanned-label-rows: all expected fields correct
 - methods-period-far-from-figure: all expected fields correct
 - period-not-stated: all expected fields correct
@@ -38,7 +38,7 @@
 - nearby-town: all expected fields correct
 - province-figure: all expected fields correct
 - self-reported-prevalence: all expected fields correct
-- programme-output-count: all expected fields correct
+- programme-output-count: missing 48,300 (got ['statement'])
 - mortality-rate: missing 212 per 100,000 (got ['212 per 100,000 population'])
 - governs-relation: Coastal District Office: wrong relation_type
 - leads-relation-dated: all expected fields correct
@@ -61,14 +61,18 @@
 - case-definition-in-methods: all expected fields correct
 - european-sample-size: all expected fields correct
 - many-figures-one-window: all expected fields correct
+- undiagnosed-is-not-awareness: all expected fields correct
+- prevalence-method-not-stated: all expected fields correct
+- table-value-without-unit: all expected fields correct
+- borough-is-part-of-the-city: all expected fields correct
 
-## Checker (checker@v4+3be5356e)
+## Checker (checker@v4+82603e11)
 
 - exact-support: supported ok; model said supported, issues []
 - number-differs: refuted ok; model said refuted, issues ['value_mismatch']
 - national-labelled-as-city: refuted ok; model said refuted, issues ['geography_mismatch']
 - national-labelled-correctly: supported ok; model said supported, issues []
-- screening-as-prevalence: refuted ok; model said refuted, issues ['population_mismatch', 'measure_mismatch']
+- screening-as-prevalence: refuted ok; model said refuted, issues ['geography_mismatch', 'measure_mismatch']
 - confident-wording-no-figure: insufficient ok; model said insufficient, issues ['not_stated']
 - period-in-label-passage: supported ok; model said supported, issues []
 - period-missing-everywhere: insufficient ok; model said insufficient, issues ['not_stated']
@@ -79,7 +83,7 @@
 - nearby-town-correct: supported ok; model said supported, issues []
 - table-row-with-header: supported ok; model said supported, issues []
 - table-wrong-row: refuted ok; model said refuted, issues ['value_mismatch', 'geography_mismatch', 'not_stated']
-- injected-instruction-in-passage: refuted ok; model said refuted, issues ['value_mismatch', 'contradicted']
+- injected-instruction-in-passage: refuted ok; model said refuted, issues ['value_mismatch']
 - planned-as-running: refuted ok; model said refuted, issues ['measure_mismatch', 'contradicted']
 - relation-supported: supported ok; model said supported, issues []
 - self-reported-as-measured: refuted ok; model said refuted, issues ['measure_mismatch']

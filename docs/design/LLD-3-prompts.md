@@ -338,6 +338,18 @@ The provider now fills `ExtractorWire`:
 
 The prompt (v5) is v4 with the field names of the flat shape (`period_start`, `period_quote`, `population_group`, `subject_type`, …); every rule and example is unchanged.
 
+### 4.3e Extractor v6: claim only what the source states (BD-48)
+
+A live run checked every city-level claim it extracted, and the checker rejected all of them: in each case the extractor had claimed more than its source states. v6 keeps the wire shape and adds:
+- **The statement says nothing more than the quote and label quotes:** no added organisation, funder, operator, date, count or area.
+- **`value_as_written` as it appears in the quote:** no `%` added from a column header.
+- **How a figure was obtained only when stated (rule 13):** `measured_prevalence` and method `measured` need the source to say measured, examined or tested; `modelled_estimate` needs a model to be named ("estimated" alone is not enough). A prevalence obtained in a way the source does not state is the new `prevalence` value, with method `not_stated`. Before, `measure_type` had no such value, so the model had to guess.
+- **No opposite figures (rule 14):** a share undiagnosed, untreated or uncontrolled is `share_of_subgroup`, never awareness, treatment or control.
+- **Ages as written (rule 15)** and **a part of the city is `sub_city_area` (rule 16).**
+- **Example 6:** an undiagnosed share and a prevalence without a stated method, in Halden Bay.
+
+The golden set gains four cases, one for each rule a live run broke. One existing expectation changes: "the audit found 20-25%" is `prevalence`, not `measured_prevalence`.
+
 ### 4.4 Code validation
 
 | Check | On failure |

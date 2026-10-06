@@ -88,8 +88,11 @@ async def brief(city_id: str, request: Request, _: SessionDep) -> BriefResponse:
     run_id = row["latest_run_id"]
     store = reading.relational(request)
     rows = await _slot_rows(request, run_id, maker)
-    summarised = summary(rows, cards)
     pairs = await store.research.contested_pairs(run_id)
+    shown = reading.visible(cards, pairs)  # D4-3
+    facts = [f for f in facts if f.claim.claim_id in shown]
+    cards = {i: c for i, c in cards.items() if i in shown}
+    summarised = summary(rows, cards, reading.summary_topics())
     run = await store.runs.run_row(run_id)
     return BriefResponse(
         city=row["identity"],
@@ -138,8 +141,9 @@ async def findings(
             and (badge is None or badge.value in badges)
         )
 
-    kept = {i for i, c in cards.items() if wanted(c)}
     pairs = await reading.relational(request).research.contested_pairs(row["latest_run_id"])
+    shown = reading.visible(cards, pairs)  # D4-3
+    kept = {i for i, c in cards.items() if wanted(c) and i in shown}
     shown_pairs = [(a, b) for a, b in pairs if a in kept or b in kept]
     for a, b in shown_pairs:  # both sides of a disagreement, always together
         kept |= {a, b} & cards.keys()

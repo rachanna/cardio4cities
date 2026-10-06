@@ -2,8 +2,10 @@
 of a fact or a slot, with the user-facing words beside the internal values (R-90). Pure:
 badges and confidence are computed here at read time (LLD-2 §7-8) from stored facts."""
 
+import re
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
@@ -20,6 +22,7 @@ from app.domain.vocab import (
     ClaimFlag,
     ConfidenceLabel,
     DatePrecision,
+    GeographyLevel,
     PeriodType,
     RelationType,
     SlotStatus,
@@ -33,6 +36,55 @@ from app.domain.wording import (
 )
 
 SUMMARY_PER_DIMENSION = 3  # LLD-4 §3.3: up to 3 facts per dimension in the brief
+
+
+@dataclass(frozen=True)
+class SummaryTopics:
+    """What may enter the summary (D4-3; `reference/summary_topics.yaml`): a fact whose
+    statement names a topic of the brief, or any fact of a dimension about who governs
+    or works on it. A true but off-topic fact stays under its question."""
+
+    stems: tuple[str, ...]
+    any_topic_dimensions: frozenset[str]
+
+    def admits(self, card: "FactCard", dimension: str) -> bool:
+        if dimension in self.any_topic_dimensions:
+            return True
+        text = card.statement.casefold()
+        return any(re.search(rf"\b{re.escape(stem)}", text) for stem in self.stems)
+
+
+def hide_global(cards: Sequence["FactCard"], keep: Iterable[str] = ()) -> list["FactCard"]:
+    """Per question, world-level facts are left out when the question has any narrower
+    fact: a world figure says nothing a national or city one does not (owner, D4-3).
+    They stay stored, and a question can still reach them. `keep`: claims that are one
+    side of a disagreement, always shown with the other side."""
+    world = GeographyLevel.GLOBAL.value
+    keep = set(keep)
+    narrower = {c.slot_id for c in cards if c.geography.level != world}
+    return [
+        c
+        for c in cards
+        if c.geography.level != world or c.slot_id not in narrower or c.claim_id in keep
+    ]
+
+
+def fold_repeats(cards: Sequence["FactCard"]) -> list[tuple["FactCard", list["FactCard"]]]:
+    """Each card once, in order, with the later cards of its question that repeat it: the
+    same statement and value, as when one document is found at two addresses (D4-3).
+    Different values never fold, so both sides of a disagreement stay."""
+    kept: dict[tuple[str, str, str], tuple[FactCard, list[FactCard]]] = {}
+    for card in cards:
+        key = (
+            card.slot_id,
+            " ".join(card.statement.casefold().split()),
+            card.value_as_written or "",
+        )
+        if key in kept:
+            kept[key][1].append(card)
+        else:
+            kept[key] = (card, [])
+    return list(kept.values())
 
 
 class GeographyCard(BaseModel):
@@ -226,9 +278,14 @@ def slot_row(result: Mapping[str, Any], slot: SlotDef) -> SlotRow:
     )
 
 
-def summary(rows: Sequence[SlotRow], cards: Mapping[str, FactCard]) -> dict[str, list[FactCard]]:
+def summary(
+    rows: Sequence[SlotRow],
+    cards: Mapping[str, FactCard],
+    topics: SummaryTopics | None = None,
+) -> dict[str, list[FactCard]]:
     """Per dimension, each slot's best fact with High or Medium confidence, the headline
-    slot first, up to SUMMARY_PER_DIMENSION (HD-08: Low confidence never summarises)."""
+    slot first, up to SUMMARY_PER_DIMENSION (HD-08: Low confidence never summarises).
+    With `topics`, the best such fact on a topic of the brief (D4-3)."""
     by_dimension: dict[str, list[FactCard]] = defaultdict(list)
     for row in sorted(rows, key=lambda r: (not r.headline, r.slot_id)):
         best = next(
@@ -238,6 +295,7 @@ def summary(rows: Sequence[SlotRow], cards: Mapping[str, FactCard]) -> dict[str,
                 if i in cards
                 and cards[i].confidence is not None
                 and cards[i].confidence.label != ConfidenceLabel.LOW.value  # type: ignore[union-attr]
+                and (topics is None or topics.admits(cards[i], row.dimension))
             ),
             None,
         )

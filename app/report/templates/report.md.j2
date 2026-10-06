@@ -7,7 +7,7 @@
 |---|---|
 | **Prepared for** | CARDIO4Cities City Lead, ahead of engagement with city stakeholders |
 | **Researched** | Live on {{ date(r.run_date) }} · run {{ r.run_id }} ({{ r.run_status | replace("_", " ") }}) |
-| **Coverage** | {{ plural(t.city_level, "question", "questions") }} of {{ t.city_level + t.wider_area + t.not_found + t.blocked_or_unreachable }} answered at city level · {{ t.wider_area }} with wider-area figures only · {{ t.not_found }} not found · {{ t.blocked_or_unreachable }} blocked or unreachable |
+| **Coverage** | {{ plural(t.city_level, "question", "questions") }} of {{ t.city_level + t.national_applies + t.wider_area + t.not_found + t.blocked_or_unreachable }} answered at city level · {{ t.national_applies }} by national policy or data that applies to the city · {{ t.wider_area }} with wider-area figures only · {{ t.not_found }} not found · {{ t.blocked_or_unreachable }} blocked or unreachable |
 {% set lost = failed_steps(r.counts) %}{% if lost %}| **Incomplete run** | **Some research steps failed ({{ lost }}).** Questions shown as not found may have been missed for that reason; run the research again before relying on the gaps. |
 {% endif %}| **How to read it** | Every finding quotes its source and passed code checks; findings from web pages were also confirmed by an independent checker model, and official statistics were matched by code to the published record. Numbers in brackets refer to the sources at the end. Figures for a wider area than the city are marked "Not city-level". |
 
@@ -20,7 +20,7 @@
 | Area | Finding | Confidence | Caveats | Ref. |
 |---|---|---|---|---|
 {% for name, c in key -%}
-| {{ name }} | {{ c.card.statement | cell }} | {{ confidence(c) }} | {{ caveats(c) }} | [{{ c.citation }}] |
+| {{ name }} | {{ c.card.statement | cell }} | {{ confidence(c) }} | {{ caveats(c) }} | {{ refs(c) }} |
 {% endfor %}
 {% else %}
 No finding reached High or Medium confidence.
@@ -28,12 +28,12 @@ No finding reached High or Medium confidence.
 
 ### Coverage by area
 
-| Area | City level | Wider area only | Not found | Blocked or unreachable |
-|---|---|---|---|---|
+| Area | City level | National applies | Wider area only | Not found | Blocked or unreachable |
+|---|---|---|---|---|---|
 {% for c in r.coverage -%}
-| {{ c.name }} | {{ c.city_level }} | {{ c.wider_area }} | {{ c.not_found }} | {{ c.blocked_or_unreachable }} |
+| {{ c.name }} | {{ c.city_level }} | {{ c.national_applies }} | {{ c.wider_area }} | {{ c.not_found }} | {{ c.blocked_or_unreachable }} |
 {% endfor -%}
-| **All questions** | **{{ t.city_level }}** | **{{ t.wider_area }}** | **{{ t.not_found }}** | **{{ t.blocked_or_unreachable }}** |
+| **All questions** | **{{ t.city_level }}** | **{{ t.national_applies }}** | **{{ t.wider_area }}** | **{{ t.not_found }}** | **{{ t.blocked_or_unreachable }}** |
 
 ## Findings by area
 {% for s in r.sections %}
@@ -50,7 +50,7 @@ No finding reached High or Medium confidence.
 | Finding | Confidence | Caveats | Ref. |
 |---|---|---|---|
 {% for c in b.facts -%}
-| {{ c.card.statement | cell }} | {{ confidence(c) }} | {{ caveats(c) }} | [{{ c.citation }}] |
+| {{ c.card.statement | cell }} | {{ confidence(c) }} | {{ caveats(c) }} | {{ refs(c) }} |
 {% endfor %}
 {% if b.row.gap_note %}*{{ b.row.gap_note }}*
 {% endif %}

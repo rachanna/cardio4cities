@@ -46,9 +46,14 @@ def caveats(c: Cited) -> str:
     notes += [b.label for b in card.other_badges]
     if card.status == "contested" and "Sources disagree" not in notes:
         notes.append("Sources disagree")
-    if not card.period.stated:
-        notes.append("Period not stated")
+    if not card.period.stated and card.kind == "statistic":
+        notes.append("Period not stated")  # a statement is dated by its publication (D4-3)
     return ", ".join(notes) or "—"
+
+
+def refs(c: Cited) -> str:
+    """ "[3]", or "[3][7]" when a repeat of the fact came from another source (D4-3)."""
+    return "".join(f"[{n}]" for n in dict.fromkeys((c.citation, *c.also)))
 
 
 def short_url(url: str) -> str:
@@ -141,7 +146,7 @@ def _env() -> Environment:
     )
     env.globals.update(
         fact=fact, date=date, counts=counts, confidence=confidence, caveats=caveats,
-        short_url=short_url, roles=roles, plural=plural, failed_steps=failed_steps,
+        short_url=short_url, roles=roles, plural=plural, failed_steps=failed_steps, refs=refs,
     )  # fmt: skip
     env.filters["cell"] = cell
     return env

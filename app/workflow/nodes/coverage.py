@@ -14,6 +14,7 @@ from typing import Any
 from langchain_core.runnables import RunnableConfig
 
 from app.domain.badges import badges
+from app.domain.geography import effective_level
 from app.domain.models import Claim
 from app.domain.ranking import Candidate, ranked
 from app.domain.vocab import (
@@ -39,7 +40,7 @@ from app.workflow.rules.slot_status import (
 )
 from app.workflow.state import RunState, SlotReport
 
-UNCONFIRMED = frozenset({ClaimStatus.EXTRACTED, ClaimStatus.REFUTED, ClaimStatus.INSUFFICIENT})
+UNCONFIRMED = frozenset({ClaimStatus.REFUTED, ClaimStatus.INSUFFICIENT})  # the checker said no
 
 
 def _union(lists: Iterable[list[str]]) -> list[str]:
@@ -102,7 +103,9 @@ async def slot_result(
         n_sources=len(checked),
         crawl_outcomes=refusals,
         unconfirmed=sum(c.status in UNCONFIRMED for c in claims),
+        unchecked=sum(c.status is ClaimStatus.EXTRACTED for c in claims),
         unread=unread,
+        related=best is not None and effective_level(best) in slot.accepted_levels,
     )
     return {
         "slot_id": slot_id,

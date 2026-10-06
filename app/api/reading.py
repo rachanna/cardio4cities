@@ -3,19 +3,41 @@ into FactCards (slots, badge and confidence parameters, today's date)."""
 
 import base64
 import binascii
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from functools import cache
+from pathlib import Path
 from typing import Any
 
+import yaml
 from fastapi import Request
 
 from app.api.errors import ApiError, dependency_unavailable
-from app.domain.cards import FactCard, fact_card
+from app.domain.cards import FactCard, SummaryTopics, fact_card, hide_global
 from app.domain.models import SlotDef, StoredFact
 from app.domain.params import BadgeParams, ConfidenceParams
 from app.ports.repos import RelationalPort
+from app.workflow.runner import REFERENCE_DIR
 
 DEFAULT_LIMIT, MAX_LIMIT = 50, 200  # LLD-4 §2
+
+
+@cache
+def summary_topics(directory: Path = REFERENCE_DIR) -> SummaryTopics:
+    """The brief's topics, for what may enter the summary (D4-3)."""
+    raw = yaml.safe_load((directory / "summary_topics.yaml").read_text(encoding="utf-8"))
+    return SummaryTopics(
+        stems=tuple(str(s).casefold() for s in raw["stems"]),
+        any_topic_dimensions=frozenset(str(d) for d in raw["any_topic_dimensions"]),
+    )
+
+
+def visible(cards: Mapping[str, FactCard], pairs: Iterable[tuple[str, str]]) -> set[str]:
+    """The claims the brief, findings and report show: world-level facts are left out of
+    a question with narrower ones, except a side of a disagreement (D4-3)."""
+    keep = {i for pair in pairs for i in pair}
+    return {c.claim_id for c in hide_global(list(cards.values()), keep)}
 
 
 def relational(request: Request) -> RelationalPort:

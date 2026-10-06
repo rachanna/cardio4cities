@@ -83,6 +83,7 @@ async def search(state: SlotState, config: RunnableConfig) -> dict[str, Any]:
                 rank=h.rank,
                 query_id=query_id,
                 names_other_place=places.names_other_place(h.title, h.snippet, h.url),
+                names_city=places.names_city(h.title, h.snippet, h.url),
             )
             for h in hits
         ]  # title and snippet only rank candidates, here: never evidence, never kept (AT-06)

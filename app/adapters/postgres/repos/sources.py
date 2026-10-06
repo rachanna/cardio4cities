@@ -147,6 +147,20 @@ class PostgresSourceRepo:
             )
             return [r.outcome for r in rows]
 
+    async def refused_domains(self, decision_ids: list[str]) -> list[str]:
+        if not decision_ids:
+            return []
+        async with self._engine.connect() as conn:
+            rows = await conn.execute(
+                text(
+                    "SELECT DISTINCT domain FROM crawl_decision"
+                    " WHERE decision_id = ANY(:ids) AND outcome LIKE 'blocked%'"
+                    " ORDER BY domain"
+                ),
+                {"ids": decision_ids},
+            )
+            return [str(r.domain) for r in rows]
+
     async def outcome_counts(self, run_id: str) -> dict[str, dict[str, int]]:
         """Run summary (AT-38): crawl decisions by outcome, and stored pages by parse
         outcome, counted once per URL."""

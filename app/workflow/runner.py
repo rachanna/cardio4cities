@@ -464,6 +464,7 @@ class RunManager:
             ),
             queries_per_slot=cfg.plan.queries_per_slot,
             other_place_min_population=cfg.select.other_place_min_population,
+            prefer_local=cfg.select.prefer_local,
             today=date.today,
         )
 

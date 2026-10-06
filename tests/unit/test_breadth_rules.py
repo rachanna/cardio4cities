@@ -104,9 +104,12 @@ def test_a_site_filter_must_be_one_the_planner_was_given() -> None:
 
 def test_a_replan_line_names_status_queries_and_note() -> None:
     line = context.previous_attempt("S04", "answered_negative", ["q one", "q two"], "Searched 2")
-    assert line == "S04: status answered_negative; queries tried: q one | q two; note: Searched 2"
+    assert line == (
+        "S04: status answered_negative; queries tried: q one | q two; note: Searched 2;"
+        " sites refusing access: none"
+    )  # BD-50: the sites that refused access close the line
     assert context.previous_attempt("S12", "blocked", [], None).endswith(
-        "queries tried: none; note: none"
+        "queries tried: none; note: none; sites refusing access: none"
     )
 
 

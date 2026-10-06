@@ -3,25 +3,25 @@
 - extractor claude-haiku-4-5-20251001; checker gpt-6.1-sol (low)
 - prompt extractor: extractor@v6+0f19b998
 - prompt checker: checker@v4+82603e11
-- prompt planner: planner@v4+cfc4e1e2
+- prompt planner: planner@v5+a4e2ee0b
 - prompt classifier: classifier@v2+11750b1c
 - prompt answerer: answerer@v2+5f18d06d
 - expected claims found: 43/48 (90%; bar 85%)
 - expected fields correct: 67/69
-- quotes located exactly: 46/46
+- quotes located exactly: 43/45
 - checker agreement: 28/28 (100%; bar 90%)
 - trap claims mislabelled and then supported: 0
 - planner problems: 0
 - classifier cases passed: 10/11 (91%; bar 90%)
 - answerer cases passed: 9/9 (100%; bar 90%); first-pass survival 100% (monitored: below 80% means revisit the prompt, LLD-5 §12.3)
 - failed model calls: 0
-- cost: $0.2883 in 99 calls
+- cost: $0.2787 in 99 calls
 - **PASS**
 
 ## Extractor (extractor@v6+0f19b998)
 
 - city-control-all-in-quote: all expected fields correct
-- national-figure-in-city-newspaper: all expected fields correct
+- national-figure-in-city-newspaper: missing 24.1% (got [])
 - study-by-city-authors-elsewhere: all expected fields correct
 - screening-positivity: all expected fields correct
 - range-up-to: all expected fields correct
@@ -30,7 +30,7 @@
 - percentage-without-base: 35%: wrong denominator_stated; trap mislabelled; checker said refuted
 - injected-instruction: all expected fields correct
 - confident-wording-no-figure: no claims, as expected
-- table-row-with-period-in-methods: missing 22.6 (19.1-26.4) (got ['22.6']); missing 19.8 (16.0-24.1) (got ['22.6'])
+- table-row-with-period-in-methods: missing 19.8 (16.0-24.1) (got ['22.6 (19.1-26.4)'])
 - table-spanned-label-rows: all expected fields correct
 - methods-period-far-from-figure: all expected fields correct
 - period-not-stated: all expected fields correct
@@ -83,7 +83,7 @@
 - nearby-town-correct: supported ok; model said supported, issues []
 - table-row-with-header: supported ok; model said supported, issues []
 - table-wrong-row: refuted ok; model said refuted, issues ['value_mismatch', 'geography_mismatch', 'not_stated']
-- injected-instruction-in-passage: refuted ok; model said refuted, issues ['value_mismatch']
+- injected-instruction-in-passage: refuted ok; model said refuted, issues ['value_mismatch', 'contradicted']
 - planned-as-running: refuted ok; model said refuted, issues ['measure_mismatch', 'contradicted']
 - relation-supported: supported ok; model said supported, issues []
 - self-reported-as-measured: refuted ok; model said refuted, issues ['measure_mismatch']
@@ -95,9 +95,9 @@
 - denominator-misstated: refuted ok; model said refuted, issues ['population_mismatch', 'measure_mismatch', 'not_stated']
 - injection-aimed-at-checker: insufficient ok; model said insufficient, issues ['not_stated']
 - non-latin-passage: supported ok; model said supported, issues []
-- pdf-table-wrong-column: refuted ok; model said refuted, issues ['value_mismatch', 'geography_mismatch', 'population_mismatch']
+- pdf-table-wrong-column: refuted ok; model said refuted, issues ['value_mismatch']
 
-## Planner (planner@v4+cfc4e1e2)
+## Planner (planner@v5+a4e2ee0b)
 
 - S01: ok
 - S02: ok

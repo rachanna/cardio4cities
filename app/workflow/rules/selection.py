@@ -1,6 +1,8 @@
 """Source selection (LLD-2 §14, R-41, R-59): canonicalise and de-duplicate candidate
 URLs across the run, drop denied domains, classify the publisher, rank by tier then
-search rank, and keep the top N not already fetched.
+search rank, and keep the top N not already fetched. Local first (BD-50): a hit naming
+the city itself, from a government, multilateral, academic or NGO publisher, comes before
+the rest; news and other publishers keep their tier.
 
 Only the URL of a search hit is used: snippets never become evidence (AT-06).
 """
@@ -12,6 +14,8 @@ from typing import Any
 from app.domain.ranking import SOURCE_TIER
 from app.domain.vocab import PublisherClass
 from app.workflow.rules.crawl_gate import canonicalise, host_of
+
+LOCAL_FIRST_MAX_TIER = SOURCE_TIER[PublisherClass.NGO]  # news and other keep their tier
 
 
 @dataclass(frozen=True)
@@ -78,10 +82,13 @@ def select_urls(
     table: PublisherTable,
     max_new: int,
     later: Iterable[str] = (),
+    local: Iterable[str] = (),
 ) -> list[Candidate]:
     """`hits`: (url, search rank) from every search of this slot round. `later`: canonical
-    URLs the other-place rule ranks after the rest of their tier (BD-15)."""
+    URLs the other-place rule ranks after the rest of their tier (BD-15). `local`:
+    canonical URLs whose hit names the city itself, read first (BD-50)."""
     down = set(later)
+    first = set(local)
     fetched = set(already_fetched)
     best: dict[str, Candidate] = {}
     for url, rank in hits:
@@ -96,9 +103,27 @@ def select_urls(
             best[canonical] = candidate
     ranked = sorted(
         best.values(),
-        key=lambda c: (SOURCE_TIER[c.publisher_class], c.url in down, c.search_rank, c.url),
+        key=lambda c: (
+            not (c.url in first and SOURCE_TIER[c.publisher_class] <= LOCAL_FIRST_MAX_TIER),
+            SOURCE_TIER[c.publisher_class],
+            c.url in down,
+            c.search_rank,
+            c.url,
+        ),
     )
     return ranked[:max_new]
+
+
+def sources_to_read(
+    sources: Sequence[tuple[str, bool]], holds_wider_fact: bool, max_without_city: int
+) -> list[str]:
+    """The fetched pages a question reads this round, in order (BD-50). `sources`:
+    (source ID, the page names the city). Pages naming the city come first. Once the
+    question holds a fact it cannot accept as its answer, at most `max_without_city` pages
+    that never name the city are read: they can only add more figures for a wider area."""
+    named = [sid for sid, names_city in sources if names_city]
+    others = [sid for sid, names_city in sources if not names_city]
+    return named + (others[:max_without_city] if holds_wider_fact else others)
 
 
 def government_sites(table: PublisherTable, country_iso2: str) -> list[str]:

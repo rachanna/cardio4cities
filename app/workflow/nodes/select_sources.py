@@ -36,7 +36,8 @@ async def select_sources(state: SlotState, config: RunnableConfig) -> dict[str, 
     hits = [(c.url, c.rank) for c in raw]
     known = {u for u in by_url if d.fetch_cache.known(u)}
     later = {u for u, c in by_url.items() if c.names_other_place}  # decided in search
-    everything = select_urls(hits, (), d.publishers, len(by_url), later)
+    local = {u for u, c in by_url.items() if c.names_city} if d.prefer_local else set()
+    everything = select_urls(hits, (), d.publishers, len(by_url), later, local)
 
     def candidate(s: Selected) -> Candidate:
         return Candidate(

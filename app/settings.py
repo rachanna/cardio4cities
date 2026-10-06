@@ -238,6 +238,7 @@ class SelectSection(_Section):
     # sources another slot already fetched this run, read again for this slot (BD-14)
     max_reused_per_slot_round: int
     other_place_min_population: int  # places that rank a candidate later (BD-15)
+    prefer_local: bool = True  # hits naming the city are read first (BD-50)
 
 
 class ReplanSection(_Section):
@@ -256,6 +257,9 @@ class ExtractSection(_Section):
     overlap_tokens: int
     max_windows_per_source: int  # owner, BD-29: windows per (slot, source), most relevant
     stop_windows_below_s: float  # owner, BD-29: no new window with less time left
+    # once a question holds a fact it cannot accept as its answer, at most this many
+    # sources per round that never name the city are read for it (BD-50)
+    max_sources_without_city: int = 1
 
 
 class QuoteSection(_Section):

@@ -1,6 +1,7 @@
 """Planner input (LLD-3 §3.1), assembled by code. v2 (BD-14) adds the country's generic
 government `site:` filters; a re-plan round lists each slot's earlier attempt. v3 (BD-15)
-gives the number of queries per slot from config."""
+gives the number of queries per slot from config. v5 (BD-50) lists the sites that
+refused access in each earlier attempt."""
 
 from collections.abc import Sequence
 
@@ -41,10 +42,18 @@ def build_user_message(
     return "\n".join(lines)
 
 
-def previous_attempt(slot_id: str, status: str, queries: Sequence[str], note: str | None) -> str:
-    """One `previous_attempts` line (LLD-3 §3.1)."""
+def previous_attempt(
+    slot_id: str,
+    status: str,
+    queries: Sequence[str],
+    note: str | None,
+    refused: Sequence[str] = (),
+) -> str:
+    """One `previous_attempts` line (LLD-3 §3.1); `refused`: domains that blocked the
+    slot's pages, never to be searched again (BD-50)."""
     tried = " | ".join(queries) or "none"
-    return f"{slot_id}: status {status}; queries tried: {tried}; note: {note or 'none'}"
+    line = f"{slot_id}: status {status}; queries tried: {tried}; note: {note or 'none'}"
+    return line + f"; sites refusing access: {', '.join(refused) or 'none'}"
 
 
 def fallback_queries(city: CityIdentity, slot: SlotDef) -> list[tuple[str, str]]:

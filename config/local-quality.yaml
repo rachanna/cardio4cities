@@ -41,7 +41,7 @@ renderer:   { provider: fpdf2 }   # BD-40: pure-Python PDF
 report:     { intro_max_words: 120, analysis_max_points: 5, min_paragraph_words: 20, wall_clock_s: 120, max_cost_micro_usd: 100000 }   # LLD-3 §8; budget: BD-40
 tracing:    { providers: [events] }
 # Estimate ~$3.70 a run (BD-05)
-budget:     { wall_clock_s: 420, searches: 64, fetches: 60, tokens: 1500000, cost_micro_usd: 3000000, wind_down_at: 0.85 }   # BD-15
+budget:     { wall_clock_s: 420, searches: 64, fetches: 120, tokens: 3000000, cost_micro_usd: 3000000, wind_down_at: 0.85 }   # BD-15; fetches 120, tokens 3M: BD-46
 limits:     { runs_per_day: 20, ask_per_min: 20, resolve_per_min: 30 }
 retrieval:  { rrf_k: 60, r2_top: 20, r2_trigram_min: 0.4, r3_top: 20, r3_mentions_top: 5, max_facts: 8, max_mentions: 4,
               max_per_slot: 2, mentions_only_if_facts_below: 3, wall_clock_s: 45, max_cost_micro_usd: 50000 }   # LLD-5 §14; budget: BD-38

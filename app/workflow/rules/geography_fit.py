@@ -21,6 +21,9 @@ Rules for a local area name (BD-17), in order:
    is dropped.
 6. Places of one name on both sides of `nearby_km` are unresolved.
 National and state figures match the country or region name exactly, never by containment.
+A national figure may also name the city's own region, since some countries are made of
+nations that the gazetteer lists as regions ("England" in the United Kingdom), or the
+country by its initials ("UK", "USA") or ISO code (owner, BD-46). Generic: no place data.
 
 Pure: the caller looks up gazetteer places for `lookup_names(...)` and passes them in.
 """
@@ -231,6 +234,23 @@ def _local_fit(
     return GeographyFit(relation=rel.UNRESOLVED)
 
 
+_INITIALS_SKIP = frozenset(["of", "the", "and"])
+
+
+def _initials(name: str) -> str:
+    """'United Kingdom' -> 'UK', 'United States of America' -> 'USA'; one word gives ''."""
+    words = [w for w in place_key(name).split() if w not in _INITIALS_SKIP]
+    return "".join(w[0] for w in words).upper() if len(words) > 1 else ""
+
+
+def _country_code(label: str, city: CityIdentity) -> bool:
+    """The label is the country's initials or ISO-3 code ("U.K.", "UK", "GBR")."""
+    words = [w for w in label.split() if w.casefold() != "the"]  # "the UK"
+    compact = "".join(ch for ch in "".join(words) if ch.isalnum()).upper()
+    codes = {c for c in (_initials(city.country_name), city.country_iso3.upper()) if c}
+    return bool(compact) and compact in codes
+
+
 def _same_name(label: str, name: str | None, ignore: frozenset[str]) -> bool:
     """Exact match after removing generic words, never containment ("South X" is not X)."""
     if not name:
@@ -264,11 +284,13 @@ def geography_fit(
     if level is GeographyLevel.GLOBAL:
         return GeographyFit(relation=rel.CONTAINS_CITY)
     if level is GeographyLevel.NATIONAL:
-        same = _same_name(geography_name, city.country_name, NATIONAL_WORDS)
-        return GeographyFit(
-            relation=rel.CONTAINS_CITY if same else rel.ELSEWHERE,
-            place_name=city.country_name if same else None,
-        )
+        if _same_name(geography_name, city.country_name, NATIONAL_WORDS) or _country_code(
+            geography_name, city
+        ):
+            return GeographyFit(relation=rel.CONTAINS_CITY, place_name=city.country_name)
+        if _same_name(geography_name, city.admin1_name, NATIONAL_WORDS):  # a nation-region
+            return GeographyFit(relation=rel.CONTAINS_CITY, place_name=city.admin1_name)
+        return GeographyFit(relation=rel.ELSEWHERE)
     if level is GeographyLevel.STATE_PROVINCE:
         same = _same_name(geography_name, city.admin1_name, AREA_WORDS)
         return GeographyFit(

@@ -690,6 +690,18 @@ class PostgresResearchRepo:
             )
             return [(_claim(r), str(r["source_class"])) for r in rows.mappings()]
 
+    async def slot_indicators(self, run_id: str, slot_id: str) -> dict[str, str]:
+        async with self._engine.connect() as conn:
+            rows = await conn.execute(
+                text(
+                    "SELECT c.claim_id, s.indicator_code FROM claim c"
+                    " JOIN statistic s USING (claim_id)"
+                    " WHERE c.run_id = :r AND c.slot_id = :s"
+                ),
+                {"r": run_id, "s": slot_id},
+            )
+            return {str(r.claim_id): str(r.indicator_code) for r in rows}
+
     async def contested_claim_ids(self, run_id: str) -> set[str]:
         async with self._engine.connect() as conn:
             rows = await conn.execute(

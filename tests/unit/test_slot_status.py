@@ -147,3 +147,15 @@ def test_gap_notes_read_as_plain_english_for_one_of_anything() -> None:
     )
     blocked = gap_note(SlotStatus.BLOCKED, crawl_outcomes=[CrawlOutcome.BLOCKED_ROBOTS])
     assert blocked == "1 candidate source refuses automated access (robots.txt disallows (1))."
+
+
+def test_a_statistic_question_is_answered_only_by_its_own_indicators() -> None:
+    """BD-46: a city figure for a related measure (prediabetes for diabetes) is shown but
+    does not answer the question; one for the slot's own indicator does."""
+    diabetes = slot("S05", indicator_codes=["DM_PREV"])
+    city_claim = claim(claim_id="clm_city", status=ClaimStatus.SUPPORTED)
+    related = {"clm_city": "OTHER"}
+    own = {"clm_city": "DM_PREV"}
+    assert slot_status(diabetes, [city_claim], 1, [], related) is SlotStatus.ANSWERED_WIDER_GEO
+    assert slot_status(diabetes, [city_claim], 1, [], own) is SlotStatus.ANSWERED
+    assert slot_status(diabetes, [city_claim], 1, []) is SlotStatus.ANSWERED  # no indicators known

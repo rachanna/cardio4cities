@@ -148,7 +148,10 @@ async def _prose(
             cfg.min_paragraph_words,
         )
     topics = reading.summary_topics()
-    summarised = [c.claim_id for cards_ in summary(rows, cards, topics).values() for c in cards_]
+    slots = (await reading.card_maker(request)).slots
+    summarised = [
+        c.claim_id for cards_ in summary(rows, cards, topics, slots).values() for c in cards_
+    ]
     analysis: tuple[Prose, ...] = ()
     if summarised:
         refs = [context.FactRef(c, cards[c].statement, _badge(cards[c])) for c in summarised]

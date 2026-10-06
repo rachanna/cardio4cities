@@ -92,7 +92,7 @@ async def brief(city_id: str, request: Request, _: SessionDep) -> BriefResponse:
     shown = reading.visible(cards, pairs)  # D4-3
     facts = [f for f in facts if f.claim.claim_id in shown]
     cards = {i: c for i, c in cards.items() if i in shown}
-    summarised = summary(rows, cards, reading.summary_topics())
+    summarised = summary(rows, cards, reading.summary_topics(), maker.slots)
     run = await store.runs.run_row(run_id)
     return BriefResponse(
         city=row["identity"],

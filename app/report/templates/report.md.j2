@@ -1,67 +1,120 @@
-# {{ r.city_name }}: cardiovascular research brief
+{%- set t = r.totals -%}
+# {{ r.city_name }}
 
-{{ r.city_name }}{% if r.region_name %}, {{ r.region_name }}{% endif %}, {{ r.country_name }}. Researched live on {{ date(r.run_date) }} (run {{ r.run_id }}, {{ r.run_status }}). Every fact below was checked against its source; the number in brackets is its source in the list at the end.
+**Cardiovascular landscape brief** · {% if r.region_name %}{{ r.region_name }}, {% endif %}{{ r.country_name }}
 
-## Summary
+| | |
+|---|---|
+| **Prepared for** | CARDIO4Cities City Lead, ahead of engagement with city stakeholders |
+| **Researched** | Live on {{ date(r.run_date) }} · run {{ r.run_id }} ({{ r.run_status | replace("_", " ") }}) |
+| **Coverage** | {{ plural(t.city_level, "question", "questions") }} of {{ t.city_level + t.wider_area + t.not_found + t.blocked_or_unreachable }} answered at city level · {{ t.wider_area }} with wider-area figures only · {{ t.not_found }} not found · {{ t.blocked_or_unreachable }} blocked or unreachable |
+{% set lost = failed_steps(r.counts) %}{% if lost %}| **Incomplete run** | **Some research steps failed ({{ lost }}).** Questions shown as not found may have been missed for that reason; run the research again before relying on the gaps. |
+{% endif %}| **How to read it** | Every finding quotes its source and passed code checks; findings from web pages were also confirmed by an independent checker model, and official statistics were matched by code to the published record. Numbers in brackets refer to the sources at the end. Figures for a wider area than the city are marked "Not city-level". |
 
-{% for dimension, name, cited in r.summary -%}
-**{{ name }}**
-{% for c in cited %}
-- {{ fact(c) }}
-{%- endfor %}
+## At a glance
 
-{% endfor -%}
-{% if not r.summary %}No fact reached High or Medium confidence.
+### Key findings
+
+{% set key = [] %}{% for dimension, name, cited in r.summary %}{% for c in cited %}{% set _ = key.append((name, c)) %}{% endfor %}{% endfor -%}
+{% if key %}
+| Area | Finding | Confidence | Caveats | Ref. |
+|---|---|---|---|---|
+{% for name, c in key -%}
+| {{ name }} | {{ c.card.statement | cell }} | {{ confidence(c) }} | {{ caveats(c) }} | [{{ c.citation }}] |
+{% endfor %}
+{% else %}
+No finding reached High or Medium confidence.
 {% endif %}
-{% for s in r.sections -%}
-## {{ s.dimension }} {{ s.name }}
+
+### Coverage by area
+
+| Area | City level | Wider area only | Not found | Blocked or unreachable |
+|---|---|---|---|---|
+{% for c in r.coverage -%}
+| {{ c.name }} | {{ c.city_level }} | {{ c.wider_area }} | {{ c.not_found }} | {{ c.blocked_or_unreachable }} |
+{% endfor -%}
+| **All questions** | **{{ t.city_level }}** | **{{ t.wider_area }}** | **{{ t.not_found }}** | **{{ t.blocked_or_unreachable }}** |
+
+## Findings by area
+{% for s in r.sections %}
+### {{ s.name }}
 {% if s.intro %}
 {% for p in s.intro %}{% if p.kind == "analysis" %}*Analysis:* {% endif %}{{ p.text }}{{ r.cite(p.refs) }} {% endfor %}
 {% endif %}
-{% if not s.slots %}
-No question of this dimension was researched in this run.
+{% if not s.answered %}
+*Nothing was confirmed in this area. The questions and what was tried are listed under "What we could not find".*
 {% endif %}
-{% for b in s.slots %}
-### {{ b.row.slot_id }} {{ b.row.question }} ({{ b.row.status_word }})
-{% if b.facts %}{% for c in b.facts %}
-- {{ fact(c) }}
-{%- endfor %}{% else %}
-{{ b.row.gap_note or "Nothing confirmed." }}
-{%- endif %}
-{% if b.facts and b.row.gap_note %}
-*{{ b.row.gap_note }}*
+{% for b in s.answered %}
+#### {{ b.row.question }}
+
+| Finding | Confidence | Caveats | Ref. |
+|---|---|---|---|
+{% for c in b.facts -%}
+| {{ c.card.statement | cell }} | {{ confidence(c) }} | {{ caveats(c) }} | [{{ c.citation }}] |
+{% endfor %}
+{% if b.row.gap_note %}*{{ b.row.gap_note }}*
 {% endif %}
 {% endfor %}
-{% endfor -%}
-{% if r.analysis %}## Opportunities, risks and gaps (analysis)
-{% for p in r.analysis %}
-- *{{ p.kind | capitalize }}:* {{ p.text }}{{ r.cite(p.refs) }}
-{%- endfor %}
+{% if s.answered and s.open %}*Not established in this area: {% for row in s.open %}{{ row.question }}{% if not loop.last %} · {% endif %}{% endfor %}*
+{% endif %}
+{% endfor %}
+{% if r.analysis %}
+## Opportunities, risks and gaps
 
-{% endif -%}
-## What we could not find
-{% for g in r.gaps %}
-- **{{ g.slot_id }} {{ g.question }}** ({{ g.status_word }}): {{ g.gap_note or "Nothing confirmed." }}
-{%- else %}
-- Every question was answered.
+*Analysis written from the findings above; each point cites the findings it rests on. It is interpretation, not a finding.*
+{% for p in r.analysis %}
+- **{{ p.kind | capitalize }}:** {{ p.text }}{{ r.cite(p.refs) }}
 {%- endfor %}
+{% endif %}
 
 ## Handle with care
-{% for e in r.care %}
-- {{ e.item.card.statement }} [{{ e.citation }}]: {{ e.item.reason }}.
-{%- else %}
-- Nothing flagged.
-{%- endfor %}
+
+{% if r.care %}
+| Finding | Why | Ref. |
+|---|---|---|
+{% for e in r.care -%}
+| {{ e.item.card.statement | cell }} | {{ e.item.reason | cell }} | [{{ e.citation }}] |
+{% endfor %}
+{% else %}
+Nothing flagged.
+{% endif %}
+
+## What we could not find
+
+{% if r.gaps %}
+| Area | Question | Result | What was tried |
+|---|---|---|---|
+{% for g in r.gaps -%}
+| {{ r.sections | selectattr("dimension", "equalto", g.dimension) | map(attribute="name") | first }} | {{ g.question | cell }} | {{ g.status_word }} | {{ (g.gap_note or "Nothing confirmed.") | cell }} |
+{% endfor %}
+{% else %}
+Every question was answered at city level.
+{% endif %}
 
 ## Sources
-{% for s in r.sources %}
-{{ s.number }}. {{ s.title or "Untitled" }} ({{ s.publisher_class }}). {{ s.url }}. Published {{ s.published_date or "date not stated" }}; retrieved {{ s.retrieved_at }}.
-{%- endfor %}
+
+{% for s in r.sources -%}
+{{ s.number }}. **{{ s.title or "Untitled" }}** ({{ s.publisher_class }}). <{{ s.url }}>. Published {{ s.published_date or "date not stated" }}; retrieved {{ s.retrieved_at }}.
+{% endfor %}
+
+## About this report
+
+This brief was researched live from public sources at the time shown. Every page was fetched only where the site permits automated access. Each finding quotes its source exactly, and numbers are read by code, not by a model. For web pages, an independent checker model confirmed that the quoted passage supports the finding; official statistics were matched by code to the record the provider published. Findings that failed any check are not shown. Questions without an acceptable answer are reported with what was searched.
 
 ## Run details
 
-- Run: {{ r.run_id }}, {{ r.run_status }}, {{ date(r.run_date) }}
-{% for role, version in r.models.items() %}- {{ role }}: {{ version }}
-{% endfor -%}
-{% for line in counts(r.counts) %}- {{ line }}
+| | |
+|---|---|
+| **Run** | {{ r.run_id }} · {{ r.run_status | replace("_", " ") }} · {{ date(r.run_date) }} |
+{% for line in counts(r.counts) %}{% set k, _, v = line.partition(": ") -%}
+| **{{ k }}** | {{ v }} |
 {% endfor %}
+{% if r.models %}
+**Models and prompts**
+
+| Role | Model | Prompt version |
+|---|---|---|
+{% for role, model, prompt in roles(r.models) -%}
+| {{ role }} | {{ model }} | {{ prompt }} |
+{% endfor %}
+{% endif %}

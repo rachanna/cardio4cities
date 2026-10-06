@@ -44,6 +44,28 @@ class Section:
     intro: tuple[Prose, ...]  # empty when omitted (HD-07)
     slots: tuple[SlotBlock, ...]
 
+    @property
+    def answered(self) -> tuple[SlotBlock, ...]:
+        """Questions with at least one fact, in catalogue order."""
+        return tuple(b for b in self.slots if b.facts)
+
+    @property
+    def open(self) -> tuple[SlotRow, ...]:
+        """Questions this run did not establish; their gap notes appear once, at the end."""
+        return tuple(b.row for b in self.slots if not b.facts)
+
+
+@dataclass(frozen=True)
+class CoverageRow:
+    """One dimension's questions by outcome, for the overview (D4-3)."""
+
+    dimension: str
+    name: str
+    city_level: int
+    wider_area: int
+    not_found: int
+    blocked_or_unreachable: int
+
 
 @dataclass(frozen=True)
 class SourceEntry:
@@ -78,6 +100,32 @@ class Report:
     care: tuple[CareEntry, ...]
     sources: tuple[SourceEntry, ...]
     citation_of: Mapping[str, int] = field(default_factory=dict)  # claim -> number
+
+    @property
+    def coverage(self) -> tuple[CoverageRow, ...]:
+        rows = []
+        for s in self.sections:
+            statuses = [b.row.status for b in s.slots]
+            rows.append(
+                CoverageRow(
+                    s.dimension,
+                    s.name,
+                    statuses.count(SlotStatus.ANSWERED.value),
+                    statuses.count(SlotStatus.ANSWERED_WIDER_GEO.value),
+                    statuses.count(SlotStatus.ANSWERED_NEGATIVE.value),
+                    statuses.count(SlotStatus.BLOCKED.value)
+                    + statuses.count(SlotStatus.UNREACHABLE.value),
+                )
+            )
+        return tuple(rows)
+
+    @property
+    def totals(self) -> CoverageRow:
+        c = self.coverage
+        return CoverageRow(
+            "", "All", sum(r.city_level for r in c), sum(r.wider_area for r in c),
+            sum(r.not_found for r in c), sum(r.blocked_or_unreachable for r in c),
+        )  # fmt: skip
 
     def cite(self, refs: Sequence[str]) -> str:
         """A space then "[1][3]" for the claims a sentence rests on; nothing for none."""

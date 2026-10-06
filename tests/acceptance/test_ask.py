@@ -79,9 +79,13 @@ class AskClient:
     script: Script
     slice: Slice
     embeddings: Any
+    # One session per role, as a browser keeps its cookie: a token issued per question
+    # changed whenever a second boundary passed, so the per-session limit saw two sessions
+    tokens: dict[str, str] = field(default_factory=dict)
 
     async def ask(self, question: str, role: str = "viewer", **body: Any) -> httpx.Response:
-        self.client.cookies.set(COOKIE_NAME, issue_token(role, SECRET))  # type: ignore[arg-type]
+        token = self.tokens.setdefault(role, issue_token(role, SECRET))  # type: ignore[arg-type]
+        self.client.cookies.set(COOKIE_NAME, token)
         return await self.client.post(
             f"/api/v1/cities/{self.slice.city_id}/ask", json={"question": question, **body}
         )

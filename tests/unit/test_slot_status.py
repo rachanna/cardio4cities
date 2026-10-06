@@ -122,7 +122,7 @@ def test_blocked_note_lists_top_reasons() -> None:
 def test_unreachable_note() -> None:
     note = gap_note(SlotStatus.UNREACHABLE, crawl_outcomes=[CrawlOutcome.UNREACHABLE_NETWORK])
 
-    assert note == "1 candidate sources could not be reached (network error (1))."
+    assert note == "1 candidate source could not be reached (network error (1))."
 
 
 def test_unconfirmed_claims_are_appended() -> None:
@@ -136,3 +136,14 @@ def test_unconfirmed_claims_are_appended() -> None:
 
 def test_answered_slot_has_no_gap_note() -> None:
     assert gap_note(SlotStatus.ANSWERED, unconfirmed=2) is None
+
+
+def test_gap_notes_read_as_plain_english_for_one_of_anything() -> None:
+    """D4-3: '1 source', not '1 sources'; '1 candidate source refuses'."""
+    note = gap_note(SlotStatus.ANSWERED_NEGATIVE, n_queries=1, languages=["English"], n_sources=1)
+    assert note == (
+        "Searched 1 query in English and checked 1 source; "
+        "nothing acceptable found for this question."
+    )
+    blocked = gap_note(SlotStatus.BLOCKED, crawl_outcomes=[CrawlOutcome.BLOCKED_ROBOTS])
+    assert blocked == "1 candidate source refuses automated access (robots.txt disallows (1))."

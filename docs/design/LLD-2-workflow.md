@@ -660,6 +660,18 @@ With the admin parameter `graph=off`, retrieval for `relationship` and `change_o
 
 **As built (D3-3, BD-40):** `app/report/assemble.py` (pure) and `render.py` with Jinja2 templates; `app/api/reporting.py` writes the prose and `app/api/routers/reports.py` serves the download. Citations number sources by first appearance; a fact cites its source's number. A dimension with no slot researched in the run says so. Prose sentences are checked as answers are (cited facts of the section only, numbers and names from them; a gap sentence names no number its gap notes lack), cut at `report.intro_max_words`, and omitted under `report.min_paragraph_words`; analysis points must rest on summary facts. The report has its own budget ledger (`report.wall_clock_s`, `report.max_cost_micro_usd`, owner). On the first download of a run all three formats are generated and stored; later downloads serve them. The PDF is the same HTML without its head, laid out by fpdf2 with bundled DejaVu fonts (owner, BD-40).
 
+**Layout (D4-3, BD-44):** the order of sections is:
+1. **A cover table:** prepared for, researched, coverage and how to read it.
+2. **At a glance:** key findings as a table (area, finding, confidence, caveats, reference) and coverage by area (city level, wider area only, not found, blocked or unreachable).
+3. **Findings by area:** per question with findings, a table (finding, confidence, caveats, reference) and its wider-area note; the unanswered questions of that area named once.
+4. **Analysis**, labelled as interpretation.
+5. **Handle with care** and **What we could not find**, as tables; each gap note appears once.
+6. **Sources:** the link text is the host and path; the link keeps the full URL.
+7. **About this report:** a method paragraph written by code.
+8. **Run details**, with models and prompt versions.
+
+Headings use plain words, never slot or dimension codes. The reporter writes an introduction only for an area with at least one finding; an area with none gets a fixed sentence written by code. Gap notes pluralise ("1 source"). The PDF has a running title and "Page n of m".
+
 ---
 
 ## 17. Errors, retries and idempotency

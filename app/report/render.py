@@ -111,6 +111,20 @@ def failed_steps(summary: Mapping[str, Any]) -> str | None:
     )
 
 
+# Steps whose failure cannot lose a finding: they index page text for question
+# answering only (BD-52). Run details still lists them.
+INDEX_ONLY_STAGES = frozenset({"index_chunks"})
+
+
+def lost_steps(summary: Mapping[str, Any]) -> str | None:
+    """`failed_steps` without the index-only stages: what the "Incomplete run" warning
+    names, since only these failures can hide a finding (BD-52)."""
+    failed = {
+        k: v for k, v in (summary.get("failed_steps") or {}).items() if k not in INDEX_ONLY_STAGES
+    }
+    return failed_steps({"failed_steps": failed})
+
+
 def counts(summary: Mapping[str, Any]) -> list[str]:
     """Run counts from the run summary (LLD-1 §2.7), in plain words."""
     lines = []
@@ -146,7 +160,8 @@ def _env() -> Environment:
     )
     env.globals.update(
         fact=fact, date=date, counts=counts, confidence=confidence, caveats=caveats,
-        short_url=short_url, roles=roles, plural=plural, failed_steps=failed_steps, refs=refs,
+        short_url=short_url, roles=roles, plural=plural, failed_steps=failed_steps,
+        lost_steps=lost_steps, refs=refs,
     )  # fmt: skip
     env.filters["cell"] = cell
     return env

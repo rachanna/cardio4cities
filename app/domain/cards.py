@@ -18,8 +18,10 @@ from app.domain.models import SlotDef, StoredFact
 from app.domain.params import BadgeParams, ConfidenceParams
 from app.domain.vocab import (
     SHOWABLE_STATUSES,
+    AnswerKind,
     Badge,
     ClaimFlag,
+    ClaimKind,
     ConfidenceLabel,
     DatePrecision,
     GeographyLevel,
@@ -282,10 +284,19 @@ def summary(
     rows: Sequence[SlotRow],
     cards: Mapping[str, FactCard],
     topics: SummaryTopics | None = None,
+    slots: Mapping[str, SlotDef] | None = None,
 ) -> dict[str, list[FactCard]]:
     """Per dimension, each slot's best fact with High or Medium confidence, the headline
     slot first, up to SUMMARY_PER_DIMENSION (HD-08: Low confidence never summarises).
-    With `topics`, the best such fact on a topic of the brief (D4-3)."""
+    With `topics`, the best such fact on a topic of the brief (D4-3). With `slots`, a
+    figure never stands for a question that asks for no figure (BD-52)."""
+
+    def fits(card: FactCard, slot_id: str) -> bool:
+        slot = (slots or {}).get(slot_id)
+        if slot is None or slot.answer_kind is AnswerKind.STATISTIC:
+            return True
+        return card.kind != ClaimKind.STATISTIC.value
+
     by_dimension: dict[str, list[FactCard]] = defaultdict(list)
     for row in sorted(rows, key=lambda r: (not r.headline, r.slot_id)):
         best = next(
@@ -296,6 +307,7 @@ def summary(
                 and cards[i].confidence is not None
                 and cards[i].confidence.label != ConfidenceLabel.LOW.value  # type: ignore[union-attr]
                 and (topics is None or topics.admits(cards[i], row.dimension))
+                and fits(cards[i], row.slot_id)
             ),
             None,
         )

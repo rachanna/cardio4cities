@@ -190,7 +190,9 @@ def assemble(
     `rows` its slot results. `intros` and `analysis` are post-checked prose, or nothing."""
     by_id = {f.claim.claim_id: f for f in facts}
     citations = _Citations(by_id)
-    by_dimension = summary(rows, cards, topics)  # step 2: High or Medium, on topic (HD-08, D4-3)
+    by_dimension = summary(
+        rows, cards, topics, slots
+    )  # step 2: High or Medium, on topic (HD-08, D4-3)
     summarised = tuple(
         (
             d,

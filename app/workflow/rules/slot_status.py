@@ -12,6 +12,7 @@ from app.domain.vocab import (
     SHOWABLE_STATUSES,
     AnswerKind,
     Badge,
+    ClaimKind,
     CrawlOutcome,
     SlotFlag,
     SlotStatus,
@@ -30,12 +31,16 @@ def slot_status(
     """`claims`: every claim for the slot in this run; `crawl_outcomes`: its crawl decisions;
     `indicator_of`: claim ID -> indicator code of its statistic. A statistic slot is
     answered only by a figure for one of its own indicators (owner, BD-46): a related
-    figure (prediabetes for diabetes) is shown, but the question stays open."""
+    figure (prediabetes for diabetes) is shown, but the question stays open. A slot that
+    asks for no figure (who runs it, is there screening, which plan) is answered only by
+    a relation or statement; a figure is shown, but does not answer it (BD-52)."""
     supported = [c for c in claims if c.status in SHOWABLE_STATUSES]
     answers = supported
     if slot.answer_kind is AnswerKind.STATISTIC and indicator_of is not None:
         own = set(slot.indicator_codes)
         answers = [c for c in supported if indicator_of.get(c.claim_id) in own]
+    elif slot.answer_kind is not AnswerKind.STATISTIC:
+        answers = [c for c in supported if c.kind is not ClaimKind.STATISTIC]
     if any(effective_level(c) in slot.accepted_levels for c in answers):
         return SlotStatus.ANSWERED
     if supported:

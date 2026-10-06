@@ -527,7 +527,7 @@ else:
     status = "answered_negative"
 ```
 
-As built (BD-46): for a statistic slot, only claims whose statistic is one of the slot's `indicator_codes` can make it `answered`; a supported claim for another indicator (`OTHER`, or a related measure such as prediabetes for a diabetes slot) is still shown, and the slot is `answered_wider_geo` when it has such claims and nothing better. `coverage` reads the indicators with `ResearchRepo.slot_indicators`.
+As built (BD-46): for a statistic slot, only claims whose statistic is one of the slot's `indicator_codes` can make it `answered`; a supported claim for another indicator (`OTHER`, or a related measure such as prediabetes for a diabetes slot) is still shown, and the slot is `answered_wider_geo` when it has such claims and nothing better. `coverage` reads the indicators with `ResearchRepo.slot_indicators`. A slot that asks for no figure (`answer_kind` relation, statement or mixed) is answered only by a relation or statement claim; a supported figure filed under it is shown and leaves it `answered_wider_geo`, and never stands as its key finding (BD-52).
 
 ### 11.2 Flags
 
@@ -678,7 +678,7 @@ With the admin parameter `graph=off`, retrieval for `relationship` and `change_o
 
 **Honest labels (D4-3, BD-49):** the brief, findings and report leave out a world-level fact in a question that has a narrower one, unless it is one side of a disagreement (`domain/cards.hide_global`, `api/reading.visible`); facts with the same statement and value in one question show once, citing every source (`fold_repeats`); coverage counts a question answered by a wider-area fact its definition accepts (a national plan for a policy question) as **national applies**, not city level; "Period not stated" is a caveat on figures only, since a statement is dated by its publication.
 
-Headings use plain words, never slot or dimension codes. The reporter writes an introduction only for an area with at least one finding; an area with none gets a fixed sentence written by code. Gap notes pluralise ("1 source"). The PDF has a running title and "Page n of m".
+"Incomplete run" names only failed steps that can lose a finding; index-only steps (`index_chunks`, page text for question answering) are listed in Run details alone (BD-52). Headings use plain words, never slot or dimension codes. The reporter writes an introduction only for an area with at least one finding; an area with none gets a fixed sentence written by code. Gap notes pluralise ("1 source"). The PDF has a running title and "Page n of m".
 
 ---
 

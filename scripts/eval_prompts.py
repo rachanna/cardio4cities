@@ -48,10 +48,11 @@ from app.prompts.classifier.schema import ClassifierOutput
 from app.prompts.extractor import context as extractor_context
 from app.prompts.extractor.schema import (
     ClaimOut,
-    ExtractorOutput,
+    ExtractorWire,
     keep_claim,
-    repair_problems,
     to_labels,
+    to_output,
+    wire_problems,
 )
 from app.prompts.loader import load_prompt
 from app.prompts.planner import context as planner_context
@@ -209,7 +210,7 @@ async def run_extractor(d: RunDeps, quote: QuoteParams, tally: Tally) -> None:
         )  # fmt: skip
         try:
             out = await call_role(
-                d, "extractor", prompt.system, user, ExtractorOutput, problems=repair_problems
+                d, "extractor", prompt.system, user, ExtractorWire, problems=wire_problems
             )
         except PortError as exc:
             tally.failures += 1
@@ -217,7 +218,8 @@ async def run_extractor(d: RunDeps, quote: QuoteParams, tally: Tally) -> None:
                 f"- {case['id']}: model call failed ({type(exc).__name__}: {str(exc)[:160]})"
             )
             continue
-        claims = [c for c in out.parsed.claims if keep_claim(c, set(case.get("slots", ["S04"])))]
+        nested = to_output(out.parsed)[0]  # flat wire to nested (BD-45)
+        claims = [c for c in nested.claims if keep_claim(c, set(case.get("slots", ["S04"])))]
         notes: list[str] = []
         for c in claims:
             value = c.statistic.value_as_written if c.statistic else None

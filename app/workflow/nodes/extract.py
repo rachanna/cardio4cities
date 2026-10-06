@@ -15,9 +15,10 @@ from app.prompts.extractor import context
 from app.prompts.extractor.schema import (
     MAX_CLAIMS,
     ClaimOut,
-    ExtractorOutput,
+    ExtractorWire,
     keep_claim,
-    repair_problems,
+    to_output,
+    wire_problems,
 )
 from app.prompts.loader import load_prompt
 from app.workflow.budget import BudgetExhaustedError
@@ -145,7 +146,7 @@ async def _extract_window(
     where = f"{job.source_id}#{job.number}"
     try:
         out = await call_role(
-            d, "extractor", prompt.system, user, ExtractorOutput, problems=repair_problems
+            d, "extractor", prompt.system, user, ExtractorWire, problems=wire_problems
         )
     except BudgetExhaustedError:
         return None
@@ -155,15 +156,15 @@ async def _extract_window(
             return _skip(job.source_id, job.number, exc)  # skip the window (LLD-2 §17)
         try:
             out = await call_role(
-                d, "extractor", prompt.system, user, ExtractorOutput,
-                problems=repair_problems, binding=roles.escalate_to,
+                d, "extractor", prompt.system, user, ExtractorWire,
+                problems=wire_problems, binding=roles.escalate_to,
             )  # fmt: skip
         except BudgetExhaustedError:
             return None
         except PortError as exc:
             await step_failed(d, state, "extract", where, exc)
             return _skip(job.source_id, job.number, exc)
-    return out.model_id, list(out.parsed.claims)
+    return out.model_id, list(to_output(out.parsed)[0].claims)  # flat wire to nested (BD-45)
 
 
 def _skip(source_id: str, window: int, exc: Exception) -> str:

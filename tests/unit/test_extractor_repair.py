@@ -14,7 +14,7 @@ from app.domain.vocab import ClaimKind
 from app.ports.errors import LLMOutputValidationError
 from app.ports.llm import LLMParams, LLMResult
 from app.prompts.extractor import context
-from app.prompts.extractor.schema import ExtractorOutput
+from app.prompts.extractor.schema import ExtractorOutput, ExtractorWire
 from app.workflow.deps import Binding, RoleBinding
 from app.workflow.nodes.extract import Window, _extract_window, claim_key
 from tests.support.thin_slice import claim, statistic
@@ -48,8 +48,9 @@ class Scripted:
         if reply == INVALID:
             raise LLMOutputValidationError("claims: field required", BREAKOUT)
         assert isinstance(reply, ExtractorOutput)
+        wire = ExtractorWire.from_output(reply) if schema is ExtractorWire else reply  # BD-45
         return LLMResult(
-            parsed=reply, raw_text=reply.model_dump_json(), model_id=params.model,
+            parsed=wire, raw_text=wire.model_dump_json(), model_id=params.model,
             family="openai", tokens_in=100, tokens_out=20, cost_micro_usd=1,
         )  # fmt: skip
 

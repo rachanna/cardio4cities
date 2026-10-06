@@ -1,10 +1,19 @@
 """Extractor output (LLD-3 §4.3) and code validation (§4.4). The schema sent to the
-provider carries no length limits; code enforces them here."""
+provider carries no length limits; code enforces them here.
+
+Two shapes (BD-45). `ExtractorWire` is what the provider fills: one flat object per
+claim, every value a plain field, allowed values listed in field descriptions. The nested
+`ExtractorOutput` with enums is what the rest of the code uses. Anthropic compiles a
+strict schema into a grammar, and the nested one (five optional sub-objects and ten
+enums inside a list) became too large to compile. `to_output` converts losslessly and
+reports any value outside its vocabulary as a repair problem, so code enforces what the
+grammar used to; `ExtractorWire.from_output` is the exact inverse."""
 
 import re
 from datetime import date
+from enum import Enum
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from app.domain.models import Labels
 from app.domain.vocab import (
@@ -192,3 +201,221 @@ def to_labels(
         denominator_stated=out.denominator_stated,
     )
     return labels, unparsed
+
+
+# --- The wire shape (BD-45) -------------------------------------------------------------
+
+
+def _one_of(vocabulary: type[Enum], empty: bool = False) -> str:
+    values = ", ".join(str(m.value) for m in vocabulary)
+    return f"one of: {values}" + ("; empty when the source does not state it" if empty else "")
+
+
+_TEXT = "empty when the source does not state it"
+_STAT = "for kind statistic only; otherwise empty"
+_REL = "for kind relation only; otherwise empty"
+_DATE = "YYYY, YYYY-MM or YYYY-MM-DD"
+
+
+class ClaimWire(BaseModel):
+    """One claim as the provider returns it: flat, every field present."""
+
+    slot_id: str
+    kind: str = Field(description=_one_of(ClaimKind))
+    statement: str
+    quote: str
+    quote_lang: str
+    quote_translation: str = Field(
+        description="English translation when quote_lang is not en; otherwise empty"
+    )
+    geography_level: str = Field(description=_one_of(GeographyLevel))
+    geography_name: str
+    measure_type: str = Field(
+        description=f"{_one_of(MeasureType)}; qualitative for relation and statement claims"
+    )
+    period_start: str = Field(description=f"{_DATE}; {_TEXT}")
+    period_end: str = Field(description=f"{_DATE}; {_TEXT}")
+    age_min: int | None
+    age_max: int | None
+    sex: str = Field(description=_one_of(Sex))
+    population_group: str = Field(description=_TEXT)
+    subgroup: bool | None
+    setting: str = Field(description=_one_of(Setting, empty=True))
+    sample_size_as_written: str = Field(description=_TEXT)
+    case_definition: str = Field(description=_TEXT)
+    method: str = Field(description=_one_of(Method))
+    representativeness: str = Field(description=_one_of(Representativeness))
+    denominator_text: str = Field(description=_TEXT)
+    denominator_stated: bool
+    indicator_code: str = Field(description=f"from the list given, or OTHER; {_STAT}")
+    value_as_written: str = Field(description=_STAT)
+    subject_name: str = Field(description=_REL)
+    subject_type: str = Field(description=f"{_one_of(EntityType)}; {_REL}")
+    relation_type: str = Field(description=f"{_one_of(RelationType)}; {_REL}")
+    object_name: str = Field(description=_REL)
+    object_type: str = Field(description=f"{_one_of(EntityType)}; {_REL}")
+    valid_from: str = Field(description=f"{_DATE}; {_REL}")
+    valid_to: str = Field(description=f"{_DATE}; {_REL}")
+    programme_status: str = Field(description=f"{_one_of(ProgrammeStatus)}; {_REL}")
+    period_quote: str = Field(description=_TEXT)
+    geography_quote: str = Field(description=_TEXT)
+    population_quote: str = Field(description=_TEXT)
+
+
+def _text(value: str | None) -> str:
+    return value or ""
+
+
+def _none(value: str) -> str | None:
+    return value.strip() or None
+
+
+class ExtractorWire(BaseModel):
+    claims: list[ClaimWire]
+
+    @classmethod
+    def from_output(cls, out: "ExtractorOutput") -> "ExtractorWire":
+        """The exact inverse of `to_output` (tests and recorded responses use it)."""
+        return cls(claims=[_wire(c) for c in out.claims])
+
+
+def _wire(c: "ClaimOut") -> ClaimWire:
+    lab, st, rel, lq = c.labels, c.statistic, c.relation, c.label_quotes
+    period = lab.reference_period
+    return ClaimWire(
+        slot_id=c.slot_id, kind=c.kind.value, statement=c.statement, quote=c.quote,
+        quote_lang=c.quote_lang, quote_translation=_text(c.quote_translation),
+        geography_level=lab.geography_level.value, geography_name=lab.geography_name,
+        measure_type=lab.measure_type.value,
+        period_start=_text(period.start if period else None),
+        period_end=_text(period.end if period else None),
+        age_min=lab.population.age_min, age_max=lab.population.age_max,
+        sex=lab.population.sex.value, population_group=_text(lab.population.group),
+        subgroup=lab.population.subgroup,
+        setting=lab.setting.value if lab.setting else "",
+        sample_size_as_written=_text(lab.sample_size_as_written),
+        case_definition=_text(lab.case_definition), method=lab.method.value,
+        representativeness=lab.representativeness.value,
+        denominator_text=_text(lab.denominator_text), denominator_stated=lab.denominator_stated,
+        indicator_code=st.indicator_code if st else "",
+        value_as_written=st.value_as_written if st else "",
+        subject_name=rel.subject_name if rel else "",
+        subject_type=rel.subject_type.value if rel else "",
+        relation_type=rel.relation_type.value if rel else "",
+        object_name=rel.object_name if rel else "",
+        object_type=rel.object_type.value if rel else "",
+        valid_from=_text(rel.valid_from) if rel else "",
+        valid_to=_text(rel.valid_to) if rel else "",
+        programme_status=rel.programme_status.value if rel and rel.programme_status else "",
+        period_quote=_text(lq.period) if lq else "",
+        geography_quote=_text(lq.geography) if lq else "",
+        population_quote=_text(lq.population) if lq else "",
+    )  # fmt: skip
+
+
+def _vocab[E: Enum](vocabulary: type[E], value: str, field: str, problems: list[str]) -> E | None:
+    """A value of `vocabulary`, forgiving case, spaces and hyphens ("Measured prevalence",
+    "measured-prevalence"); anything else is a problem for the repair request."""
+    key = re.sub(r"[\s-]+", "_", value.strip()).casefold()
+    for member in vocabulary:
+        if str(member.value).casefold() == key:
+            return member
+    allowed = ", ".join(str(m.value) for m in vocabulary)
+    problems.append(f"{field} {value!r} is not one of: {allowed}")
+    return None
+
+
+_NOT_APPLICABLE = frozenset({"", "not_applicable", "not applicable", "n/a", "none"})
+
+
+def _or_not_stated[E: Enum](
+    vocabulary: type[E], value: str, field: str, problems: list[str], not_stated: E
+) -> E | None:
+    """Blank means the source does not state it: the vocabulary's own `not_stated`."""
+    return not_stated if not value.strip() else _vocab(vocabulary, value, field, problems)
+
+
+def _relation(w: ClaimWire, problems: list[str]) -> RelationOut | None:
+    fields = (w.subject_name, w.subject_type, w.relation_type, w.object_name, w.object_type,
+              w.valid_from, w.valid_to, w.programme_status)  # fmt: skip
+    if not any(f.strip() for f in fields):
+        return None
+    s_type = _vocab(EntityType, w.subject_type, "subject_type", problems)
+    r_type = _vocab(RelationType, w.relation_type, "relation_type", problems)
+    o_type = _vocab(EntityType, w.object_type, "object_type", problems)
+    status = None
+    if w.programme_status.strip():
+        status = _vocab(ProgrammeStatus, w.programme_status, "programme_status", problems)
+    if s_type is None or r_type is None or o_type is None:
+        return None
+    return RelationOut(
+        subject_name=w.subject_name, subject_type=s_type, relation_type=r_type,
+        object_name=w.object_name, object_type=o_type, valid_from=_none(w.valid_from),
+        valid_to=_none(w.valid_to), programme_status=status,
+    )  # fmt: skip
+
+
+def _claim(n: int, w: ClaimWire, problems: list[str]) -> "ClaimOut | None":
+    mine: list[str] = []
+    kind = _vocab(ClaimKind, w.kind, "kind", mine)
+    level = _vocab(GeographyLevel, w.geography_level, "geography_level", mine)
+    if kind is not ClaimKind.STATISTIC and w.measure_type.strip().casefold() in _NOT_APPLICABLE:
+        measure: MeasureType | None = MeasureType.QUALITATIVE  # what a non-figure measures
+    else:
+        measure = _vocab(MeasureType, w.measure_type, "measure_type", mine)
+    sex = _or_not_stated(Sex, w.sex, "sex", mine, Sex.NOT_STATED)
+    setting = _vocab(Setting, w.setting, "setting", mine) if w.setting.strip() else None
+    method = _or_not_stated(Method, w.method, "method", mine, Method.NOT_STATED)
+    rep = _or_not_stated(
+        Representativeness, w.representativeness, "representativeness", mine,
+        Representativeness.NOT_STATED,
+    )  # fmt: skip
+    relation = _relation(w, mine)
+    problems += [f"claim {n}: {p}" for p in mine]
+    if mine or kind is None or level is None or measure is None or sex is None:
+        return None
+    if method is None or rep is None:
+        return None
+    statistic = None
+    if w.indicator_code.strip() or w.value_as_written.strip():
+        statistic = StatisticOut(
+            indicator_code=w.indicator_code.strip(), value_as_written=w.value_as_written
+        )
+    period = None
+    if w.period_start.strip() or w.period_end.strip():
+        period = PeriodOut(start=_none(w.period_start), end=_none(w.period_end))
+    quotes = None
+    if any(q.strip() for q in (w.period_quote, w.geography_quote, w.population_quote)):
+        quotes = LabelQuotesOut(
+            period=_none(w.period_quote), geography=_none(w.geography_quote),
+            population=_none(w.population_quote),
+        )  # fmt: skip
+    return ClaimOut(
+        slot_id=w.slot_id, kind=kind, statement=w.statement, quote=w.quote,
+        quote_lang=w.quote_lang, quote_translation=_none(w.quote_translation),
+        labels=LabelsOut(
+            geography_level=level, geography_name=w.geography_name, measure_type=measure,
+            reference_period=period,
+            population=PopulationOut(
+                age_min=w.age_min, age_max=w.age_max, sex=sex,
+                group=_none(w.population_group), subgroup=w.subgroup,
+            ),
+            setting=setting, sample_size_as_written=_none(w.sample_size_as_written),
+            case_definition=_none(w.case_definition), method=method, representativeness=rep,
+            denominator_text=_none(w.denominator_text), denominator_stated=w.denominator_stated,
+        ),
+        statistic=statistic, relation=relation, label_quotes=quotes,
+    )  # fmt: skip
+
+
+def to_output(wire: ExtractorWire) -> tuple["ExtractorOutput", list[str]]:
+    """The nested output, and the problems that warrant a repair request: a value outside
+    its vocabulary (that claim is left out), then the checks of `repair_problems`."""
+    problems: list[str] = []
+    claims = [c for n, w in enumerate(wire.claims, 1) if (c := _claim(n, w, problems))]
+    out = ExtractorOutput(claims=claims)
+    return out, problems + repair_problems(out)
+
+
+def wire_problems(wire: ExtractorWire) -> list[str]:
+    return to_output(wire)[1]

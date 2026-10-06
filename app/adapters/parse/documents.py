@@ -1,16 +1,22 @@
 """ParserPort: HTML with trafilatura, PDF with pdfplumber (LLD-2 §9.4, BD-07).
 
 HTML: main content only, tables kept as pipe tables with their header row. Spanning
-cells are expanded first, so every row carries its own label cells (BD-10).
-PDF: page text with `[page N]` markers; tables extracted only on pages whose text
-contains a slot keyword, rendered as pipe tables after the page text.
+cells are expanded first, so every row carries its own label cells (BD-10). Superscript
+reference links ("improvement,1 was") are removed from the text (BD-47).
+PDF: page text with `[page N]` markers, two-column pages read column by column (BD-47);
+tables extracted only on pages whose text contains a slot keyword, rendered as pipe
+tables after the page text.
 """
 
 import copy
 import io
+import itertools
 import logging
+import math
 import re
+import statistics
 from datetime import date
+from typing import Any
 
 import pdfplumber
 import trafilatura
@@ -146,6 +152,38 @@ def expand_spans(markup: str) -> str:
     return str(lxml_html.tostring(root, encoding="unicode"))
 
 
+# A reference marker: a superscript link whose text is only reference numbers ("1",
+# "[12]", "24,25", "3-5"), as <sup><a>1</a></sup> or <a><sup>1</sup></a>. Read as text
+# it sits inside the sentence ("improvement,1 was"), where no quote copies it (BD-47).
+# A superscript without a link (m<sup>2</sup>, an exponent) is kept.
+_REFERENCE = re.compile(r"\s*[\[(]?\s*\d{1,4}(?:\s*[,\-\u2013]\s*\d{1,4})*\s*[\])]?\s*")
+
+
+def drop_reference_marks(markup: str) -> str:
+    """Remove superscript reference links, keeping the text that follows them."""
+    if "<sup" not in markup.lower():
+        return markup
+    root = lxml_html.document_fromstring(markup)
+    marks = []
+    for sup in root.iter("sup"):
+        if not _REFERENCE.fullmatch(sup.text_content()):
+            continue
+        parent = sup.getparent()
+        if sup.find(".//a") is not None:
+            marks.append(sup)
+        elif (
+            parent is not None
+            and parent.tag == "a"
+            and parent.text_content().strip() == sup.text_content().strip()
+        ):
+            marks.append(parent)
+    if not marks:
+        return markup
+    for mark in marks:
+        mark.drop_tree()  # the tail (the text after the marker) stays
+    return str(lxml_html.tostring(root, encoding="unicode"))
+
+
 def _date(value: str | None) -> date | None:
     try:
         return date.fromisoformat(value[:10]) if value else None
@@ -199,7 +237,7 @@ class DocumentParser:
     def _html(self, content: bytes, url: str, charset: str | None) -> ParsedDocument:
         html = expand_spans(decode_text(content, charset, html=True))
         text = trafilatura.extract(
-            html,
+            drop_reference_marks(html),
             url=url,
             output_format="txt",
             include_tables=True,
@@ -231,7 +269,7 @@ class DocumentParser:
         with pdfplumber.open(io.BytesIO(content)) as pdf:
             pages_read = pdf.pages[: self._max_pages] if self._max_pages else pdf.pages
             for number, page in enumerate(pages_read, start=1):
-                page_text = page.extract_text() or ""
+                page_text = _page_text(page)
                 block = f"[page {number}]\n{page_text}\n"
                 pages.append((number, length))
                 if keywords and any(k in page_text.lower() for k in keywords):
@@ -247,6 +285,81 @@ class DocumentParser:
                 length += len(block)
             title = (pdf.metadata or {}).get("Title")
         return ParsedDocument(text="".join(parts), title=title or None, pages=pages, tables=tables)
+
+
+# Two-column pages (BD-47): pdfplumber reads each line across the whole page, so each
+# line holds half a sentence from each column and no quote can match. A page is read
+# column by column when a vertical gutter near its middle is crossed by almost no word
+# and both sides hold lines of prose; a table's label and value columns are short lines
+# and stay as they are.
+GUTTER_ZONE = (0.3, 0.7)  # where a gutter may lie, as fractions of the page width
+GUTTER_MAX_CROSSING = 0.02  # share of words that may cross it (a full-width heading)
+MIN_PAGE_WORDS = 80
+MIN_COLUMN_SHARE = 0.25  # each side holds at least this share of the page's words
+MIN_COLUMN_LINES = 8
+MIN_WORDS_PER_LINE = 4  # median per line on each side: prose, not a table column
+Word = dict[str, Any]
+
+
+def _lines(words: list[Word]) -> list[int]:
+    """Words per line, lines grouped by their top edge to the nearest 3 points."""
+    counts: dict[int, int] = {}
+    for w in words:
+        key = round(float(w["top"]) / 3)
+        counts[key] = counts.get(key, 0) + 1
+    return list(counts.values())
+
+
+def _prose(words: list[Word]) -> bool:
+    lines = _lines(words)
+    return len(lines) >= MIN_COLUMN_LINES and statistics.median(lines) >= MIN_WORDS_PER_LINE
+
+
+def column_split(words: list[Word], left: float, right: float) -> float | None:
+    """The x of a two-column page's gutter, or None for any other page. `words`:
+    pdfplumber words (x0, x1, top); `left`, `right`: the page's horizontal bounds."""
+    if len(words) < MIN_PAGE_WORDS or right <= left:
+        return None
+    origin, size = math.floor(left), math.ceil(right - left) + 2
+    diff = [0] * (size + 1)
+    for w in words:  # +1 at each whole x strictly inside a word, -1 after it
+        a = max(math.floor(float(w["x0"])) + 1 - origin, 0)
+        b = min(math.ceil(float(w["x1"])) - origin, size)
+        if a < b:
+            diff[a] += 1
+            diff[b] -= 1
+    crossing = list(itertools.accumulate(diff[:size]))
+    lo = int((right - left) * GUTTER_ZONE[0])
+    hi = int((right - left) * GUTTER_ZONE[1])
+    fewest = min(crossing[lo : hi + 1])
+    if fewest > GUTTER_MAX_CROSSING * len(words):
+        return None
+    runs: list[tuple[int, int]] = []  # the runs of x with the fewest crossings
+    for x in range(lo, hi + 1):
+        if crossing[x] == fewest:
+            if runs and runs[-1][1] == x - 1:
+                runs[-1] = (runs[-1][0], x)
+            else:
+                runs.append((x, x))
+    start, end = max(runs, key=lambda r: r[1] - r[0])
+    gutter = origin + (start + end) / 2
+    sides = (
+        [w for w in words if float(w["x1"]) <= gutter],
+        [w for w in words if float(w["x0"]) >= gutter],
+    )
+    if any(len(side) < MIN_COLUMN_SHARE * len(words) or not _prose(side) for side in sides):
+        return None
+    return gutter
+
+
+def _page_text(page: Any) -> str:
+    """The page's text, column by column on a two-column page."""
+    x0, top, x1, bottom = page.bbox
+    gutter = column_split(page.extract_words(), x0, x1)
+    if gutter is None:
+        return page.extract_text() or ""
+    columns = (page.crop((x0, top, gutter, bottom)), page.crop((gutter, top, x1, bottom)))
+    return "\n".join(c.extract_text() or "" for c in columns)
 
 
 def make(settings: Settings) -> DocumentParser:

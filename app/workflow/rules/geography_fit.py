@@ -24,6 +24,10 @@ National and state figures match the country or region name exactly, never by co
 A national figure may also name the city's own region, since some countries are made of
 nations that the gazetteer lists as regions ("England" in the United Kingdom), or the
 country by its initials ("UK", "USA") or ISO code (owner, BD-46). Generic: no place data.
+A state or region named as the city itself ("Halden Bay", "Halden Bay region") is the city
+when it is not the city's own region by name and the source names the city's own region:
+a city that is also an administrative region. The guard keeps a namesake state in another
+region or country out (owner, BD-47).
 
 Pure: the caller looks up gazetteer places for `lookup_names(...)` and passes them in.
 """
@@ -263,6 +267,18 @@ def _same_name(label: str, name: str | None, ignore: frozenset[str]) -> bool:
     return bool(wanted) and bare(label) == wanted
 
 
+# Words that may stand beside a city's name when the city is itself a region (BD-47):
+# "Halden Bay region" yes; "Greater Halden Bay" or "Halden Bay county" no, as they
+# name a wider area.
+CITY_REGION_WORDS = SAME_PLACE_WORDS | frozenset(["region", "regional"])
+
+
+def _region_is_the_city(geography_name: str, city: CityIdentity) -> bool:
+    return any(
+        _same_name(geography_name, name, CITY_REGION_WORDS) for name in (city.name, city.ascii_name)
+    )
+
+
 def geography_fit(
     level: GeographyLevel,
     geography_name: str,
@@ -292,9 +308,9 @@ def geography_fit(
             return GeographyFit(relation=rel.CONTAINS_CITY, place_name=city.admin1_name)
         return GeographyFit(relation=rel.ELSEWHERE)
     if level is GeographyLevel.STATE_PROVINCE:
-        same = _same_name(geography_name, city.admin1_name, AREA_WORDS)
-        return GeographyFit(
-            relation=rel.CONTAINS_CITY if same else rel.ELSEWHERE,
-            place_name=city.admin1_name if same else None,
-        )
+        if _same_name(geography_name, city.admin1_name, AREA_WORDS):
+            return GeographyFit(relation=rel.CONTAINS_CITY, place_name=city.admin1_name)
+        if region_in_source and _region_is_the_city(geography_name, city):
+            return GeographyFit(relation=rel.CITY, place_name=city.name, distance_km=0)
+        return GeographyFit(relation=rel.ELSEWHERE)
     return _local_fit(level, geography_name, city, candidates, nearby_km, region_in_source)

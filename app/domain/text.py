@@ -1,6 +1,7 @@
 """Text normalisation shared by quote matching and the answer post-check (LLD-2 §4.1):
-NFKC, typographic characters to ASCII, invisible characters removed, line-break
-hyphenation joined, whitespace collapsed, with each character's span in the original.
+NFKC, typographic characters to ASCII, invisible characters removed, list bullets and
+line-start list markers read as spaces (BD-47), line-break hyphenation joined, whitespace
+collapsed, with each character's span in the original.
 Pure (moved from `workflow/rules/quotes.py` for `app/query`, BD-38)."""
 
 import unicodedata
@@ -16,6 +17,37 @@ _TYPOGRAPHIC = str.maketrans(
 )  # fmt: skip
 _REMOVED = frozenset("­​‌‍⁠﻿")  # soft hyphen, zero-width
 _HORIZONTAL_SPACE = frozenset(" \t")
+# List bullets are layout, not words: read as spaces, as are private-use characters,
+# which PDFs set in symbol fonts for bullets (BD-47). The middle dot is kept: some
+# journals print it as the decimal point.
+_BULLETS = frozenset("•‣⁃∙■□▪▫●◦➢➔")
+_LIST_MARKERS = frozenset("-*")  # a list item: at a line start, followed by a space
+
+
+def _layout_space(ch: str) -> bool:
+    return ch in _BULLETS or unicodedata.category(ch) == "Co"
+
+
+def _drop_list_markers(chars: list[tuple[str, int, int]]) -> list[tuple[str, int, int]]:
+    """A '-' or '*' that starts a line and is followed by a space is a list marker: a
+    space. '-80' or a '-' inside a line is text."""
+    out = list(chars)
+    line_start = True
+    for i, (ch, s, e) in enumerate(out):
+        if ch in "\r\n":
+            line_start = True
+        elif ch in _HORIZONTAL_SPACE:
+            continue
+        else:
+            if (
+                line_start
+                and ch in _LIST_MARKERS
+                and i + 1 < len(out)
+                and out[i + 1][0] in _HORIZONTAL_SPACE
+            ):
+                out[i] = (" ", s, e)
+            line_start = False
+    return out
 
 
 @dataclass(frozen=True)
@@ -43,8 +75,12 @@ def _nfkc_chunks(text: str) -> list[tuple[str, int, int]]:
 def normalise(text: str) -> Normalised:
     # 1-3: NFKC, typographic characters to ASCII, remove soft hyphens and zero-width characters
     chars = [
-        (ch.translate(_TYPOGRAPHIC), s, e) for ch, s, e in _nfkc_chunks(text) if ch not in _REMOVED
+        (" " if _layout_space(ch) else ch.translate(_TYPOGRAPHIC), s, e)
+        for ch, s, e in _nfkc_chunks(text)
+        if ch not in _REMOVED
     ]
+    # 3b: bullets (above) and line-start list markers are layout: spaces (BD-47)
+    chars = _drop_list_markers(chars)
     # 4: join line-break hyphenation: letter, '-', spaces, newline, spaces, lowercase letter
     joined: list[tuple[str, int, int]] = []
     i = 0

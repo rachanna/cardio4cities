@@ -144,3 +144,47 @@ def test_long_quote_keeps_first_occurrence_rule() -> None:
 
     assert isinstance(result, QuoteMatch)
     assert result.span_start == 0
+
+
+# --- layout read as space, and a quote that starts mid-sentence (BD-47) -------------------
+
+
+def test_list_markers_and_bullets_between_a_lead_in_and_its_item_are_spaces() -> None:
+    """A live run lost quotes running from a lead-in into its first list item, and every
+    row of a two-column list whose PDF bullet glyph sat between name and action."""
+    listed = (
+        "The aims for Halden Bay are that by 2029:\n"
+        "- 80% of adults with hypertension are diagnosed."
+    )
+    glyph = "Coast Heart Trust \uf0b7 develop resources on salt for every clinic in Halden Bay"
+    bullet = "Coast Heart Trust \u2022 develop resources on salt for every clinic in Halden Bay"
+
+    lead_in = (
+        "The aims for Halden Bay are that by 2029: 80% of adults with hypertension are diagnosed."
+    )
+    action = "Coast Heart Trust develop resources on salt for every clinic in Halden Bay"
+    assert isinstance(_match(lead_in, listed), QuoteMatch)
+    assert isinstance(_match(action, glyph), QuoteMatch)
+    assert isinstance(_match(action, bullet), QuoteMatch)
+
+
+def test_a_minus_sign_a_hyphen_and_the_middle_dot_stay_text() -> None:
+    """Only a line-start '-' or '*' followed by a space is a list marker; some journals
+    print the middle dot as the decimal point."""
+    assert normalise_text("change:\n-8% in Halden Bay") == "change: -8% in Halden Bay"
+    assert normalise_text("well-known") == "well-known"
+    assert normalise_text("31\u00b75%") == "31\u00b75%"
+
+
+def test_a_quote_may_differ_from_the_source_only_in_its_first_letter_s_case() -> None:
+    source = "Since then in 2022-24 this had reduced to 73.6 per 100,000 in Halden Bay overall."
+
+    starts_mid_sentence = _match(
+        "In 2022-24 this had reduced to 73.6 per 100,000 in Halden Bay", source
+    )
+    assert isinstance(starts_mid_sentence, QuoteMatch)
+    assert source[starts_mid_sentence.span_start : starts_mid_sentence.span_end].startswith(
+        "in 2022"
+    )
+    other_letter = _match("in 2022-24 This had reduced to 73.6 per 100,000 in Halden Bay", source)
+    assert other_letter == QuoteDrop("quote_not_found")

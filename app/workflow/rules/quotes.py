@@ -1,8 +1,10 @@
 """Quote normalisation and matching (LLD-2 §4.1, R-56, AT-09).
 
 Both sides go through the same normalisation; the match is then exact and
-case-sensitive. No fuzzy matching under any circumstance: a quote that is not
-found drops its claim, and a high drop rate means a parsing problem to fix.
+case-sensitive, with one exception: a quote that starts mid-sentence may differ from the
+source in the case of its first letter only ("In 2022" for "in 2022", owner, BD-47). No
+fuzzy matching under any circumstance: a quote that is not found drops its claim, and a
+high drop rate means a parsing problem to fix.
 """
 
 import re
@@ -53,6 +55,9 @@ def match_quote(
     # (BD-27): each draft used to re-normalise its whole window on the event loop
     source = normalised if normalised is not None else normalise(parsed_text)
     at = source.text.find(nq)
+    if at < 0 and nq[:1].isalpha():
+        nq = nq[0].swapcase() + nq[1:]  # the first letter only (BD-47)
+        at = source.text.find(nq)
     if at < 0:
         return QuoteDrop("quote_not_found")
     # A short quote (for example a table row) is accepted only when it occurs exactly once:

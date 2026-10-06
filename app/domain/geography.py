@@ -23,6 +23,8 @@ def effective_level(claim: Claim) -> GeographyLevel:
         return max(level, NEARBY_LEVEL, key=GEOGRAPHY_ORDER.index)
     if fit.relation is GeographyRelation.CONTAINS_CITY:
         return max(level, CONTAINING_LEVEL, key=GEOGRAPHY_ORDER.index)
+    if fit.relation is GeographyRelation.CITY and fit.level is not None:
+        return fit.level  # a group or part of the city its label overstated (BD-51)
     if fit.relation is GeographyRelation.CITY and level in WIDER_THAN_CITY:
         return GeographyLevel.CITY_WIDE
     return level

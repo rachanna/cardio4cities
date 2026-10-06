@@ -162,6 +162,15 @@ class CityIdentity(BaseModel):
     lat: float
     lon: float
     languages: list[str]  # ISO 639-1; first is primary
+    # real alternate names from the gazetteer, filled when the identity is read (BD-51)
+    alternate_names: list[str] = []
+
+    @property
+    def names(self) -> tuple[str, ...]:
+        """Every name the evidence may use for the city: name, ASCII name, alternates."""
+        return tuple(
+            dict.fromkeys(n for n in (self.name, self.ascii_name, *self.alternate_names) if n)
+        )
 
 
 # --- 2.3 Claim and labels -------------------------------------------------------
@@ -226,6 +235,9 @@ class GeographyFit(BaseModel):
     relation: GeographyRelation
     place_name: str | None = None  # the gazetteer place or area the name resolved to
     distance_km: int | None = None  # from the city, for places resolved to a point
+    # the level the figure counts at, when its label overstates it: "a community in
+    # the city" labelled city-wide counts as a group within the city (BD-51)
+    level: GeographyLevel | None = None
 
 
 LabelKind = Literal["period", "population", "geography"]

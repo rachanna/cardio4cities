@@ -100,6 +100,7 @@ class RunDeps:
     places: PlaceMatcher | None = None  # the other-place rule, built once per run (BD-15)
     checkpointed: bool = True  # False when no checkpoint can be saved: no resume (BD-25)
     prefer_local: bool = True  # select.prefer_local [tunable] (BD-50)
+    max_per_domain: int = 2  # select.max_per_domain_per_round [tunable] (BD-51)
     # (slot, source) pairs this process extracted: a later round never repeats one (BD-29)
     extracted: set[tuple[str, str]] = field(default_factory=set)
 

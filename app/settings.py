@@ -239,6 +239,7 @@ class SelectSection(_Section):
     max_reused_per_slot_round: int
     other_place_min_population: int  # places that rank a candidate later (BD-15)
     prefer_local: bool = True  # hits naming the city are read first (BD-50)
+    max_per_domain_per_round: int = 2  # new pages from one domain per slot round (BD-51)
 
 
 class ReplanSection(_Section):

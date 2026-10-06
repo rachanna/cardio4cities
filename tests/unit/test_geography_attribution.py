@@ -231,3 +231,51 @@ def test_other_countries_regions_and_near_misses_stay_elsewhere(label: str) -> N
 def test_a_one_word_country_has_no_initials_to_match() -> None:
     assert national("N", HALDEN).relation is R.ELSEWHERE
     assert national("Norvania", HALDEN).relation is R.CONTAINS_CITY
+
+
+# --- a city that is also a region (BD-47) ------------------------------------------------
+
+
+def region(name: str, region_in_source: bool = True) -> GeographyFit:
+    return geography_fit(L.STATE_PROVINCE, name, HALDEN, [], 75, region_in_source=region_in_source)
+
+
+@pytest.mark.parametrize("label", ["Halden Bay", "Halden Bay region", "the Halden Bay Region"])
+def test_a_region_named_as_the_city_is_the_city(label: str) -> None:
+    """Some cities are also administrative regions: sources label the city's figure as the
+    region's. A live run dropped such figures as 'elsewhere' (BD-47)."""
+    got = region(label)
+    assert (got.relation, got.place_name) == (R.CITY, "Halden Bay")
+
+
+def test_a_region_named_as_the_city_needs_the_city_s_own_region_in_the_source() -> None:
+    """The guard against a namesake state in another region or country."""
+    assert region("Halden Bay", region_in_source=False).relation is R.ELSEWHERE
+
+
+@pytest.mark.parametrize("label", ["Greater Halden Bay", "Halden Bay county", "North Halden Bay"])
+def test_a_wider_or_other_region_with_the_city_s_name_stays_elsewhere(label: str) -> None:
+    assert region(label).relation is R.ELSEWHERE
+
+
+def test_the_city_s_own_region_still_contains_the_city() -> None:
+    """A city named like its own region: the region's figure contains the city."""
+    named_like_region = HALDEN.model_copy(update={"admin1_name": "Halden Bay"})
+    got = geography_fit(
+        L.STATE_PROVINCE, "Halden Bay", named_like_region, [], 75, region_in_source=True
+    )
+    assert got.relation is R.CONTAINS_CITY
+
+
+def test_a_city_region_counts_as_city_wide_and_keeps_its_label() -> None:
+    city_region = claim(
+        labels={"geography_level": L.STATE_PROVINCE, "geography_name": "Halden Bay region"},
+        geography_fit=region("Halden Bay region"),
+    )
+    assert effective_level(city_region) is L.CITY_WIDE
+    assert city_region.labels.geography_level is L.STATE_PROVINCE
+    inside = claim(
+        labels={"geography_level": L.SUB_CITY_AREA, "geography_name": "Halden Bay harbour ward"},
+        geography_fit=GeographyFit(relation=R.CITY, place_name="Halden Bay"),
+    )
+    assert effective_level(inside) is L.SUB_CITY_AREA

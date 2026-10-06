@@ -288,7 +288,7 @@ llm:
     anthropic: { api_key_env: ANTHROPIC_API_KEY }
     openai:    { api_key_env: OPENAI_API_KEY }
     ollama:    { base_url_env: OLLAMA_BASE_URL }   # BD-05; adapter not built (BD-36)
-  concurrency: 4
+  concurrency: 4                      # model calls in flight per provider (BD-47)
   allow_same_family_checker: false   # BD-02; see §5.2
   prompt_cache: true                  # BD-30: the repeated system prompt is cached
 embeddings: { provider: openai, model: "<confirm day 1>", dimension: 0, key: openai_small_v1, concurrency: 4 }   # concurrency: BD-14

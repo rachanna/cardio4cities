@@ -180,3 +180,77 @@ def test_layout_box_of_prose_is_not_a_table() -> None:
     assert not is_tabular([[prose], [prose]])
     assert not is_tabular([["Indicator", "Value"], ["Raised blood pressure", "not measured"]])
     assert is_tabular([["Indicator", "Women", "Men"], ["Raised blood pressure", "29.0%", "33.5%"]])
+
+
+# --- reference markers and two-column pages (BD-47) --------------------------------------
+
+REFERENCES = b"""<html><head><title>Heart health in Halden Bay</title></head><body><main><article>
+<h1>Heart health in Halden Bay</h1>
+<p>The Coast Health Directorate, set up to lead prevention,<a href="#bib1"><sup>1</sup></a> was
+merged into the Norvania Health Directorate in 2024.<sup><a href="#bib2">[2]</a></sup> Its
+screening reached 61% of adults in Halden Bay,<sup><a href="#bib3">3,4</a></sup> and the clinics
+measured body mass index in kg/m<sup>2</sup> at every visit across the city that year.</p>
+<p>Annual reports on screening in Halden Bay are published each spring by the Directorate.</p>
+</article></main></body></html>"""
+
+
+def test_superscript_reference_links_are_removed_and_exponents_kept() -> None:
+    """A live run lost quotes the model copied without the marker ("prevention, was")."""
+    doc = DocumentParser().parse_html(REFERENCES, BASE + "/refs")
+
+    assert "set up to lead prevention, was" in doc.text
+    assert "in 2024. Its" in doc.text
+    assert "61% of adults in Halden Bay, and the clinics" in doc.text
+    assert "kg/m2" in doc.text
+
+
+LEFT = (
+    "The Coast survey measured blood pressure in Halden Bay adults during 2024 and found "
+    "that mortality from heart disease in the city was higher than the Norvania average "
+)
+RIGHT = (
+    "Clinics in the harbour district opened evening sessions for working adults and the "
+    "Directorate funded home monitors for people with treated hypertension in the city "
+)
+
+
+def _two_columns(left: str, right: str, repeat: int = 6) -> bytes:
+    pdf = FPDF()
+    pdf.set_font("Helvetica", size=10)
+    pdf.add_page()
+    pdf.multi_cell(0, 6, "Heart health in Halden Bay: annual chapter")  # a full-width heading
+    top = pdf.get_y() + 4
+    pdf.set_xy(10, top)
+    pdf.multi_cell(90, 5, left * repeat)
+    pdf.set_xy(110, top)
+    pdf.multi_cell(90, 5, right * repeat)
+    return bytes(pdf.output())
+
+
+def test_a_two_column_page_is_read_column_by_column() -> None:
+    """A live run lost every figure of a two-column report: pdfplumber read each line
+    across both columns, so no sentence stayed whole."""
+    doc = DocumentParser().parse_pdf(_two_columns(LEFT, RIGHT), [])
+    text = " ".join(doc.text.split())
+
+    assert "mortality from heart disease in the city was higher than the Norvania average" in text
+    assert text.index("Norvania average") < text.index("Clinics in the harbour district")
+
+
+def test_a_single_column_page_and_a_two_column_table_are_read_line_by_line() -> None:
+    """No gutter, or short label and value lines (a table): pdfplumber's own reading."""
+    from app.adapters.parse.documents import column_split
+
+    single = FPDF()
+    single.set_font("Helvetica", size=10)
+    single.add_page()
+    single.multi_cell(0, 5, (LEFT + RIGHT) * 8)
+    doc = DocumentParser().parse_pdf(bytes(single.output()), [])
+    assert "Norvania average Clinics" in " ".join(doc.text.split())
+
+    rows = [
+        {"x0": x0, "x1": x0 + 40, "top": 50 + 12 * i}
+        for i in range(60)
+        for x0 in (40, 400)  # one short label, one value per line
+    ]
+    assert column_split(rows, 0, 595) is None

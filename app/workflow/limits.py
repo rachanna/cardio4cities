@@ -1,9 +1,10 @@
 """Run-wide resource limits shared by every slot branch (LLD-2 §12, D2-5).
 
 Slots run in parallel; what they share is limited here, not by how many slots run:
-model calls (`llm.concurrency`) and embedding calls (`embeddings.concurrency`) through the
-wrappers below; page fetches by the collector (`fetch.concurrency`, per-domain spacing);
-searches by the search adapter's rate limit (`search.rate_per_s`).
+model calls (`llm.concurrency` per provider, BD-47) and embedding calls
+(`embeddings.concurrency`) through the wrappers below; page fetches by the collector
+(`fetch.concurrency`, per-domain spacing); searches by the search adapter's rate limit
+(`search.rate_per_s`).
 
 `StageClock` adds up busy time per stage across branches, so parallel stages can add up
 to more than the run's wall clock (the run summary shows both)."""
@@ -11,7 +12,7 @@ to more than the run's wall clock (the run summary shows both)."""
 import asyncio
 import time
 from collections import defaultdict
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 
 from pydantic import BaseModel
 
@@ -45,6 +46,14 @@ class LimitedLLM:
     ) -> LLMResult:
         async with self._gate:
             return await self._inner.complete(role, system, user, schema, params)
+
+
+def limited_llms(ports: Mapping[str, LLMPort], concurrency: int) -> dict[str, LLMPort]:
+    """Each provider behind its own gate of `concurrency` calls: with one shared gate the
+    checker (one provider) queued behind extraction (another) and a live run stopped at
+    its time limit with city claims unchecked (BD-47). Per-provider rate limits are
+    unchanged: each provider still sees at most `concurrency` calls at once."""
+    return {name: LimitedLLM(port, asyncio.Semaphore(concurrency)) for name, port in ports.items()}
 
 
 class LimitedEmbeddings:

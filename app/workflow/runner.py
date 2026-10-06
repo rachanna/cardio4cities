@@ -57,7 +57,7 @@ from app.workflow.events import EventEmitter
 from app.workflow.graph import build_graph
 from app.workflow.graph_marker import ensure_graph_marker
 from app.workflow.ids import new_id
-from app.workflow.limits import LimitedEmbeddings, LimitedLLM
+from app.workflow.limits import LimitedEmbeddings, limited_llms
 from app.workflow.rules.chunking import ChunkParams
 from app.workflow.rules.selection import PublisherTable, publisher_table
 from app.workflow.rules.thresholds import ThresholdRule, threshold_table
@@ -391,7 +391,6 @@ class RunManager:
             _need(p.robots, "robots"),
         )
         parser = _need(p.parser, "parser")
-        model_gate = asyncio.Semaphore(cfg.llm.concurrency)  # shared by every provider
         vector, snapshots = _need(p.vector, "vector"), _need(p.snapshots, "snapshots")
         graph = _need(p.graph, "graph")
         if self._publishers is None:
@@ -424,7 +423,7 @@ class RunManager:
         deps = RunDeps(
             run_id=run_id,
             relational=self.relational,
-            llm={name: LimitedLLM(port, model_gate) for name, port in p.llm.items()},
+            llm=limited_llms(p.llm, cfg.llm.concurrency),  # a gate per provider (BD-47)
             roles=role_bindings(self.settings),
             search=search,
             search_provider=cfg.search.provider,

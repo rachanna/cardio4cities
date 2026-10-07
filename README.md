@@ -1,6 +1,6 @@
 # CARDIO4Cities City Lead research assistant
 
-Given a city name, researches the public web live, verifies what it finds, and produces a cited brief of the city's cardiovascular landscape. Design documents are in `docs/design/`; start with `CLAUDE.md`.
+Given a city name, researches the public web live, verifies what it finds, and produces a cited brief of the city's cardiovascular landscape. The architecture overview is [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md); design documents are in `docs/design/`, and decisions in `docs/DECISIONS.md`.
 
 ## Quick start (local)
 

@@ -110,7 +110,7 @@ All routes run in parallel. Each returns a ranked list of `(claim_id, rank, rout
 
 Search: the question text, filtered by `city_id`, `run_id = latest`, `status ∈ {supported, contested}`; top 20 `[tunable]`.
 
-**Chunk search** (existing collection) runs only to find **mentions**: top 5 passages whose text did not become a confirmed claim. They never support a fact sentence.
+**Chunk search** (existing collection) runs only to find **mentions**: top 5 passages whose text did not become a confirmed claim, filtered by `city_id` and `run_id = latest` (every vector search names the city; FX-19, BD-53). They never support a fact sentence.
 
 **Cross-language.** Statements are always written in English by the extractor, so English questions find claims from any source language. The embedding model must be multilingual in every profile: the deployed OpenAI model is; the local Sentence Transformers model must be a multilingual model `[verify in the profiles task]` (RD-11).
 

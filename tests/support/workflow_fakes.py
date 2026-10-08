@@ -116,7 +116,10 @@ class MemoryVector:
         self, name: str, vector: list[float], filters: dict[str, Any], limit: int
     ) -> list[VectorHit]:
         """Cosine similarity, filtered as the Qdrant adapter filters: a list matches any
-        of its values (question answering, D3-2)."""
+        of its values (question answering, D3-2), and a search without `city_id` is
+        refused, as the adapter refuses it (FX-19)."""
+        if "city_id" not in filters:
+            raise ValueError("vector search must filter by city_id")
 
         def matches(point: VectorPoint) -> bool:
             return all(

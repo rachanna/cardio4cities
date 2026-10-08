@@ -38,8 +38,13 @@ async def r3(deps: AskDeps, question: str, facts: Sequence[StoredFact]) -> Route
         }
         hits = await deps.vector.search(deps.claim_collection, vector, filters, deps.params.r3_top)
         route.candidates = list(dict.fromkeys(str(h.payload["claim_id"]) for h in hits))
+        # Every vector search names the city (the adapter refuses one that does not):
+        # without it this search failed and took the claim hits with it (FX-19, BD-53)
         chunks = await deps.vector.search(
-            deps.chunk_collection, vector, {"run_id": deps.run_id}, deps.params.r3_mentions_top * 3
+            deps.chunk_collection,
+            vector,
+            {"city_id": deps.city_id, "run_id": deps.run_id},
+            deps.params.r3_mentions_top * 3,
         )
         mentions = [
             Mention(

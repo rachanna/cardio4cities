@@ -112,7 +112,7 @@ From 2026-10-14 the system keeps growing as practice in building systems. Task I
 | ID | Task | Load | Build | Done when | Est. |
 |---|---|---|---|---|---|
 | E-01 | Ollama adapter | LLD-3 §2, LLD-4 §5, §8, BD-54 | `app/adapters/llm/ollama.py` (native API, context window per call, zero cost, health probe); config checks; contract tests | Shared LLMPort tests pass for Ollama; one live checker call on the owner's laptop | 2 h |
-| E-02 | Free development profile | LLD-3 §9, BD-54 | A profile with hosted roles on OpenAI's complimentary models (if the account is eligible) and a local checker from another family; checker chosen by the golden set on candidate models | Checker agreement meets the LLD-3 §9 bar on the chosen local model | 2 h |
+| E-02 | Free development profile | LLD-3 §9, BD-55 | `config/local-free.yaml`: hosted roles on OpenAI's complimentary models, extractor and checker chosen by the golden sets; a local checker where one is accurate and fast enough, otherwise a GPT checker with the labelled exception and a local fallback (owner) | Extractor and checker golden sets pass on the chosen models (done: gpt-5.4-mini 85%, gpt-5.4 28/28) | 2 h |
 | E-03 | First free end-to-end run | LLD-2 §5, BD-54 | One full run on the free profile; tune local settings in config only (concurrency, window, time budget) | Run completes with every slot given a status; time and tokens recorded | 1.5 h |
 
 ---

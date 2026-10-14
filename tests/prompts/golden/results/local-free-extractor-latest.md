@@ -1,0 +1,63 @@
+# Prompt golden set: local-free profile
+
+- extractor gpt-5.4-mini; checker gemma3:latest (0.0)
+- prompt extractor: extractor@v6+0f19b998
+- expected claims found: 41/48 (85%; bar 85%)
+- expected fields correct: 64/65
+- quotes located exactly: 41/42
+- checker agreement: 0/0 (0%; bar 90%)
+- trap claims mislabelled and then supported: 0
+- planner problems: 0
+- classifier cases passed: 0/0 (0%; bar 90%)
+- answerer cases passed: 0/0 (0%; bar 90%); first-pass survival 0% (monitored: below 80% means revisit the prompt, LLD-5 §12.3)
+- failed model calls: 0
+- cost: $0.2213 in 47 calls
+- **PASS**
+
+## Extractor (extractor@v6+0f19b998)
+
+- city-control-all-in-quote: all expected fields correct
+- national-figure-in-city-newspaper: all expected fields correct
+- study-by-city-authors-elsewhere: missing 41% (got [])
+- screening-positivity: all expected fields correct
+- range-up-to: all expected fields correct
+- range-between: missing 20-25% (got ['between 20-25%'])
+- planned-programme: all expected fields correct
+- percentage-without-base: all expected fields correct
+- injected-instruction: all expected fields correct
+- confident-wording-no-figure: no claims, as expected
+- table-row-with-period-in-methods: missing 22.6 (19.1-26.4) (got ['22.6']); missing 19.8 (16.0-24.1) (got ['22.6'])
+- table-spanned-label-rows: all expected fields correct
+- methods-period-far-from-figure: all expected fields correct
+- period-not-stated: all expected fields correct
+- sub-city-population: all expected fields correct
+- nearby-town: all expected fields correct
+- province-figure: all expected fields correct
+- self-reported-prevalence: all expected fields correct
+- programme-output-count: missing 48,300 (got ['statement'])
+- mortality-rate: missing 212 per 100,000 (got ['212 per 100,000 population'])
+- governs-relation: Coastal District Office: wrong relation_type
+- leads-relation-dated: all expected fields correct
+- modelled-estimate: all expected fields correct
+- nine-areas-combined: all expected fields correct
+- hypertension-awareness: all expected fields correct
+- small-sample-setting: missing 52% (got [])
+- translated-quote: all expected fields correct
+- salt-policy-statement: all expected fields correct
+- irrelevant-page: no claims, as expected
+- denominator-all-adults: all expected fields correct
+- sampling-not-described: all expected fields correct
+- random-sample-with-size: all expected fields correct
+- area-not-named: no claims, as expected
+- cascade-denominator-not-subgroup: all expected fields correct
+- clinic-patients-subgroup: all expected fields correct
+- pdf-table-no-separators: all expected fields correct
+- inline-reference-markers: all expected fields correct
+- area-only-in-context: no claims, as expected
+- case-definition-in-methods: all expected fields correct
+- european-sample-size: all expected fields correct
+- many-figures-one-window: all expected fields correct
+- undiagnosed-is-not-awareness: all expected fields correct
+- prevalence-method-not-stated: all expected fields correct
+- table-value-without-unit: all expected fields correct
+- borough-is-part-of-the-city: all expected fields correct

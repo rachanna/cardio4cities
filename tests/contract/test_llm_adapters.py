@@ -410,3 +410,15 @@ async def test_ollama_probe_fails_until_every_role_model_is_pulled(stub: Stub) -
     assert stub.requests[0]["path"] == "/api/tags"
     with pytest.raises(ProviderUnavailableError, match="qwen3:8b"):
         await OllamaProbe("llm_ollama", base, ["gemma3:4b", "qwen3:8b"]).check()
+
+
+async def test_ollama_thinks_only_when_the_binding_sets_effort(stub: Stub) -> None:
+    """BD-55: thinking comes back apart from the answer, so the answer still parses."""
+    answer = ollama_response(GOOD)
+    answer["message"]["thinking"] = "The passage states 31.2% for the same group..."
+    stub.body = answer
+    thinking = GEMMA.model_copy(update={"temperature": None, "effort": "low"})
+    result = await local(stub).complete("checker", "s", "u", Verdict, thinking)
+    await local(stub).complete("checker", "s", "u", Verdict, GEMMA)
+    assert [body["think"] for body in stub.requests] == [True, False]
+    assert result.raw_text == GOOD

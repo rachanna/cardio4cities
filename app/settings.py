@@ -31,8 +31,8 @@ EXPECTED_SLOT_IDS = frozenset(f"S{n:02d}" for n in range(1, 17))
 
 # local-quality: local stores with the deployed model bindings (BD-05)
 # local-openai: local stores with every model role on OpenAI (BD-23)
-AppEnv = Literal["local", "local-quality", "local-openai", "deployed"]
-APP_ENVS: tuple[str, ...] = ("local", "local-quality", "local-openai", "deployed")
+AppEnv = Literal["local", "local-quality", "local-openai", "local-free", "deployed"]
+APP_ENVS: tuple[str, ...] = ("local", "local-quality", "local-openai", "local-free", "deployed")
 
 
 class ConfigError(Exception):
@@ -517,7 +517,8 @@ def check_adapter_settings(config: Config) -> list[str]:
 
 def _check_ollama(config: Config) -> list[str]:
     """E-01 (BD-54): an Ollama role needs the context window, which Ollama would otherwise
-    keep small and silently cut prompts to, and takes `temperature`, never `effort`."""
+    keep small and silently cut prompts to. `effort` turns a reasoning model's thinking on
+    (BD-55); only "none" means off, as levels are not graded for Ollama models."""
     refs = [
         (name, ref)
         for name, role in config.llm.roles.items()
@@ -533,9 +534,10 @@ def _check_ollama(config: Config) -> list[str]:
     if provider is not None and not (provider.base_url or provider.base_url_env):
         problems.append("llm.providers.ollama needs base_url or base_url_env")
     problems += [
-        f"llm.roles.{name}: an Ollama model takes temperature, not effort"
+        f"llm.roles.{name}: an Ollama model's effort is low, medium or high (thinking on) or "
+        f"none (off), not {ref.effort!r}"
         for name, ref in refs
-        if ref.effort is not None
+        if ref.effort not in (None, "none", "low", "medium", "high")
     ]
     return problems
 

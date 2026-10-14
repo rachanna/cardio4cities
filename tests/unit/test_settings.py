@@ -107,7 +107,8 @@ def test_invalid_app_env_refused(valid_env: dict[str, str]) -> None:
     valid_env["APP_ENV"] = "staging"
 
     assert _problems(valid_env) == [
-        "APP_ENV must be one of local, local-quality, local-openai, deployed, not 'staging'"
+        "APP_ENV must be one of local, local-quality, local-openai, local-free, deployed, "
+        "not 'staging'"
     ]
 
 
@@ -185,17 +186,20 @@ def test_an_ollama_role_needs_the_context_window(
     )
 
 
-def test_an_ollama_model_takes_temperature_not_effort(
-    write_config: ConfigWriter, valid_env: dict[str, str]
+@pytest.mark.parametrize(("effort", "accepted"), [("low", True), ("none", True), ("max", False)])
+def test_an_ollama_model_s_effort_turns_thinking_on_or_off(
+    write_config: ConfigWriter, valid_env: dict[str, str], effort: str, accepted: bool
 ) -> None:
+    """BD-55: effort switches a reasoning model's thinking; levels are not graded."""
+
     def change(raw: dict[str, Any]) -> None:
-        _local_checker(raw, effort="low")
+        _local_checker(raw, effort=effort)
         raw["llm"]["providers"]["ollama"]["num_ctx"] = 8192
 
     valid_env["OLLAMA_BASE_URL"] = "http://127.0.0.1:11434"
-    problems = _problems(valid_env, write_config(change=change))
+    problems = _problems_or_none(valid_env, write_config(change=change))
 
-    assert problems == ["llm.roles.checker: an Ollama model takes temperature, not effort"]
+    assert (problems == []) is accepted
 
 
 def test_an_ollama_checker_with_its_window_loads(

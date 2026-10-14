@@ -53,7 +53,10 @@ class OllamaLLM:
             ],
             "format": schema.model_json_schema(),  # constrained to the role's schema
             "stream": False,
-            "think": False,  # thinking text would not fit the schema
+            # BD-55: `effort` switches a reasoning model's thinking on. Ollama returns the
+            # thinking apart from the answer, so the answer still fits the schema. A model
+            # that cannot think is bound without effort.
+            "think": params.effort not in (None, "none"),
             "options": options,
         }
         if self._keep_alive is not None:

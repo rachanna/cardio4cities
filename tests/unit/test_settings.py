@@ -107,7 +107,8 @@ def test_invalid_app_env_refused(valid_env: dict[str, str]) -> None:
     valid_env["APP_ENV"] = "staging"
 
     assert _problems(valid_env) == [
-        "APP_ENV must be one of local, local-quality, local-openai, deployed, not 'staging'"
+        "APP_ENV must be one of local, local-quality, local-openai, local-free, deployed, "
+        "not 'staging'"
     ]
 
 
@@ -165,6 +166,54 @@ def _problems_or_none(env: dict[str, str], config_dir: Path) -> list[str]:
     except ConfigError as exc:
         return exc.problems
     return []
+
+
+def _local_checker(raw: dict[str, Any], **binding: Any) -> None:
+    raw["llm"]["roles"]["checker"] = {
+        "provider": "ollama", "model": "gemma3:4b", "family": "google", **binding,
+    }  # fmt: skip
+
+
+def test_an_ollama_role_needs_the_context_window(
+    write_config: ConfigWriter, valid_env: dict[str, str]
+) -> None:
+    """E-01 (BD-54): without it Ollama keeps a small window and silently cuts prompts."""
+    valid_env["OLLAMA_BASE_URL"] = "http://127.0.0.1:11434"
+    config_dir = write_config(change=lambda raw: _local_checker(raw, temperature=0))
+
+    assert "llm.providers.ollama.num_ctx is required when a role uses Ollama" in _problems(
+        valid_env, config_dir
+    )
+
+
+@pytest.mark.parametrize(("effort", "accepted"), [("low", True), ("none", True), ("max", False)])
+def test_an_ollama_model_s_effort_turns_thinking_on_or_off(
+    write_config: ConfigWriter, valid_env: dict[str, str], effort: str, accepted: bool
+) -> None:
+    """BD-55: effort switches a reasoning model's thinking; levels are not graded."""
+
+    def change(raw: dict[str, Any]) -> None:
+        _local_checker(raw, effort=effort)
+        raw["llm"]["providers"]["ollama"]["num_ctx"] = 8192
+
+    valid_env["OLLAMA_BASE_URL"] = "http://127.0.0.1:11434"
+    problems = _problems_or_none(valid_env, write_config(change=change))
+
+    assert (problems == []) is accepted
+
+
+def test_an_ollama_checker_with_its_window_loads(
+    write_config: ConfigWriter, valid_env: dict[str, str]
+) -> None:
+    """A local checker from another family keeps R-82 without the same-family flag."""
+
+    def change(raw: dict[str, Any]) -> None:
+        _local_checker(raw, temperature=0)
+        raw["llm"]["providers"]["ollama"]["num_ctx"] = 8192
+
+    valid_env["OLLAMA_BASE_URL"] = "http://127.0.0.1:11434"
+
+    assert _problems_or_none(valid_env, write_config(change=change)) == []
 
 
 def test_searxng_needs_base_url(write_config: ConfigWriter, valid_env: dict[str, str]) -> None:

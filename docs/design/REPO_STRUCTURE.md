@@ -108,7 +108,7 @@ cardio4cities/
 │   │   └── <role>/v1.md, schema.py   # planner, extractor, checker, classifier, answerer, reporter
 │   ├── ports/                    # Protocols (LLD-4 §8), one module per port with its value types; errors.py, health.py
 │   └── adapters/                 # the ONLY place vendor SDKs are imported
-│       ├── llm/                  # anthropic.py, openai.py; ollama.py (not built)
+│       ├── llm/                  # anthropic.py, openai.py, ollama.py (E-01, BD-54)
 │       ├── embeddings/           # openai.py, sentence_transformers.py
 │       ├── search/               # brave.py, searxng.py, _common.py (rate limit); tavily.py (not built)
 │       ├── fetch/                # httpx_pinned.py (IP-pinned, httpx: BD-07), robots_protego.py

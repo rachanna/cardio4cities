@@ -9,7 +9,7 @@ import yaml
 from app.settings import CONFIG_DIR, ConfigError, load_settings
 from tests.conftest import ConfigWriter
 
-PROFILES = ("local", "local-quality", "local-openai", "deployed")
+PROFILES = ("local", "local-quality", "local-openai", "local-free", "deployed")
 MODEL_SECTIONS = ("llm", "embeddings")
 
 
@@ -29,6 +29,7 @@ def _bindings(raw: dict[str, Any]) -> list[dict[str, Any]]:
 @pytest.mark.parametrize("profile", PROFILES)
 def test_profile_loads(profile: str, valid_env: dict[str, str]) -> None:
     valid_env["APP_ENV"] = profile
+    valid_env["OLLAMA_BASE_URL"] = "http://127.0.0.1:11434"  # local-free's checker
 
     assert load_settings(valid_env).env == profile
 
@@ -86,12 +87,14 @@ def test_every_profile_caps_a_run_at_the_owners_limits() -> None:
     so weak questions get their re-plan rounds; the $3 cap still bounds the spend."""
     for p in PROFILES:
         budget = _raw(p)["budget"]
-        assert (budget["cost_micro_usd"], budget["tokens"]) == (3_000_000, 3_000_000), p
+        tokens = 1_100_000 if p == "local-free" else 3_000_000  # BD-55: the free allowance
+        assert (budget["cost_micro_usd"], budget["tokens"]) == (3_000_000, tokens), p
         assert budget["fetches"] == 120, p
 
 
 def _ollama_checker(raw: dict[str, Any]) -> None:
     raw["llm"]["roles"]["checker"] = {"provider": "ollama", "model": "qwen2.5:3b", "family": "qwen"}
+    raw["llm"]["providers"]["ollama"]["num_ctx"] = 8192  # required with Ollama (E-01, BD-54)
 
 
 def test_ollama_checker_needs_its_address(
@@ -147,3 +150,41 @@ def test_local_openai_is_local_with_every_role_on_openai() -> None:
     assert dev["llm"]["allow_same_family_checker"] is True
     checker = dev["llm"]["roles"]["checker"]
     assert (checker["model"], checker["effort"]) == ("gpt-6.1-sol", "low")
+
+
+# OpenAI models in the owner's complimentary data-sharing allowance (2026-10-14)
+FREE_LARGER = {"gpt-5.4", "gpt-5.2", "gpt-5.1", "gpt-5", "gpt-4.1", "gpt-4o", "o1", "o3"}
+FREE_SMALLER = {
+    "gpt-5.4-mini", "gpt-5.4-nano", "gpt-5-mini", "gpt-5-nano", "gpt-4.1-mini",
+    "gpt-4.1-nano", "gpt-4o-mini", "o3-mini", "o4-mini",
+}  # fmt: skip
+SMALLER_POOL_TOKENS = 2_500_000
+
+
+def test_local_free_uses_only_free_models_and_labels_its_same_family_checker() -> None:
+    """E-02 (BD-55): hosted roles only on the free allowance's models, no Claude anywhere.
+    No local checker was accurate and fast enough, so the checker is gpt-5.4 with the
+    labelled same-family exception; its fallback is a local model of another family."""
+    local, free = _raw("local"), _raw("local-free")
+    assert set(free) == set(local)
+    for section in free:
+        if section not in ("llm", "budget", "limits"):
+            assert free[section] == local[section], section
+    for binding in _bindings(free):
+        assert not binding["model"].startswith("claude"), binding
+        if binding["provider"] == "openai":
+            assert binding["model"] in FREE_LARGER | FREE_SMALLER, binding
+    checker = free["llm"]["roles"]["checker"]
+    assert (checker["model"], checker["effort"]) == ("gpt-5.4", "low")
+    assert free["llm"]["allow_same_family_checker"] is True  # shown on every verdict
+    fallback = checker["fallback"]
+    assert fallback["provider"] == "ollama"
+    assert fallback["family"] not in ("openai", "anthropic")
+
+
+def test_local_free_stays_inside_the_smaller_daily_pool() -> None:
+    """Usage past the allowance is billed: two runs at their token cap fit the 2.5M pool,
+    and the extractor, which uses about 95% of a run's tokens, draws on that pool."""
+    free = _raw("local-free")
+    assert free["limits"]["runs_per_day"] * free["budget"]["tokens"] <= SMALLER_POOL_TOKENS
+    assert free["llm"]["roles"]["extractor"]["model"] in FREE_SMALLER

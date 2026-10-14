@@ -287,7 +287,7 @@ llm:
   providers:
     anthropic: { api_key_env: ANTHROPIC_API_KEY }
     openai:    { api_key_env: OPENAI_API_KEY }
-    ollama:    { base_url_env: OLLAMA_BASE_URL }   # BD-05; adapter not built (BD-36)
+    ollama:    { base_url_env: OLLAMA_BASE_URL, num_ctx: 8192 }   # BD-05; adapter E-01 (BD-54): num_ctx required
   concurrency: 4                      # model calls in flight per provider (BD-47)
   allow_same_family_checker: false   # BD-02; see §5.2
   prompt_cache: true                  # BD-30: the repeated system prompt is cached
@@ -513,7 +513,7 @@ Relational access uses repository classes per aggregate (`RunRepo`, `ClaimRepo`,
 
 ### 8.1 Adapters for the PoC
 
-Not built (BD-36): `ollama`, `tavily`, `browser_print`, `otel` and `langsmith`; `weasyprint` is replaced by `fpdf2` (BD-40). A workflow port whose adapter is not built is refused at start-up (§5.2, BD-25), so no profile selects one of these for the LLM or search; the renderer and tracing are not workflow ports, and start-up lists the deployed profile's `weasyprint` as not built yet until D3-3.
+Not built (BD-36): `tavily`, `browser_print`, `otel` and `langsmith`; `weasyprint` is replaced by `fpdf2` (BD-40). A workflow port whose adapter is not built is refused at start-up (§5.2, BD-25), so no profile selects one of these for search; the `ollama` LLM adapter was added in E-01 (BD-54); the renderer and tracing are not workflow ports, and start-up lists the deployed profile's `weasyprint` as not built yet until D3-3.
 
 | Port | Deployed default | Local or alternative |
 |---|---|---|

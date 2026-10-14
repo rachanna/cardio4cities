@@ -86,3 +86,20 @@ async def test_a_failed_call_the_provider_billed_is_recorded() -> None:
         await _call_once(deps, "checker", binding, "s", "u", Schema)
     assert book.cost_micro_usd == 4090
     assert book.by_model["gpt-6-luna"]["calls"] == 1
+
+
+@pytest.mark.parametrize(
+    ("model", "rate"),
+    [
+        ("gpt-5-mini", (0.25, 2.00)),
+        ("gpt-5-mini-2025-08-07", (0.25, 2.00)),
+        ("gpt-5", (1.25, 10.00)),
+        ("gpt-5.4-mini", (0.75, 4.50)),
+        ("gpt-4o-mini", (0.15, 0.60)),
+        ("o3-mini", (1.10, 4.40)),
+    ],
+)
+def test_the_longest_listed_name_sets_the_price(model: str, rate: tuple[float, float]) -> None:
+    """E-02 (BD-55): `gpt-5-mini` starts with `gpt-5-`, so the first match priced it as
+    gpt-5, five times too high; a dated model ID keeps its family's price."""
+    assert cost_micro_usd(model, 1_000_000, 1_000_000) == round(1_000_000 * sum(rate))

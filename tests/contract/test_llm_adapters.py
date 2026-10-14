@@ -8,10 +8,12 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from typing import Any
 
+import httpx
 import pytest
 from pydantic import BaseModel
 
 from app.adapters.llm.anthropic import AnthropicLLM
+from app.adapters.llm.ollama import OllamaLLM, OllamaProbe
 from app.adapters.llm.openai import OpenAILLM
 from app.ports.errors import LLMOutputValidationError, ProviderUnavailableError
 from app.ports.llm import LLMParams, LLMPort
@@ -41,6 +43,15 @@ def stub() -> Iterator[Stub]:
         def do_POST(self) -> None:
             length = int(self.headers.get("content-length", 0))
             s.requests.append({"path": self.path, **json.loads(self.rfile.read(length))})
+            data = json.dumps(s.body).encode()
+            self.send_response(s.status)
+            self.send_header("content-type", "application/json")
+            self.send_header("content-length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def do_GET(self) -> None:
+            s.requests.append({"path": self.path})
             data = json.dumps(s.body).encode()
             self.send_response(s.status)
             self.send_header("content-type", "application/json")
@@ -86,6 +97,17 @@ def openai_response(text: str) -> dict[str, Any]:
     }  # fmt: skip
 
 
+def ollama_response(
+    text: str, prompt: int = 1200, out: int = 80, done_reason: str = "stop"
+) -> dict[str, Any]:
+    return {
+        "model": "gemma3:4b", "created_at": "2026-10-14T00:00:00Z",
+        "message": {"role": "assistant", "content": text},
+        "done": True, "done_reason": done_reason,
+        "prompt_eval_count": prompt, "eval_count": out,
+    }  # fmt: skip
+
+
 def claude(stub: Stub) -> AnthropicLLM:
     return AnthropicLLM("test-key", base_url=f"http://127.0.0.1:{stub.port}", max_retries=0)
 
@@ -94,9 +116,14 @@ def gpt(stub: Stub) -> OpenAILLM:
     return OpenAILLM("test-key", base_url=f"http://127.0.0.1:{stub.port}/v1", max_retries=0)
 
 
+def local(stub: Stub, num_ctx: int = 8192, keep_alive: str | None = None) -> OllamaLLM:
+    return OllamaLLM(f"http://127.0.0.1:{stub.port}", num_ctx, keep_alive=keep_alive)
+
+
 HAIKU = LLMParams(model="claude-haiku-4-5-20251001", max_output_tokens=4000, temperature=0)
 OPUS = LLMParams(model="claude-opus-5-5", max_output_tokens=8000, effort="high")
 LUNA = LLMParams(model="gpt-6-luna", max_output_tokens=8000, effort="low")
+GEMMA = LLMParams(model="gemma3:4b", max_output_tokens=2000, temperature=0)
 
 
 async def test_claude_returns_parsed_output_with_tokens_and_cost(stub: Stub) -> None:
@@ -261,6 +288,8 @@ class Vendor:
     error: dict[str, Any]
     params: LLMParams
     family: str
+    priced: bool = True  # a local model costs nothing (E-01, BD-54)
+    schema_marker: str = "json_schema"  # Ollama takes the bare JSON schema as `format`
 
 
 VENDORS = {
@@ -273,6 +302,10 @@ VENDORS = {
         gpt, openai_response,
         {"error": {"type": "server_error", "code": None, "message": "busy"}},
         LUNA, "openai",
+    ),
+    "ollama": Vendor(
+        local, ollama_response, {"error": "model is busy"},
+        GEMMA, "ollama", priced=False, schema_marker='"format"',
     ),
 }  # fmt: skip
 
@@ -291,7 +324,7 @@ async def test_every_adapter_returns_parsed_output_with_usage_and_cost(
     assert (result.model_id, result.family) == (vendor.params.model, vendor.family)
     assert result.tokens_in > 0
     assert result.tokens_out > 0
-    assert result.cost_micro_usd > 0
+    assert (result.cost_micro_usd > 0) is vendor.priced
 
 
 async def test_every_adapter_reports_output_outside_the_schema(stub: Stub, vendor: Vendor) -> None:
@@ -314,5 +347,78 @@ async def test_every_adapter_sends_a_structured_output_schema(stub: Stub, vendor
     await vendor.make(stub).complete("checker", "s", "u", Verdict, vendor.params)
     (body,) = stub.requests
     schema = json.dumps(body)
-    assert "json_schema" in schema
+    assert vendor.schema_marker in schema
     assert '"label"' in schema
+
+
+# --- Ollama: local open-weight models (E-01, BD-54) --------------------------------------
+
+
+async def test_ollama_sends_the_native_request_with_the_context_window(stub: Stub) -> None:
+    stub.body = ollama_response(GOOD)
+    result = await local(stub).complete("checker", "system text", "user text", Verdict, GEMMA)
+    assert result.parsed == Verdict(label="supported", reason="Halden Bay figure stated")
+    assert (result.tokens_in, result.tokens_out, result.cost_micro_usd) == (1200, 80, 0)
+    (body,) = stub.requests
+    assert body["path"] == "/api/chat"
+    assert body["messages"] == [
+        {"role": "system", "content": "system text"},
+        {"role": "user", "content": "user text"},
+    ]
+    assert body["format"]["properties"].keys() == {"label", "reason"}
+    assert body["options"] == {"num_ctx": 8192, "num_predict": 2000, "temperature": 0}
+    assert (body["stream"], body["think"]) == (False, False)
+    assert "keep_alive" not in body
+
+
+async def test_ollama_sends_keep_alive_when_configured(stub: Stub) -> None:
+    stub.body = ollama_response(GOOD)
+    await local(stub, keep_alive="10m").complete("checker", "s", "u", Verdict, GEMMA)
+    assert stub.requests[0]["keep_alive"] == "10m"
+
+
+async def test_ollama_refuses_a_call_that_filled_the_context_window(stub: Stub) -> None:
+    """Ollama drops the start of a prompt longer than the window without an error, so a
+    full window means the model may not have seen the whole prompt."""
+    stub.body = ollama_response(GOOD, prompt=8100, out=92)
+    with pytest.raises(LLMOutputValidationError, match="context window") as full:
+        await local(stub).complete("extractor", "s", "u", Verdict, GEMMA)
+    assert full.value.usage.tokens_in == 8100
+
+
+async def test_ollama_output_cut_at_the_token_ceiling_is_marked_truncated(stub: Stub) -> None:
+    stub.body = ollama_response('{"label": "supp', done_reason="length")
+    with pytest.raises(LLMOutputValidationError) as cut:
+        await local(stub).complete("checker", "s", "u", Verdict, GEMMA)
+    assert cut.value.truncated is True
+    assert cut.value.usage.tokens_out == 80
+
+
+async def test_ollama_not_running_is_provider_unavailable() -> None:
+    def refuse(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection refused", request=request)
+
+    llm = OllamaLLM("http://127.0.0.1:11434", 8192, transport=httpx.MockTransport(refuse))
+    with pytest.raises(ProviderUnavailableError, match="ollama: ConnectError"):
+        await llm.complete("checker", "s", "u", Verdict, GEMMA)
+
+
+async def test_ollama_probe_fails_until_every_role_model_is_pulled(stub: Stub) -> None:
+    base = f"http://127.0.0.1:{stub.port}"
+    stub.body = {"models": [{"name": "gemma3:4b"}, {"name": "llama3.2:latest"}]}
+    await OllamaProbe("llm_ollama", base, ["gemma3:4b", "llama3.2"]).check()
+    assert stub.requests[0]["path"] == "/api/tags"
+    with pytest.raises(ProviderUnavailableError, match="qwen3:8b"):
+        await OllamaProbe("llm_ollama", base, ["gemma3:4b", "qwen3:8b"]).check()
+
+
+async def test_ollama_thinks_only_when_the_binding_sets_effort(stub: Stub) -> None:
+    """BD-55: thinking comes back apart from the answer, so the answer still parses."""
+    answer = ollama_response(GOOD)
+    answer["message"]["thinking"] = "The passage states 31.2% for the same group..."
+    stub.body = answer
+    thinking = GEMMA.model_copy(update={"temperature": None, "effort": "low"})
+    result = await local(stub).complete("checker", "s", "u", Verdict, thinking)
+    await local(stub).complete("checker", "s", "u", Verdict, GEMMA)
+    assert [body["think"] for body in stub.requests] == [True, False]
+    assert result.raw_text == GOOD

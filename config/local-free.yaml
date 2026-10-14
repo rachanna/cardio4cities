@@ -1,0 +1,71 @@
+# Free development profile (E-02, BD-55; owner 2026-10-14): the local profile with the
+# hosted roles on OpenAI models covered by the owner's complimentary data-sharing allowance
+# (250K tokens a day across the larger models, 2.5M across the smaller ones) and the
+# checker on gpt-5.4: local checkers were measured and none was both accurate and fast
+# enough on a 6 GB GPU, so the owner accepted the labelled same-family exception (BD-55).
+# Its fallback is a local model of another family. No Claude model. Usage past the
+# allowance is billed, so a run is capped at 1.1M tokens and two runs a day.
+app:
+  public_base_url: http://localhost:8000
+  user_agent: "CARDIO4CitiesResearchBot/0.1 (+https://github.com/rachanna/cardio4cities)"
+access:
+  access_code_env: ACCESS_CODE
+  admin_code_env: ADMIN_CODE
+  session_secret_env: SESSION_SECRET
+llm:
+  # Model bindings (BD-55), chosen by the golden sets (E-02): gpt-5.4-mini extracts (85%
+  # recall, 41/42 quotes exact); gpt-5.4 checks (28/28, no false "supported", ~5 s a check).
+  roles:
+    planner:    { provider: openai, model: gpt-5-mini, family: openai, effort: low }
+    extractor:  { provider: openai, model: gpt-5.4-mini, family: openai, effort: low }   # golden set, E-02
+    checker:    { provider: openai, model: gpt-5.4, family: openai, effort: low,
+                  fallback: { provider: ollama, model: "gemma3:latest", family: google, temperature: 0 } }
+    classifier: { provider: openai, model: gpt-5-mini, family: openai, effort: low }
+    answerer:   { provider: openai, model: gpt-5.4, family: openai, effort: low }
+    reporter:   { provider: openai, model: gpt-5.4, family: openai, effort: low }
+  providers:
+    openai:    { api_key_env: OPENAI_API_KEY }
+    # E-01 (BD-54): the checker's fallback; the window is sent with every call. A local
+    # address, not a secret.
+    ollama:    { base_url: "http://127.0.0.1:11434", num_ctx: 8192, keep_alive: 30m }
+  concurrency: 4   # model calls in flight per provider (BD-47); Ollama queues its own
+  allow_same_family_checker: true    # BD-02, BD-55: shown on every verdict and in /health
+  prompt_cache: true   # BD-30: the system prompt is cached
+# Multilingual: sources and quotes stay in their original language. Own Qdrant collection by key.
+embeddings: { provider: sentence_transformers, model: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2, dimension: 384, key: st_multiling_minilm_v1, concurrency: 4 }
+search:     { provider: searxng, mode: links_only, base_url: http://127.0.0.1:8888, rate_per_s: 1 }   # base_url: BD-02
+relational: { dsn_env: DATABASE_URL }
+vector:     { provider: qdrant, url_env: QDRANT_URL }   # no API key locally
+graph:      { provider: graphiti_neo4j, uri_env: NEO4J_URI, user_env: NEO4J_USER, password_env: NEO4J_PASSWORD }
+snapshots:  { provider: postgres, max_bytes: 10485760 }
+renderer:   { provider: fpdf2 }   # BD-40: pure-Python PDF
+report:     { intro_max_words: 120, analysis_max_points: 5, min_paragraph_words: 20, wall_clock_s: 120, max_cost_micro_usd: 100000 }   # LLD-3 §8; budget: BD-40
+tracing:    { providers: [events] }
+# Free allowance (BD-55): 1.1M tokens a run, two runs a day; the $3 cap (BD-15) stays
+budget:     { wall_clock_s: 420, searches: 64, fetches: 120, tokens: 1100000, cost_micro_usd: 3000000, wind_down_at: 0.85 }   # BD-15; fetches 120: BD-46; tokens 1.1M: BD-55
+limits:     { runs_per_day: 2, ask_per_min: 20, resolve_per_min: 30 }
+retrieval:  { rrf_k: 60, r2_top: 20, r2_trigram_min: 0.4, r3_top: 20, r3_mentions_top: 5, max_facts: 8, max_mentions: 4,
+              max_per_slot: 2, mentions_only_if_facts_below: 3, wall_clock_s: 45, max_cost_micro_usd: 50000 }   # LLD-5 §14; budget: BD-38
+fetch:      { concurrency: 6, min_interval_s: 1, max_bytes: 10485760, connect_timeout_s: 5, read_timeout_s: 20, allowed_ports: [80, 443], robots_timeout_s: 15, crawl_delay_cap_s: 30, total_timeout_s: 60, pdf_max_pages: 200 }
+verify:     { max_claims_per_slot: 5, label_margin_chars: 200 }   # BD-05, BD-10
+select:     { max_new_urls_per_slot_round: 3, max_reused_per_slot_round: 2, other_place_min_population: 15000, prefer_local: true, max_per_domain_per_round: 2 }   # BD-14, BD-15
+replan:     { max_rounds: 2, max_rounds_wider_geo: 1, priority: [S04, S03, S05, S06] }   # priority: BD-15
+plan:       { queries_per_slot: 2 }   # BD-15
+extract:    { window_tokens: 12000, overlap_tokens: 500, max_windows_per_source: 4, stop_windows_below_s: 60, max_sources_without_city: 1 }   # BD-29
+quote:      { min_words: 6, max_words: 60, min_words_unique: 3 }   # LLD-2 §4.1 [tunable] (BD-06, BD-08)
+chunk:      { prose_tokens: 400, overlap_tokens: 60, table_max_tokens: 1200 }   # LLD-1 §5.3 [tunable] (BD-07)
+consistency: { agree_pp: 0.5, agree_rel: 0.02 }
+entity:     { candidate_threshold: 0.85 }   # BD-24: logged for review, never merged
+badge:      { stale_years: 5, stale_years_people: 2, small_sample: 300 }
+confidence: { recent_years: 5 }
+analytics:  { enabled: false }
+stream:     { poll_interval_s: 0.5, heartbeat_s: 15 }   # LLD-4 §4 [tunable]
+health:     { provider_ttl_s: 600, provider_timeout_s: 5 }   # LLD-4 §7: providers checked at most every 10 minutes (BD-42) [tunable]
+runs:       { heartbeat_s: 10, stale_after_s: 45, shutdown_grace_s: 15 }   # BD-25 [tunable]
+# Official APIs for Wave 0 (LLD-2 §13, BD-13): reached through the collector's API path
+structured:
+  providers:
+    who_gho:    { base_url: https://ghoapi.azureedge.net/api }
+    world_bank: { base_url: https://api.worldbank.org/v2 }
+eval:       { checker_agreement_min: 0.9, recall_min: 0.85, classifier_min: 0.9, answerer_min: 0.9 }   # LLD-3 §9 pass bars; recall: BD-26; classifier, answerer: BD-38
+geography:  { nearby_km: 75 }   # figures from places this close may answer for the city (BD-10)

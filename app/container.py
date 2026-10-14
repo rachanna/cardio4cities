@@ -47,6 +47,7 @@ ADAPTERS: AdapterRegistry = {
     "probe:llm": {
         "anthropic": "app.adapters.llm.anthropic:make_probe",
         "openai": "app.adapters.llm.openai:make_probe",
+        "ollama": "app.adapters.llm.ollama:make_probe",  # E-01, BD-54
     },
     "probe:embeddings": {
         "openai": "app.adapters.embeddings.openai:make_probe",
@@ -83,6 +84,7 @@ ADAPTERS: AdapterRegistry = {
     "llm": {
         "anthropic": "app.adapters.llm.anthropic:make",
         "openai": "app.adapters.llm.openai:make",
+        "ollama": "app.adapters.llm.ollama:make",  # local open-weight models (E-01, BD-54)
     },
 }
 

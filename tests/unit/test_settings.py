@@ -167,6 +167,51 @@ def _problems_or_none(env: dict[str, str], config_dir: Path) -> list[str]:
     return []
 
 
+def _local_checker(raw: dict[str, Any], **binding: Any) -> None:
+    raw["llm"]["roles"]["checker"] = {
+        "provider": "ollama", "model": "gemma3:4b", "family": "google", **binding,
+    }  # fmt: skip
+
+
+def test_an_ollama_role_needs_the_context_window(
+    write_config: ConfigWriter, valid_env: dict[str, str]
+) -> None:
+    """E-01 (BD-54): without it Ollama keeps a small window and silently cuts prompts."""
+    valid_env["OLLAMA_BASE_URL"] = "http://127.0.0.1:11434"
+    config_dir = write_config(change=lambda raw: _local_checker(raw, temperature=0))
+
+    assert "llm.providers.ollama.num_ctx is required when a role uses Ollama" in _problems(
+        valid_env, config_dir
+    )
+
+
+def test_an_ollama_model_takes_temperature_not_effort(
+    write_config: ConfigWriter, valid_env: dict[str, str]
+) -> None:
+    def change(raw: dict[str, Any]) -> None:
+        _local_checker(raw, effort="low")
+        raw["llm"]["providers"]["ollama"]["num_ctx"] = 8192
+
+    valid_env["OLLAMA_BASE_URL"] = "http://127.0.0.1:11434"
+    problems = _problems(valid_env, write_config(change=change))
+
+    assert problems == ["llm.roles.checker: an Ollama model takes temperature, not effort"]
+
+
+def test_an_ollama_checker_with_its_window_loads(
+    write_config: ConfigWriter, valid_env: dict[str, str]
+) -> None:
+    """A local checker from another family keeps R-82 without the same-family flag."""
+
+    def change(raw: dict[str, Any]) -> None:
+        _local_checker(raw, temperature=0)
+        raw["llm"]["providers"]["ollama"]["num_ctx"] = 8192
+
+    valid_env["OLLAMA_BASE_URL"] = "http://127.0.0.1:11434"
+
+    assert _problems_or_none(valid_env, write_config(change=change)) == []
+
+
 def test_searxng_needs_base_url(write_config: ConfigWriter, valid_env: dict[str, str]) -> None:
     config_dir = write_config(change=lambda raw: raw["search"].pop("base_url"))
 

@@ -92,6 +92,7 @@ def test_every_profile_caps_a_run_at_the_owners_limits() -> None:
 
 def _ollama_checker(raw: dict[str, Any]) -> None:
     raw["llm"]["roles"]["checker"] = {"provider": "ollama", "model": "qwen2.5:3b", "family": "qwen"}
+    raw["llm"]["providers"]["ollama"]["num_ctx"] = 8192  # required with Ollama (E-01, BD-54)
 
 
 def test_ollama_checker_needs_its_address(

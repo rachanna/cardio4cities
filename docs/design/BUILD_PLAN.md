@@ -105,6 +105,18 @@ Also confirm on day 1: the OpenAI checker and embedding model IDs and the embedd
 
 ---
 
+## 5a. After the assessment: enhancements
+
+From 2026-10-14 the system keeps growing as practice in building systems. Task IDs: `E-` for a new capability, `FX-` for a fix. Development uses free models (BD-54); paid APIs only for the final validation, with the owner's approval.
+
+| ID | Task | Load | Build | Done when | Est. |
+|---|---|---|---|---|---|
+| E-01 | Ollama adapter | LLD-3 §2, LLD-4 §5, §8, BD-54 | `app/adapters/llm/ollama.py` (native API, context window per call, zero cost, health probe); config checks; contract tests | Shared LLMPort tests pass for Ollama; one live checker call on the owner's laptop | 2 h |
+| E-02 | Free development profile | LLD-3 §9, BD-54 | A profile with hosted roles on OpenAI's complimentary models (if the account is eligible) and a local checker from another family; checker chosen by the golden set on candidate models | Checker agreement meets the LLD-3 §9 bar on the chosen local model | 2 h |
+| E-03 | First free end-to-end run | LLD-2 §5, BD-54 | One full run on the free profile; tune local settings in config only (concurrency, window, time budget) | Run completes with every slot given a status; time and tokens recorded | 1.5 h |
+
+---
+
 ## 6. When time runs short
 
 Cut in this order (BRAINSTORM §9.3), recording each cut in `DECISIONS.md` §10:

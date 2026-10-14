@@ -117,6 +117,10 @@ class ProviderConfig(_Section):
     api_key_env: str | None = None
     base_url: str | None = None
     base_url_env: str | None = None  # BD-05: e.g. OLLAMA_BASE_URL from .env
+    # Ollama only (E-01, BD-54): the context window sent with every call, and how long a
+    # model stays loaded after it ("5m", "-1": until Ollama stops) [tunable]
+    num_ctx: int | None = None
+    keep_alive: str | None = None
 
 
 class LLMSection(_Section):
@@ -507,6 +511,32 @@ def check_adapter_settings(config: Config) -> list[str]:
         problems.append("search.base_url is required for provider 'searxng'")
     if "langsmith" in config.tracing.providers and not config.tracing.langsmith_api_key_env:
         problems.append("tracing.langsmith_api_key_env is required when langsmith is enabled")
+    problems += _check_ollama(config)
+    return problems
+
+
+def _check_ollama(config: Config) -> list[str]:
+    """E-01 (BD-54): an Ollama role needs the context window, which Ollama would otherwise
+    keep small and silently cut prompts to, and takes `temperature`, never `effort`."""
+    refs = [
+        (name, ref)
+        for name, role in config.llm.roles.items()
+        for ref in role.model_refs()
+        if ref.provider == "ollama"
+    ]
+    if not refs:
+        return []
+    problems = []
+    provider = config.llm.providers.get("ollama")
+    if provider is not None and not provider.num_ctx:
+        problems.append("llm.providers.ollama.num_ctx is required when a role uses Ollama")
+    if provider is not None and not (provider.base_url or provider.base_url_env):
+        problems.append("llm.providers.ollama needs base_url or base_url_env")
+    problems += [
+        f"llm.roles.{name}: an Ollama model takes temperature, not effort"
+        for name, ref in refs
+        if ref.effort is not None
+    ]
     return problems
 
 

@@ -79,6 +79,15 @@ class SourceRepo(Protocol):
         """The stored table offsets; None for a source stored before they were kept."""
         ...
 
+    async def sources_to_index(self) -> list[dict[str, Any]]:
+        """Every parsed source with what its chunks need (E-05): city, run, text, stored
+        table spans, metadata, and the slots of its claims."""
+        ...
+
+    async def set_table_spans(self, source_id: str, spans: Sequence[tuple[int, int]]) -> None:
+        """Backfill table offsets found by an exact re-parse of the snapshot (E-05)."""
+        ...
+
     async def source_at(self, run_id: str, url_canonical: str) -> tuple[str, bool] | None:
         """The run's source stored at this final URL, and whether it has parsed text
         (BD-21: two candidates that redirect to one page share one source)."""
@@ -295,6 +304,10 @@ class ResearchRepo(Protocol):
 
     async def claim_index_row(self, claim_id: str) -> dict[str, Any] | None:
         """Fields for the claim-index point: text parts and the LLD-5 §4.2 payload."""
+        ...
+
+    async def indexed_claim_ids(self) -> list[str]:
+        """Every claim the claim index should hold: supported or contested (E-05)."""
         ...
 
     # --- coverage (D2-5, LLD-2 §11) ----------------------------------------------------

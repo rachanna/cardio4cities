@@ -97,3 +97,15 @@ async def test_collection_dimension_and_delete_by_filter(
 def test_point_ids_are_deterministic() -> None:
     assert chunk_point_id("src_a", 3) == chunk_point_id("src_a", 3)
     assert chunk_point_id("src_a", 3) != chunk_point_id("src_a", 4)
+
+
+async def test_drop_collection_removes_it_and_absent_is_fine(
+    store: tuple[QdrantVectorStore, str],
+) -> None:
+    """E-05 (BD-56): `poe reindex --recreate` starts a collection from nothing, which is
+    what clears points no source produces any more."""
+    adapter, name = store
+    await adapter.drop_collection(name)
+    assert await adapter.collection_dimension(name) is None
+    await adapter.drop_collection(name)  # absent: no error
+    await adapter.ensure_collection(name, 4)  # the fixture's teardown deletes it

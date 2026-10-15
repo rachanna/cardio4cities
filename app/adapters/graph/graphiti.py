@@ -346,6 +346,39 @@ class GraphitiGraph:
         )
         return bool(records)
 
+    # --- re-embedding (`poe reindex`, E-05, BD-56) ----------------------------------
+
+    async def embedding_texts(self) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+        nodes, _, _ = await self._g.driver.execute_query(
+            "MATCH (n:Entity) RETURN n.uuid AS uuid, n.name AS text ORDER BY n.uuid"
+        )
+        edges, _, _ = await self._g.driver.execute_query(
+            "MATCH ()-[e:RELATES_TO]->() RETURN e.uuid AS uuid, e.fact AS text ORDER BY e.uuid"
+        )
+        return (
+            [(str(r["uuid"]), str(r["text"] or "")) for r in nodes],
+            [(str(r["uuid"]), str(r["text"] or "")) for r in edges],
+        )
+
+    async def set_embeddings(
+        self, names: list[tuple[str, list[float]]], facts: list[tuple[str, list[float]]]
+    ) -> None:
+        """The Neo4j procedures Graphiti 0.30 uses when it saves a node or an edge, so its
+        search reads the new vectors exactly as it reads its own."""
+        await self._setup()
+        if names:
+            await self._g.driver.execute_query(
+                "UNWIND $rows AS r MATCH (n:Entity {uuid: r.uuid})"
+                " CALL db.create.setNodeVectorProperty(n, 'name_embedding', r.v)",
+                rows=[{"uuid": u, "v": v} for u, v in names],
+            )
+        if facts:
+            await self._g.driver.execute_query(
+                "UNWIND $rows AS r MATCH ()-[e:RELATES_TO {uuid: r.uuid}]->()"
+                " CALL db.create.setRelationshipVectorProperty(e, 'fact_embedding', r.v)",
+                rows=[{"uuid": u, "v": v} for u, v in facts],
+            )
+
     async def purge(self) -> int:
         """Delete every node and edge, the marker too (`poe purge-graph`, local only), in
         batches until none is left."""

@@ -233,3 +233,30 @@ async def test_given_embeddings_are_stored_and_the_adapter_embeds_nothing(
     assert calls == []
     hits = await g.search_edges(group, ["GOVERNS"], query="The office runs public health.")
     assert [h.edge.uuid for h in hits] == [governs.uuid]  # the stored vector is the fact's
+
+
+async def test_reembedding_replaces_vectors_that_search_then_reads(
+    graph: tuple[GraphitiGraph, str],
+) -> None:
+    """E-05 (BD-56): `poe reindex` rewrites name and fact embeddings with the procedures
+    Graphiti uses itself, so Graphiti's own search reads the new vectors."""
+    g, group = graph
+    office = entity(group, "office", "Halden Bay Health Office", "Organization")
+    city = entity(group, "city", "Halden Bay", "Place")
+    fact = edge(group, f"clm_{group}_g", "GOVERNS", "The office governs public health.", None)
+    await g.add_triplet(office, fact, city)
+
+    names, facts = await g.embedding_texts()
+    ours = {office.uuid, city.uuid}
+    assert ours <= {u for u, _ in names}
+    assert (fact.uuid, "The office governs public health.") in facts
+
+    dim = len((await HashEmbeddings().embed(["x"]))[0])
+    new = [1.0] + [0.0] * (dim - 1)
+    await g.set_embeddings([(u, new) for u in ours], [(fact.uuid, new)])
+    records, _, _ = await g._g.driver.execute_query(
+        "MATCH ()-[e:RELATES_TO {uuid: $u}]->() RETURN e.fact_embedding AS v", u=fact.uuid
+    )
+    assert list(records[0]["v"]) == new
+    hits = await g.search_edges(group, ["GOVERNS"], query="governs public health")
+    assert [h.edge.uuid for h in hits] == [fact.uuid]

@@ -81,6 +81,16 @@ class GraphPort(Protocol):
 
     async def has_entities(self) -> bool: ...
 
+    async def embedding_texts(self) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+        """Every entity's (uuid, name) and every edge's (uuid, fact), all groups (E-05)."""
+        ...
+
+    async def set_embeddings(
+        self, names: list[tuple[str, list[float]]], facts: list[tuple[str, list[float]]]
+    ) -> None:
+        """Replace entity name and edge fact embeddings, stored as Graphiti stores them."""
+        ...
+
     async def purge(self) -> int:
         """Delete everything in the graph; returns the number of nodes deleted."""
         ...

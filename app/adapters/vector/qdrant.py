@@ -98,6 +98,10 @@ class QdrantVectorStore:
             name, points_selector=models.FilterSelector(filter=_filter(filters)), wait=True
         )
 
+    async def drop_collection(self, name: str) -> None:
+        if await self._client.collection_exists(name):
+            await self._client.delete_collection(name)
+
     async def close(self) -> None:
         await self._client.close()
 

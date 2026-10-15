@@ -4,7 +4,7 @@ repositories are the port and SQL lives only in `app/adapters/postgres/`.
 Each repository is added by the task that first needs it (BD-03).
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import date
 from typing import Any, Protocol
 
@@ -65,9 +65,18 @@ class SourceRepo(Protocol):
     async def add_crawl_decision(self, decision: CrawlDecision) -> None: ...
 
     async def add_source(
-        self, source: Source, parsed_text: str | None, crawl_decision_id: str | None
+        self,
+        source: Source,
+        parsed_text: str | None,
+        crawl_decision_id: str | None,
+        table_spans: Sequence[tuple[int, int]] | None = None,
     ) -> None:
-        """Inserts nothing when the run already holds the source ID or its canonical URL."""
+        """Inserts nothing when the run already holds the source ID or its canonical URL.
+        `table_spans`: the parser's [start, end) table offsets in `parsed_text` (E-05)."""
+        ...
+
+    async def table_spans(self, source_id: str) -> list[tuple[int, int]] | None:
+        """The stored table offsets; None for a source stored before they were kept."""
         ...
 
     async def source_at(self, run_id: str, url_canonical: str) -> tuple[str, bool] | None:

@@ -260,3 +260,31 @@ async def test_reembedding_replaces_vectors_that_search_then_reads(
     assert list(records[0]["v"]) == new
     hits = await g.search_edges(group, ["GOVERNS"], query="governs public health")
     assert [h.edge.uuid for h in hits] == [fact.uuid]
+
+
+async def test_search_keeps_to_the_given_edges_and_ranks_around_the_named_entity(
+    graph: tuple[GraphitiGraph, str],
+) -> None:
+    """E-07 (BD-57): Postgres names the run's edges and the search stays within them;
+    with a query and a centre node, Graphiti ranks those edges and returns no other."""
+    g, group = graph
+    office = entity(group, "office", "Halden Bay Health Office", "Organization")
+    ngo = entity(group, "ngo", "Coastal Heart Trust", "Organization")
+    programme = entity(group, "prog", "Halden Bay Blood Pressure Programme", "Programme")
+    runs = edge(group, f"clm_{group}_r", "RUNS", "The office runs the programme.", None)
+    funds = edge(group, f"clm_{group}_f", "FUNDS", "The trust funds the programme.", None)
+    older = edge(group, f"clm_{group}_o", "RUNS", "The trust ran the programme.", None)
+    await g.add_triplet(office, runs, programme)
+    await g.add_triplet(ngo, funds, programme)
+    await g.add_triplet(ngo, older, programme)
+
+    scope = [runs.uuid, funds.uuid]  # an earlier run's edge (older) is out of scope
+    structural = await g.search_edges(group, ["RUNS", "FUNDS"], limit=10, edge_uuids=scope)
+    assert {h.edge.uuid for h in structural} == set(scope)
+
+    ranked = await g.search_edges(
+        group, ["RUNS", "FUNDS"], query="Who funds the programme?", limit=10,
+        edge_uuids=scope, center_uuid=ngo.uuid,
+    )  # fmt: skip
+    assert {h.edge.uuid for h in ranked} <= set(scope)
+    assert await g.search_edges(group, ["RUNS"], limit=10, edge_uuids=[]) == []

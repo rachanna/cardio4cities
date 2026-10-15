@@ -306,6 +306,11 @@ class ResearchRepo(Protocol):
         """Fields for the claim-index point: text parts and the LLD-5 §4.2 payload."""
         ...
 
+    async def run_edge_uuids(self, run_id: str) -> list[str]:
+        """The graph edges written for a run's claims, through `graph_link` (E-07): the
+        graph route searches only these, so an earlier run's edges never crowd them out."""
+        ...
+
     async def indexed_claim_ids(self) -> list[str]:
         """Every claim the claim index should hold: supported or contested (E-05)."""
         ...

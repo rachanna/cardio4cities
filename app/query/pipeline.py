@@ -92,7 +92,7 @@ async def answer_question(
         r1(deps, u, city_facts),
         r2(deps, question, u, entity_ids),
         r3(deps, question, city_facts),
-        r4(deps, u, entity_ids),
+        r4(deps, u, entity_ids, question),
     )
     by_route = {r.route: r for r in routes}
     trace["routes"] = {r.route: _route_trace(r) for r in routes}

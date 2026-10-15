@@ -64,7 +64,14 @@ class GraphPort(Protocol):
         include_ended: bool = False,
         query: str | None = None,
         limit: int = 20,
-    ) -> list[GraphEdgeHit]: ...
+        edge_uuids: list[str] | None = None,
+        center_uuid: str | None = None,
+    ) -> list[GraphEdgeHit]:
+        """Edges of the group by type and date. `edge_uuids` restricts the search to those
+        edges (E-07: the latest run's, decided in Postgres). With `query`, Graphiti's hybrid
+        search ranks them by meaning, around `center_uuid` when the question names an
+        entity; without it, the order is newest first."""
+        ...
 
     async def neighbours(self, group_id: str, entity_uuid: str) -> list[GraphEdgeHit]: ...
 

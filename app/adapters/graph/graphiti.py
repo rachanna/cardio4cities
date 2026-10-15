@@ -27,7 +27,10 @@ from graphiti_core.errors import GroupsEdgesNotFoundError, GroupsNodesNotFoundEr
 from graphiti_core.llm_client.client import LLMClient
 from graphiti_core.llm_client.config import LLMConfig
 from graphiti_core.nodes import EntityNode
-from graphiti_core.search.search_config_recipes import EDGE_HYBRID_SEARCH_RRF
+from graphiti_core.search.search_config_recipes import (
+    EDGE_HYBRID_SEARCH_NODE_DISTANCE,
+    EDGE_HYBRID_SEARCH_RRF,
+)
 from graphiti_core.search.search_filters import (
     ComparisonOperator,
     DateFilter,
@@ -221,30 +224,45 @@ class GraphitiGraph:
         include_ended: bool = False,
         query: str | None = None,
         limit: int = 20,
+        edge_uuids: list[str] | None = None,
+        center_uuid: str | None = None,
     ) -> list[GraphEdgeHit]:
         await self._setup()
+        if edge_uuids is not None and not edge_uuids:
+            return []  # restricted to no edge: nothing to search
         if query:
-            config = EDGE_HYBRID_SEARCH_RRF.model_copy(update={"limit": limit})
+            # Ranked around the named entity when there is one (E-07, BD-57)
+            recipe = EDGE_HYBRID_SEARCH_NODE_DISTANCE if center_uuid else EDGE_HYBRID_SEARCH_RRF
             edges = (
                 await self._g.search_(
                     query,
-                    config=config,
+                    config=recipe.model_copy(update={"limit": limit}),
                     group_ids=[group_id],
-                    search_filter=self._filters(relation_types, as_of, include_ended),
+                    center_node_uuid=center_uuid,
+                    search_filter=self._filters(relation_types, as_of, include_ended, edge_uuids),
                 )
             ).edges
         else:
             edges = await self._edges_by_cypher(
-                group_id, relation_types, as_of, include_ended, limit
+                group_id, relation_types, as_of, include_ended, limit, edge_uuids
             )
         return await self._hits(edges)
 
-    def _filters(self, types: list[str], as_of: date | None, include_ended: bool) -> SearchFilters:
+    def _filters(
+        self,
+        types: list[str],
+        as_of: date | None,
+        include_ended: bool,
+        edge_uuids: list[str] | None = None,
+    ) -> SearchFilters:
+        """Graphiti 0.30 applies edge types, edge UUIDs and dates to an edge search; it
+        declares property filters but never applies them to edges (E-07)."""
         null = DateFilter(comparison_operator=ComparisonOperator.is_null)
         if as_of is not None:
             at = _at(as_of)
             return SearchFilters(
                 edge_types=types or None,
+                edge_uuids=edge_uuids,
                 valid_at=[
                     [null],
                     [DateFilter(date=at, comparison_operator=ComparisonOperator.less_than_equal)],
@@ -255,13 +273,23 @@ class GraphitiGraph:
                 ],
             )
         return SearchFilters(
-            edge_types=types or None, invalid_at=None if include_ended else [[null]]
+            edge_types=types or None,
+            edge_uuids=edge_uuids,
+            invalid_at=None if include_ended else [[null]],
         )
 
     async def _edges_by_cypher(
-        self, group_id: str, types: list[str], as_of: date | None, include_ended: bool, limit: int
+        self,
+        group_id: str,
+        types: list[str],
+        as_of: date | None,
+        include_ended: bool,
+        limit: int,
+        edge_uuids: list[str] | None = None,
     ) -> list[EntityEdge]:
         where = ["e.group_id = $group_id"]
+        if edge_uuids is not None:
+            where.append("e.uuid IN $uuids")
         if types:
             where.append("e.name IN $types")
         if as_of is not None:
@@ -277,6 +305,7 @@ class GraphitiGraph:
             types=types,
             at=_at(as_of),
             limit=limit,
+            uuids=edge_uuids or [],
         )
         uuids = [r["uuid"] for r in records]
         return await EntityEdge.get_by_uuids(self._g.driver, uuids) if uuids else []

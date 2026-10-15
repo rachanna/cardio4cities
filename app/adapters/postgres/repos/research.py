@@ -675,6 +675,17 @@ class PostgresResearchRepo:
             )
         return dict(row) if row else None
 
+    async def run_edge_uuids(self, run_id: str) -> list[str]:
+        async with self._engine.connect() as conn:
+            rows = await conn.execute(
+                text(
+                    "SELECT DISTINCT CAST(g.edge_uuid AS text) FROM graph_link g"
+                    " JOIN claim c USING (claim_id) WHERE c.run_id = :r ORDER BY 1"
+                ),
+                {"r": run_id},
+            )
+            return [str(r[0]) for r in rows]
+
     async def indexed_claim_ids(self) -> list[str]:
         async with self._engine.connect() as conn:
             rows = await conn.execute(

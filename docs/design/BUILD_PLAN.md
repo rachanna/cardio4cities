@@ -114,6 +114,7 @@ From 2026-10-14 the system keeps growing as practice in building systems. Task I
 | E-01 | Ollama adapter | LLD-3 §2, LLD-4 §5, §8, BD-54 | `app/adapters/llm/ollama.py` (native API, context window per call, zero cost, health probe); config checks; contract tests | Shared LLMPort tests pass for Ollama; one live checker call on the owner's laptop | 2 h |
 | E-02 | Free development profile | LLD-3 §9, BD-55 | `config/local-free.yaml`: hosted roles on OpenAI's complimentary models, extractor and checker chosen by the golden sets; a local checker where one is accurate and fast enough, otherwise a GPT checker with the labelled exception and a local fallback (owner) | Extractor and checker golden sets pass on the chosen models (done: gpt-5.4-mini 85%, gpt-5.4 28/28) | 2 h |
 | E-03 | First free end-to-end run | LLD-2 §5, BD-54 | One full run on the free profile; tune local settings in config only (concurrency, window, time budget) | Run completes with every slot given a status; time and tokens recorded | 1.5 h |
+| E-04 | Retrieval trace | LLD-5, LLD-4 §7, HLD §7 | Phase 0 (done): map of the three stores, join keys, ingestion and query paths, fusion, fact-checking, tracing and cross-store risks, `docs/review/RETRIEVAL_MAP.html`. Phase 1 (waits for owner decisions): a trace behind `RAG_TRACE=1` that extends `answer.trace`, off and unchanged when unset; Phase 2: `scripts/trace_query.py` and a per-source ingestion trace with a readable report | Phase 1 and 2: answers unchanged with the flag off; one real query traced end to end | 4 h |
 
 ---
 

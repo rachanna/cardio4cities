@@ -11,6 +11,8 @@ A claim becomes supported or contested only when its stored verdict is `supporte
 """
 
 import logging
+from collections.abc import Mapping
+from typing import Any
 
 from app.domain.ids import graph_uuid
 from app.domain.vocab import ClaimStatus
@@ -42,6 +44,19 @@ def index_text(statement: str, quote: str, translation: str | None) -> str:
     return f"{statement} | {translation or quote}"
 
 
+def claim_point(claim_id: str, row: Mapping[str, Any], vector: list[float]) -> VectorPoint:
+    """The claim-index point for a claim row (LLD-5 §4.2); one builder for a run's `sync`
+    and for `poe reindex` (E-05, BD-56)."""
+    payload = {k: row[k] for k in PAYLOAD_FIELDS if row.get(k) is not None}
+    if row.get("reference_end") is not None:
+        payload["reference_end"] = row["reference_end"].isoformat()
+    return VectorPoint(id=claim_point_id(claim_id), vector=vector, payload=payload)
+
+
+def row_text(row: Mapping[str, Any]) -> str:
+    return index_text(row["statement"], row["quote"], row["quote_translation"])
+
+
 class VerdictMismatchError(RuntimeError):
     """A claim would become a fact without a supported verdict (BD-18)."""
 
@@ -69,14 +84,7 @@ async def sync(d: RunDeps, claim_id: str) -> None:
             await d.vector.delete_by_filter(d.claim_collection, {"claim_id": claim_id})
             return
         await d.ledger.reserve("indexing")  # a confirmed claim: never refused (BD-19)
-        text = index_text(row["statement"], row["quote"], row["quote_translation"])
-        (vector,) = await d.embeddings.embed([text])
-        payload = {k: row[k] for k in PAYLOAD_FIELDS if row.get(k) is not None}
-        if row.get("reference_end") is not None:
-            payload["reference_end"] = row["reference_end"].isoformat()
-        await d.vector.upsert(
-            d.claim_collection,
-            [VectorPoint(id=claim_point_id(claim_id), vector=vector, payload=payload)],
-        )
+        (vector,) = await d.embeddings.embed([row_text(row)])
+        await d.vector.upsert(d.claim_collection, [claim_point(claim_id, row, vector)])
     except Exception as exc:  # any index failure: Postgres keeps the final word
         log.warning("claim index not updated for %s (%s)", claim_id, type(exc).__name__)

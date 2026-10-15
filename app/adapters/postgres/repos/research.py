@@ -675,6 +675,16 @@ class PostgresResearchRepo:
             )
         return dict(row) if row else None
 
+    async def indexed_claim_ids(self) -> list[str]:
+        async with self._engine.connect() as conn:
+            rows = await conn.execute(
+                text(
+                    "SELECT claim_id FROM claim WHERE status IN ('supported', 'contested')"
+                    " ORDER BY claim_id"
+                )
+            )
+            return [str(r[0]) for r in rows]
+
     # --- coverage (D2-5, LLD-2 §11) -----------------------------------------------------
 
     async def slot_claims(self, run_id: str, slot_id: str) -> list[tuple[Claim, str]]:

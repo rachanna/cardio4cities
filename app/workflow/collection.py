@@ -149,6 +149,27 @@ class ApiFetched:
     http_status: int | None = None
 
 
+def parse_body(
+    parser: ParserPort,
+    content: bytes,
+    mime: str,
+    url: str,
+    content_type: str | None,
+    keywords: list[str],
+) -> ParsedDocument:
+    """Parse a fetched body by its media type. Shared by runs and `poe reindex` (E-05),
+    which re-parses a stored snapshot by the same rules."""
+    charset = charset_of(content_type)
+    try:
+        if mime == "application/pdf":
+            return parser.parse_pdf(content, keywords)
+        if mime == "text/plain":
+            return ParsedDocument(text=decode_text(content, charset))
+        return parser.parse_html(content, url, charset)
+    except Exception:  # a parser must not raise (BD-21); if one does, it is unreadable
+        return ParsedDocument(text="")
+
+
 class Collector:
     def __init__(
         self,
@@ -627,16 +648,9 @@ class Collector:
         if kind is None:
             return Collected(url, tuple(decisions), "fetched",
                              parse_outcome=ParseOutcome.UNSUPPORTED_TYPE, **common)  # type: ignore[arg-type]  # fmt: skip
-        charset = charset_of(result.content_type)
-        try:
-            if mime == "application/pdf":
-                document = self._parser.parse_pdf(result.content, keywords)
-            elif mime == "text/plain":
-                document = ParsedDocument(text=decode_text(result.content, charset))
-            else:
-                document = self._parser.parse_html(result.content, decision.url, charset)
-        except Exception:  # a parser must not raise (BD-21); if one does, it is unreadable
-            document = ParsedDocument(text="")
+        document = parse_body(
+            self._parser, result.content, mime, decision.url, result.content_type, keywords
+        )
         # PDF page markers are ours, not the document's: a scanned PDF has no text (BD-21)
         readable = len(_PAGE_MARKER.sub("", document.text).strip()) >= MIN_READABLE_CHARS
         if kind is SourceKind.WEB_HTML and not readable and _PASSWORD_FIELD.search(result.content):

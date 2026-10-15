@@ -82,6 +82,7 @@ types = { cmd = "python -m scripts.web types", help = "Regenerate the web app's 
 dev = { cmd = "python -m scripts.dev", help = "API on :8000 and the web app on :3000 (next dev, proxying /api)" }
 purge = { cmd = "python -m scripts.purge_city", help = "Remove a city from every store: --list, then CITY_ID (dry run) and CITY_ID --yes (BD-42)" }
 purge-graph = { cmd = "python -m scripts.purge_graph", help = "Delete the local Neo4j graph and its embedding marker (refuses when APP_ENV=deployed)" }
+reindex = { cmd = "python -m scripts.reindex", help = "Rebuild Qdrant collections and graph embeddings from Postgres for the configured local embedding model: --dry-run, --recreate, --only claims|chunks|graph (E-05, BD-56)" }
 reference = { sequence = [
     "python -m scripts.reference.load_geonames",
     "python -m scripts.reference.load_yaml_reference",

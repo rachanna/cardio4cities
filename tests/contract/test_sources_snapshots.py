@@ -119,3 +119,18 @@ async def test_snapshot_over_the_limit_is_refused(migrated: str) -> None:
             await snapshots.put("src_1", b"x" * 11, "text/plain")
     finally:
         await snapshots.close()
+
+
+async def test_table_spans_are_kept_with_the_source(relational: PostgresRelational) -> None:
+    """E-05 (BD-56): chunks are cut by the parser's table offsets, so the chunk
+    collection can be rebuilt from Postgres only if the offsets are stored."""
+    await _seed_run(relational)
+    await relational.sources.add_source(_source(), "Intro. | a | b |", None, [(7, 16)])
+    await relational.sources.add_source(
+        _source().model_copy(update={"source_id": "src_2", "url_canonical": "https://x.test/2"}),
+        "No tables.",
+        None,
+    )
+
+    assert await relational.sources.table_spans("src_1") == [(7, 16)]
+    assert await relational.sources.table_spans("src_2") is None

@@ -107,6 +107,10 @@ class MemoryVector:
     async def collection_dimension(self, name: str) -> int | None:
         return self.collections.get(name)
 
+    async def drop_collection(self, name: str) -> None:
+        self.collections.pop(name, None)
+        self.points.pop(name, None)
+
     async def upsert(self, name: str, points: list[VectorPoint]) -> None:
         ids = {p.id for p in points}  # same ID replaces, as in Qdrant
         kept = [p for p in self.points.get(name, []) if p.id not in ids]

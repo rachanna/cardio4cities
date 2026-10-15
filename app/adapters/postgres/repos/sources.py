@@ -1,5 +1,9 @@
 """Crawl decisions and sources (LLD-1 §4.3). One fetch per canonical URL per run (HD-01)."""
 
+import json
+from collections.abc import Sequence
+from typing import Any
+
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
@@ -44,7 +48,11 @@ class PostgresSourceRepo:
             )
 
     async def add_source(
-        self, source: Source, parsed_text: str | None, crawl_decision_id: str | None
+        self,
+        source: Source,
+        parsed_text: str | None,
+        crawl_decision_id: str | None,
+        table_spans: Sequence[tuple[int, int]] | None = None,
     ) -> None:
         values = source.model_dump(mode="python")
         values.update(
@@ -56,6 +64,7 @@ class PostgresSourceRepo:
             parse_outcome=source.parse_outcome.value if source.parse_outcome else None,
             parsed_text=parsed_text,
             crawl_decision_id=crawl_decision_id,
+            table_spans=None if table_spans is None else json.dumps([list(t) for t in table_spans]),
         )
         async with self._engine.begin() as conn:
             await conn.execute(
@@ -63,15 +72,49 @@ class PostgresSourceRepo:
                     "INSERT INTO source (source_id, run_id, url, url_canonical, domain, kind,"
                     " publisher_class, title, language, published_date, published_precision,"
                     " retrieved_at, http_status, content_type, content_sha256, size_bytes,"
-                    " parse_outcome, parsed_text, found_via, crawl_decision_id) VALUES"
+                    " parse_outcome, parsed_text, found_via, crawl_decision_id, table_spans) VALUES"
                     " (:source_id, :run_id, :url, :url_canonical, :domain, :kind,"
                     " :publisher_class, :title, :language, :published_date, :published_precision,"
                     " :retrieved_at, :http_status, :content_type, :content_sha256, :size_bytes,"
-                    " :parse_outcome, :parsed_text, :found_via, :crawl_decision_id)"
+                    " :parse_outcome, :parsed_text, :found_via, :crawl_decision_id,"
+                    " CAST(:table_spans AS jsonb))"
                     # the source ID, or the run's canonical URL (a converging redirect)
                     " ON CONFLICT DO NOTHING"
                 ),
                 values,
+            )
+
+    async def table_spans(self, source_id: str) -> list[tuple[int, int]] | None:
+        async with self._engine.connect() as conn:
+            value = (
+                await conn.execute(
+                    text("SELECT table_spans FROM source WHERE source_id = :s"), {"s": source_id}
+                )
+            ).scalar_one_or_none()
+        return None if value is None else [(int(a), int(b)) for a, b in value]
+
+    async def sources_to_index(self) -> list[dict[str, Any]]:
+        async with self._engine.connect() as conn:
+            rows = (
+                await conn.execute(
+                    text(
+                        "SELECT s.source_id, s.run_id, r.city_id, s.url_canonical, s.content_type,"
+                        " s.language, s.publisher_class, s.published_date, s.parsed_text,"
+                        " s.table_spans, ARRAY(SELECT DISTINCT c.slot_id FROM claim c"
+                        "  WHERE c.source_id = s.source_id ORDER BY c.slot_id) AS slot_ids"
+                        " FROM source s JOIN run r USING (run_id)"
+                        " WHERE s.parse_outcome = 'parsed' AND s.parsed_text IS NOT NULL"
+                        " ORDER BY s.run_id, s.source_id"
+                    )
+                )
+            ).mappings()
+            return [dict(r) for r in rows]
+
+    async def set_table_spans(self, source_id: str, spans: Sequence[tuple[int, int]]) -> None:
+        async with self._engine.begin() as conn:
+            await conn.execute(
+                text("UPDATE source SET table_spans = CAST(:t AS jsonb) WHERE source_id = :s"),
+                {"s": source_id, "t": json.dumps([list(x) for x in spans])},
             )
 
     async def source_at(self, run_id: str, url_canonical: str) -> tuple[str, bool] | None:

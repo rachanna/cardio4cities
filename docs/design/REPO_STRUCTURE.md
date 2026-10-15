@@ -85,6 +85,7 @@ cardio4cities/
 │   │   ├── entities.py           # entity resolver: alias, acronym, key, embedding, new (LLD-2 §6, BD-12)
 │   │   ├── graph_writes.py       # one edge per supported claim; supersession as invalid_at (BD-12)
 │   │   ├── claim_index.py        # set_status: Postgres, then search_tsv and the claim index (CHG-01)
+│   │   ├── chunk_index.py        # the one builder of source_chunks points (E-05, BD-56)
 │   │   ├── budget.py             # BudgetLedger: wind-down, warnings, restore (LLD-2 §12, BD-14)
 │   │   ├── limits.py             # run-wide model and embedding concurrency; StageClock (BD-14)
 │   │   ├── fetch_cache.py        # one fetch per URL per run, shared by slots (LLD-2 §14, BD-14)
@@ -141,6 +142,7 @@ cardio4cities/
 │   │                             # results/ holds each spike's written outcome
 │   ├── purge_city.py             # LLD-1 §8, LangGraph checkpoints included (BD-36, BD-42); in the image
 │   ├── purge_graph.py            # local only: empty Neo4j, its marker and the graph links (BD-14, BD-36)
+│   ├── reindex.py                # local only: rebuild Qdrant and graph embeddings from Postgres (E-05, BD-56)
 │   ├── eval_prompts.py           # LLD-3 §9
 │   ├── eval_answers.py           # classifier and answerer golden sets (BD-38)
 │   ├── eval_rag.py               # retrieval evaluation, `poe eval-rag` (LLD-5 §12, BD-39)
@@ -236,6 +238,7 @@ Run as `uv run poe <task>`; tasks are defined in `pyproject.toml` under `[tool.p
 | `poe smoke URL` | Smoke tests against a deployed URL |
 | `poe purge CITY` | Remove a city from all stores, its LangGraph checkpoints (`lg`) included: `--list`, then `CITY_ID` (dry run) and `CITY_ID --yes` (BD-36, BD-42). In the deployed shell: `python -m scripts.purge_city` |
 | `poe purge-graph` | Delete the local Neo4j graph, its embedding marker and the Postgres graph links; refuses a graph not on this machine and `APP_ENV=deployed` (BD-14, BD-36) |
+| `poe reindex` | Rebuild `claim_index__{key}`, `source_chunks__{key}` and the graph's embeddings from Postgres for the configured local model; `--dry-run`, `--recreate`, `--only`; refuses `APP_ENV=deployed` and a graph not on this machine (E-05, BD-56) |
 
 ---
 

@@ -12,11 +12,10 @@ from typing import Any
 
 from langchain_core.runnables import RunnableConfig
 
-from app.domain.ids import chunk_point_id
 from app.domain.models import Source
 from app.domain.vocab import EventType, ParseOutcome, PublisherClass
-from app.ports.vector import VectorPoint
 from app.workflow.budget import BudgetExhaustedError
+from app.workflow.chunk_index import chunk_points, slot_table_keywords
 from app.workflow.deps import RunDeps
 from app.workflow.ids import stable_id
 from app.workflow.nodes._deps import deps
@@ -29,12 +28,7 @@ from app.workflow.state import Candidate, SlotState
 
 def table_keywords(d: RunDeps, slot_id: str) -> list[str]:
     """Words that mark a PDF page worth table extraction, from the slot's indicators."""
-    slot = d.slots[slot_id]
-    words = {w.lower() for w in slot.short_label.split() if len(w) > 3}
-    for code in slot.indicator_codes:
-        if code in d.indicators:
-            words |= {w.lower() for w in d.indicators[code].name.split() if len(w) > 3}
-    return sorted(words)
+    return slot_table_keywords(d.slots[slot_id], d.indicators)
 
 
 async def _index(
@@ -51,31 +45,17 @@ async def _index(
         return
     await d.ledger.reserve("embedding")  # not a model call (BD-30)
     vectors = await d.embeddings.embed([c.text for c in chunks])
-    points = [
-        VectorPoint(
-            id=chunk_point_id(source.source_id, c.index),
-            vector=v,
-            payload={
-                "city_id": city_id,
-                "run_id": run_id,
-                "source_id": source.source_id,
-                "slot_ids": [slot_id],
-                "chunk_index": c.index,
-                "char_start": c.start,
-                "char_end": c.end,
-                "text": c.text,
-                "lang": source.language or "",
-                "publisher_class": source.publisher_class.value,
-                "is_table": c.is_table,
-                **(
-                    {"published_date": source.published_date.isoformat()}
-                    if source.published_date
-                    else {}
-                ),
-            },
-        )
-        for c, v in zip(chunks, vectors, strict=True)
-    ]
+    points = chunk_points(
+        chunks,
+        vectors,
+        city_id=city_id,
+        run_id=run_id,
+        source_id=source.source_id,
+        slot_ids=[slot_id],
+        lang=source.language or "",
+        publisher_class=source.publisher_class.value,
+        published_date=source.published_date,
+    )
     await d.vector.upsert(d.collection, points)
 
 
@@ -125,7 +105,12 @@ async def _one(d: RunDeps, state: SlotState, candidate: Candidate) -> tuple[str 
     parsed = collected.parse_outcome is ParseOutcome.PARSED and doc is not None
     if collected.raw:
         source = source.model_copy(update={"content_sha256": sha256(collected.raw).hexdigest()})
-    await d.relational.sources.add_source(source, doc.text if parsed and doc else None, None)
+    await d.relational.sources.add_source(
+        source,
+        doc.text if parsed and doc else None,
+        None,
+        list(doc.tables) if parsed and doc else None,  # E-05: chunks can be rebuilt
+    )
     held = await d.relational.sources.source_at(run_id, collected.final_url)
     if held is not None and held[0] != source.source_id:
         # Another candidate redirected to the same page and stored it: that source is

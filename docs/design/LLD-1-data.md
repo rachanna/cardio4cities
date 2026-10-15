@@ -519,6 +519,7 @@ CREATE TABLE source (
   content_sha256 text, size_bytes int,
   parse_outcome text CHECK (parse_outcome IN ('parsed','unreadable','too_large','unsupported_type')),
   parsed_text text,                              -- normalised for display; offsets refer to this text
+  table_spans jsonb,                             -- [[start, end], ...] table offsets in parsed_text; NULL before 0016 (E-05, BD-56)
   found_via text NOT NULL,
   crawl_decision_id text REFERENCES crawl_decision,
   UNIQUE (run_id, url_canonical)                 -- fetch cache: one fetch per URL per run (HD-01)

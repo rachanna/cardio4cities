@@ -4,7 +4,7 @@ repositories are the port and SQL lives only in `app/adapters/postgres/`.
 Each repository is added by the task that first needs it (BD-03).
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import date
 from typing import Any, Protocol
 
@@ -65,9 +65,27 @@ class SourceRepo(Protocol):
     async def add_crawl_decision(self, decision: CrawlDecision) -> None: ...
 
     async def add_source(
-        self, source: Source, parsed_text: str | None, crawl_decision_id: str | None
+        self,
+        source: Source,
+        parsed_text: str | None,
+        crawl_decision_id: str | None,
+        table_spans: Sequence[tuple[int, int]] | None = None,
     ) -> None:
-        """Inserts nothing when the run already holds the source ID or its canonical URL."""
+        """Inserts nothing when the run already holds the source ID or its canonical URL.
+        `table_spans`: the parser's [start, end) table offsets in `parsed_text` (E-05)."""
+        ...
+
+    async def table_spans(self, source_id: str) -> list[tuple[int, int]] | None:
+        """The stored table offsets; None for a source stored before they were kept."""
+        ...
+
+    async def sources_to_index(self) -> list[dict[str, Any]]:
+        """Every parsed source with what its chunks need (E-05): city, run, text, stored
+        table spans, metadata, and the slots of its claims."""
+        ...
+
+    async def set_table_spans(self, source_id: str, spans: Sequence[tuple[int, int]]) -> None:
+        """Backfill table offsets found by an exact re-parse of the snapshot (E-05)."""
         ...
 
     async def source_at(self, run_id: str, url_canonical: str) -> tuple[str, bool] | None:
@@ -286,6 +304,10 @@ class ResearchRepo(Protocol):
 
     async def claim_index_row(self, claim_id: str) -> dict[str, Any] | None:
         """Fields for the claim-index point: text parts and the LLD-5 §4.2 payload."""
+        ...
+
+    async def indexed_claim_ids(self) -> list[str]:
+        """Every claim the claim index should hold: supported or contested (E-05)."""
         ...
 
     # --- coverage (D2-5, LLD-2 §11) ----------------------------------------------------

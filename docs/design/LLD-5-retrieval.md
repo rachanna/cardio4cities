@@ -117,7 +117,9 @@ Search: the question text, filtered by `city_id`, `run_id = latest`, `status ∈
 ### 4.3 R4: graph route
 
 - Resolve entity mentions to entity IDs by lookup only (LLD-2 §6 steps 1–3; nothing is created).
-- Search edges in the city partition restricted to the relation types for the requested slots; current edges only (`invalid_at IS NULL`), unless the type is `change_over_time` or `as_of` is given, in which case the time filter applies and end-dated edges are included.
+- **Scope (E-07, BD-57):** the edges in scope are the latest run's, named by Postgres (`graph_link` joined to `claim.run_id`), passed to Graphiti as `SearchFilters.edge_uuids`. An earlier run's edges, which stay in the city partition, never take a place in the result.
+- **Structure:** search those edges in the city partition restricted to the relation types for the requested slots; current edges only (`invalid_at IS NULL`), unless the type is `change_over_time` or `as_of` is given, in which case the time filter applies and end-dated edges are included. This list is complete: every in-scope edge of those types and dates.
+- **Meaning:** Graphiti's hybrid edge search (BM25 and cosine over the edge facts) ranks the structural list by the question, restricted to its edges; when the question names an entity found in that list, with node-distance reranking around it (`EDGE_HYBRID_SEARCH_NODE_DISTANCE`), otherwise reciprocal rank fusion (`EDGE_HYBRID_SEARCH_RRF`). Edges Graphiti's similarity cut-off leaves unranked follow the ranked ones in structural order: ranking reorders, never drops.
 - The fixed graph-only question templates (LLD-1 §6.4) are used when the classifier's slots match them.
 - Each edge maps to its claims through `graph_link`.
 

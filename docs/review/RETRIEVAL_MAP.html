@@ -1,0 +1,354 @@
+<!doctype html>
+<!-- E-04 Phase 0: retrieval layer map. Generated 2026-10-15 from main 7c0b1a6; also published as a private Claude artifact. No code was changed. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Retrieval Layer Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Condensed:wght@600;700&display=swap">
+<style>
+/* Layout: one reading column (~74ch) with wide tables and diagrams allowed to scroll in place; store colours carried as chips throughout */
+:root {
+  --paper: #f5f7fa;
+  --surface: #ffffff;
+  --ink: #17202b;
+  --muted: #566476;
+  --rule: #d9e0e8;
+  --accent: #1f5fae;
+  --pg: #4c4ad6;      /* PostgreSQL */
+  --qd: #c2265b;      /* Qdrant */
+  --gr: #13805c;      /* Graphiti on Neo4j */
+  --warn: #a35a00;
+  --crit: #b4232a;
+  --low: #5a6b7d;
+  --code-bg: #eef2f7;
+  --font-display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #10161d; --surface: #161e27; --ink: #e4e9ef; --muted: #9aa8b8; --rule: #2a3542;
+    --accent: #6ea6ec; --pg: #9c9bff; --qd: #f2729b; --gr: #4fcf9f; --warn: #f0a94b; --crit: #ff7b80;
+    --low: #9aa8b8; --code-bg: #1d2731; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #10161d; --surface: #161e27; --ink: #e4e9ef; --muted: #9aa8b8; --rule: #2a3542;
+  --accent: #6ea6ec; --pg: #9c9bff; --qd: #f2729b; --gr: #4fcf9f; --warn: #f0a94b; --crit: #ff7b80;
+  --low: #9aa8b8; --code-bg: #1d2731; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--paper); color: var(--ink); font: 15px/1.6 var(--font-body); padding-inline: 16px; padding-block: 0 64px; }
+.wrap { max-width: 880px; margin: 0 auto; }
+.prose { max-width: 74ch; }
+header.top { padding-block: 40px 20px; border-bottom: 1px solid var(--rule); margin-bottom: 8px; }
+.eyebrow { font: 600 12px/1.2 var(--font-body); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }
+h1 { font: 700 clamp(30px, 5vw, 42px)/1.08 var(--font-display); margin: 10px 0 12px; text-wrap: balance; letter-spacing: -.01em; }
+h2 { font: 700 24px/1.2 var(--font-display); margin: 48px 0 6px; text-wrap: balance; }
+h2 .n { color: var(--muted); font-weight: 600; margin-right: 8px; }
+h3 { font: 600 16px/1.3 var(--font-body); margin: 26px 0 6px; }
+p { margin: 8px 0; }
+.lead { font-size: 17px; color: var(--muted); }
+.meta { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 13px; color: var(--muted); margin-top: 14px; }
+.meta b { color: var(--ink); font-weight: 600; }
+code, .mono { font-family: var(--font-mono); font-size: .88em; }
+code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+a { color: var(--accent); }
+a.ref { font-family: var(--font-mono); font-size: .82em; text-decoration: none; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; white-space: nowrap; }
+a.ref:hover, a.ref:focus-visible { text-decoration: underline; outline: none; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.chip { display: inline-block; font: 600 11px/1 var(--font-body); letter-spacing: .05em; text-transform: uppercase; padding: 4px 7px 3px; border-radius: 3px; border: 1px solid currentColor; vertical-align: 1px; white-space: nowrap; }
+.chip.pg { color: var(--pg); } .chip.qd { color: var(--qd); } .chip.gr { color: var(--gr); }
+.chip.code { color: var(--muted); } .chip.llm { color: var(--accent); }
+.sev { font: 600 11px/1 var(--font-body); letter-spacing: .05em; text-transform: uppercase; padding: 4px 7px 3px; border-radius: 3px; color: var(--surface); white-space: nowrap; }
+.sev.med { background: var(--warn); } .sev.high { background: var(--crit); } .sev.low { background: var(--low); }
+.scroll { overflow-x: auto; margin: 12px 0; border: 1px solid var(--rule); border-radius: 6px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--rule); }
+th { font: 600 12px/1.3 var(--font-body); letter-spacing: .04em; text-transform: uppercase; color: var(--muted); background: var(--code-bg); }
+tr:last-child td { border-bottom: 0; }
+td.k { font-weight: 600; white-space: nowrap; }
+.callout { border: 1px solid var(--rule); border-left: 4px solid var(--accent); background: var(--surface); padding: 14px 16px; border-radius: 4px; margin: 16px 0; }
+.callout.warn { border-left-color: var(--warn); }
+.callout h3 { margin-top: 0; }
+.callout ol, .callout ul { margin: 6px 0 0; padding-left: 20px; }
+.callout li { margin: 6px 0; }
+pre.flat { font: 12.5px/1.55 var(--font-mono); background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 14px 16px; overflow-x: auto; margin: 12px 0; }
+pre.mermaid { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 12px; overflow-x: auto; margin: 12px 0; font-size: 13px; }
+.figcap { font-size: 13px; color: var(--muted); margin-top: -4px; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin: 12px 0; }
+.card { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 14px 16px; min-width: 0; }
+.card h3 { margin-top: 0; }
+ol.steps { padding-left: 22px; } ol.steps li { margin: 7px 0; }
+nav.toc { font-size: 13.5px; margin-top: 18px; display: flex; flex-wrap: wrap; gap: 6px 14px; }
+nav.toc a { text-decoration: none; }
+footer { margin-top: 56px; padding-top: 16px; border-top: 1px solid var(--rule); font-size: 13px; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+
+</head>
+<body>
+<div class="wrap">
+<header class="top">
+  <div class="eyebrow">E-04 · Phase 0 · Map only, no code changed</div>
+  <h1>Retrieval layer map</h1>
+  <p class="lead prose">How data moves into and out of the three stores, from one fetched page to one cited answer, read from the code and the installed library versions.</p>
+  <div class="meta">
+    <span><b>Read at</b> main <span class="mono">7c0b1a6</span></span>
+    <span><b>Date</b> 15 Oct 2026</span>
+    <span><span class="chip pg">PostgreSQL</span> proves</span>
+    <span><span class="chip qd">Qdrant</span> finds</span>
+    <span><span class="chip gr">Graphiti</span> connects</span>
+  </div>
+  <nav class="toc" aria-label="Sections">
+    <a href="#corrections">Corrections</a><a href="#stores">Stores</a><a href="#joins">Join keys</a><a href="#ingest">Ingestion</a><a href="#query">Query path</a><a href="#fusion">Fusion</a><a href="#checks">Fact-checking</a><a href="#tracing">Tracing</a><a href="#risks">Risks</a><a href="#decisions">Decisions</a>
+  </nav>
+</header>
+
+<section id="corrections">
+<div class="callout warn">
+  <h3>Four corrections to the brief's assumptions</h3>
+  <ol>
+    <li><b>Question answering is not a LangGraph graph.</b> It is plain async code, <code>answer_question</code> <a class="ref" data-ref="app/query/pipeline.py#L76">pipeline.py:76</a>, with the four routes run by <code>asyncio.gather</code> <a class="ref" data-ref="app/query/pipeline.py#L91-L96">:91-96</a>. LangGraph runs only the research workflow <a class="ref" data-ref="app/workflow/graph.py#L79-L154">graph.py:79-154</a>.</li>
+    <li><b>Graphiti holds no episodes and makes no model calls.</b> Nodes and edges are saved directly with <code>episodes=[]</code> <a class="ref" data-ref="app/adapters/graph/graphiti.py#L179">graphiti.py:179</a>; Graphiti's model client refuses every call <a class="ref" data-ref="app/adapters/graph/graphiti.py#L69-L79">:69-79</a>.</li>
+    <li><b>No path ingests a single document.</b> Pages enter only through a research run (search, crawl gate, fetch). A file-ingest script would bypass the crawl gate, which the project's rules forbid.</li>
+    <li><b>No instance is deployed.</b> <code>config/deployed.yaml</code> exists; tracing there is <code>[events]</code> and nothing else <a class="ref" data-ref="config/deployed.yaml#L42">deployed.yaml:42</a>.</li>
+  </ol>
+</div>
+</section>
+
+<section id="stores">
+<h2><span class="n">1</span>What each store holds</h2>
+<p class="prose">Library versions from <code>uv.lock</code>: qdrant-client 1.19.1, graphiti-core 0.30.2, neo4j driver 5.28.6 (server 5.26), langgraph 1.2.12, langgraph-checkpoint-postgres 3.1.2, sentence-transformers 6.1.0.</p>
+
+<h3><span class="chip qd">Qdrant</span> two collections, one per embedding model</h3>
+<div class="scroll"><table>
+<thead><tr><th></th><th><code>source_chunks__{key}</code></th><th><code>claim_index__{key}</code></th></tr></thead>
+<tbody>
+<tr><td class="k">Named by</td><td><a class="ref" data-ref="app/workflow/deps.py#L117-L122">deps.py:117-122</a>; <code>key</code> is the embedding model key, so models never mix</td><td>same</td></tr>
+<tr><td class="k">Vectors</td><td>one unnamed dense vector, cosine, size = model dimension <a class="ref" data-ref="app/adapters/vector/qdrant.py#L52-L55">qdrant.py:52-55</a>; no sparse or named vectors</td><td>same</td></tr>
+<tr><td class="k">Model</td><td><code>paraphrase-multilingual-MiniLM-L12-v2</code>, 384 dims (local profiles)</td><td>same</td></tr>
+<tr><td class="k">Point ID</td><td><code>uuid5(NS, "{source_id}:{chunk_index}")</code> <a class="ref" data-ref="app/domain/ids.py#L10-L12">ids.py:10-12</a></td><td><code>uuid5(NS, claim_id)</code> <a class="ref" data-ref="app/workflow/claim_index.py#L35-L37">claim_index.py:35-37</a></td></tr>
+<tr><td class="k">Payload</td><td>city_id, run_id, source_id, slot_ids, chunk_index, char_start/end, <b>text</b>, lang, publisher_class, is_table, published_date <a class="ref" data-ref="app/workflow/nodes/fetch_parse.py#L58-L75">fetch_parse.py:58-75</a></td><td>claim_id, city_id, run_id, slot_id, kind, status, geography_level, indicator_code, reference_end <a class="ref" data-ref="app/workflow/claim_index.py#L23-L32">claim_index.py:23-32</a></td></tr>
+<tr><td class="k">Embedded text</td><td>the chunk</td><td><code>"{statement} | {translation or quote}"</code> <a class="ref" data-ref="app/workflow/claim_index.py#L40-L42">:40-42</a></td></tr>
+<tr><td class="k">Payload indexes</td><td colspan="2">12 keyword and 2 datetime, created for both collections <a class="ref" data-ref="app/adapters/vector/qdrant.py#L14-L28">qdrant.py:14-28</a>, <a class="ref" data-ref="app/adapters/vector/qdrant.py#L56-L59">:56-59</a></td></tr>
+<tr><td class="k">Search</td><td colspan="2"><code>query_points</code>, payload filter, <code>with_payload=True</code>, no score threshold; refused without <code>city_id</code> <a class="ref" data-ref="app/adapters/vector/qdrant.py#L82-L92">qdrant.py:82-92</a></td></tr>
+</tbody></table></div>
+<p class="prose"><b>Chunk text lives only in Qdrant.</b> Postgres has no chunk table; a chunk maps back to <code>source.parsed_text</code> by <code>source_id</code> and character offsets.</p>
+
+<h3><span class="chip gr">Graphiti</span> on Neo4j</h3>
+<div class="scroll"><table>
+<tbody>
+<tr><td class="k">Group id</td><td><code>city_id</code>: one partition per city, not per run <a class="ref" data-ref="app/workflow/graph_writes.py#L27-L34">graph_writes.py:27-34</a></td></tr>
+<tr><td class="k">Nodes</td><td><code>Entity</code> plus a type label: Place, Organization, Person, Programme, Policy, Indicator <a class="ref" data-ref="app/adapters/graph/graphiti.py#L148-L161">graphiti.py:148-161</a></td></tr>
+<tr><td class="k">Edges</td><td><code>RELATES_TO</code>, relation type in <code>name</code>; UUID = <code>uuid5(claim_id)</code>; attributes <code>claim_ids</code>, <code>source_ids</code>, <code>status</code>, <code>proxy_date</code> <a class="ref" data-ref="app/workflow/graph_writes.py#L56-L62">graph_writes.py:56-62</a></td></tr>
+<tr><td class="k">Writes</td><td><code>EntityNode.save</code> and <code>EntityEdge.save</code> with our own UUIDs and embeddings; relation pairs checked first <a class="ref" data-ref="app/adapters/graph/graphiti.py#L163-L191">graphiti.py:163-191</a></td></tr>
+<tr><td class="k">Embedder</td><td>our embeddings port wrapped as Graphiti's embedder, same 384-dim model <a class="ref" data-ref="app/adapters/graph/graphiti.py#L87-L98">:87-98</a>; reranker disabled (<code>NoRerank</code>) <a class="ref" data-ref="app/adapters/graph/graphiti.py#L82-L84">:82-84</a></td></tr>
+<tr><td class="k">Search</td><td><code>EDGE_HYBRID_SEARCH_RRF</code> (BM25 + cosine, RRF; default limit 10 in 0.30.2) is wired in <a class="ref" data-ref="app/adapters/graph/graphiti.py#L226-L235">:226-235</a> but question answering never reaches it (risk R1)</td></tr>
+<tr><td class="k">Marker</td><td><code>C4CMeta</code> node holding the embedding key <a class="ref" data-ref="app/adapters/graph/graphiti.py#L332-L341">:332-341</a></td></tr>
+</tbody></table></div>
+
+<h3><span class="chip pg">PostgreSQL</span> 15 migrations</h3>
+<div class="scroll"><table>
+<thead><tr><th>Role</th><th>Tables</th></tr></thead>
+<tbody>
+<tr><td class="k">Reference</td><td><code>ref_country</code>, <code>ref_admin1</code>, <code>ref_place</code>, <code>ref_slot</code>, <code>ref_indicator</code>, <code>ref_source</code> (0001)</td></tr>
+<tr><td class="k">Runs and logs</td><td><code>city</code>, <code>run</code>, <code>run_event</code> (written before streamed), <code>run_seq</code>, <code>run_summary</code>, <code>slot_result</code> (0002)</td></tr>
+<tr><td class="k">Documents</td><td><code>search_query</code>, <code>crawl_decision</code>, <code>source</code> with <b><code>parsed_text</code></b> and <code>content_sha256</code>, <code>snapshot</code> (gzip bytes, sha256) <a class="ref" data-ref="app/adapters/postgres/migrations/versions/0003_sources.py#L35-L57">0003:35-57</a></td></tr>
+<tr><td class="k">Facts</td><td><code>claim</code>, <code>statistic</code>, <code>entity</code> (holds <code>graph_uuid</code>), <code>entity_alias</code>, <code>relation</code>, <code>verdict</code>, <code>consistency</code>, <code>contested_pair</code>, <b><code>graph_link</code></b> <a class="ref" data-ref="app/adapters/postgres/migrations/versions/0004_claims.py#L17-L105">0004:17-105</a></td></tr>
+<tr><td class="k">Output</td><td><code>answer</code> with a <b><code>trace</code> jsonb</b> column <a class="ref" data-ref="app/adapters/postgres/migrations/versions/0015_answer_conversation_trace.py#L19">0015:19</a>, <code>report</code></td></tr>
+<tr><td class="k">Views</td><td><code>v_fact_evidence</code>, <code>v_city_facts</code> (supported verdicts only, 0011)</td></tr>
+<tr><td class="k">Checkpoints</td><td>LangGraph checkpointer in schema <code>lg</code> (0009); unavailable on Windows, so local runs go without checkpoints</td></tr>
+<tr><td class="k">Retrieval</td><td><code>claim.search_tsv</code> full text (0008); trigram similarity on entity names and aliases</td></tr>
+</tbody></table></div>
+</section>
+
+<section id="joins">
+<h2><span class="n">2</span>Join keys between stores</h2>
+<pre class="mermaid">
+flowchart LR
+  S["source<br/>source_id · parsed_text · sha256"]:::pg
+  SN["snapshot<br/>bytes · sha256"]:::pg
+  C["claim<br/>claim_id · source_id · span"]:::pg
+  GL["graph_link<br/>claim_id · edge_uuid"]:::pg
+  E["entity<br/>entity_id · graph_uuid"]:::pg
+  CH["source_chunks point<br/>uuid5(source_id:index)<br/>payload: source_id, char_start/end, text"]:::qd
+  CI["claim_index point<br/>uuid5(claim_id)<br/>payload: claim_id, status"]:::qd
+  ED["RELATES_TO edge<br/>uuid5(claim_id)<br/>attrs: claim_ids, source_ids, status"]:::gr
+  N["Entity node<br/>uuid = entity.graph_uuid"]:::gr
+  S --> SN
+  S -- "source_id + offsets" --> CH
+  S --> C
+  C -- "uuid5" --> CI
+  C -- "uuid5" --> ED
+  C --> GL
+  GL -- "edge_uuid" --> ED
+  E -- "graph_uuid" --> N
+  N --- ED
+  classDef pg stroke:#4c4ad6,stroke-width:2px
+  classDef qd stroke:#c2265b,stroke-width:2px
+  classDef gr stroke:#13805c,stroke-width:2px
+</pre>
+<p class="figcap">One source in all three stores: a <code>source</code> row and snapshot in Postgres; N chunk points in Qdrant carrying its <code>source_id</code>; and, for each supported claim from it, one <code>claim_index</code> point and one graph edge whose <code>source_ids</code> name it.</p>
+</section>
+
+<section id="ingest">
+<h2><span class="n">3</span>Ingestion: the order of writes</h2>
+<pre class="mermaid">
+sequenceDiagram
+  autonumber
+  participant F as fetch_parse
+  participant P as Postgres
+  participant Q as Qdrant
+  participant W as match_quotes / verify
+  participant X as write
+  participant G as Graphiti
+  F->>P: source row (parsed_text)
+  F->>P: snapshot (bytes, sha256)
+  F->>Q: upsert source_chunks (embedded)
+  W->>P: claim rows, then verdict
+  W->>P: set_status (Postgres first)
+  W->>Q: claim_index upsert or delete
+  X->>G: add_triplet (edge uuid5(claim_id))
+  X->>P: graph_link (claim_id, edge_uuid)
+  X->>P: refresh search_tsv
+  X->>Q: claim_index upsert again
+</pre>
+<div class="grid2">
+  <div class="card"><h3>Idempotent</h3><p>Every ID is deterministic (uuid5 or <code>stable_id</code>), upserts overwrite, <code>graph_link</code> is checked before a write <a class="ref" data-ref="app/workflow/graph_writes.py#L119">graph_writes.py:119</a>, and events are keyed by their content <a class="ref" data-ref="app/workflow/events.py#L17-L22">events.py:17-22</a>.</p></div>
+  <div class="card"><h3>Not transactional across stores</h3><p>Postgres commits first. Qdrant and graph failures are logged and swallowed <a class="ref" data-ref="app/workflow/claim_index.py#L81-L82">claim_index.py:81-82</a>, <a class="ref" data-ref="app/workflow/graph_writes.py#L134-L136">graph_writes.py:134-136</a>. The graph write is retried once at <code>brief_ready</code>; the claim index is not retried.</p></div>
+</div>
+<p class="prose">Write sites: <a class="ref" data-ref="app/workflow/nodes/fetch_parse.py#L128">fetch_parse.py:128</a> (source), <a class="ref" data-ref="app/workflow/nodes/fetch_parse.py#L138">:138</a> (snapshot), <a class="ref" data-ref="app/workflow/nodes/fetch_parse.py#L146">:146</a> (chunks); <a class="ref" data-ref="app/workflow/claim_index.py#L49-L57">claim_index.py:49-57</a> (status); <a class="ref" data-ref="app/workflow/nodes/finish.py#L22-L37">finish.py:22-37</a> (write node).</p>
+</section>
+
+<section id="query">
+<h2><span class="n">4</span>Query path: <code>answer_question</code></h2>
+<pre class="mermaid">
+sequenceDiagram
+  autonumber
+  participant U as User
+  participant A as answer_question
+  participant M as Classifier (model)
+  participant P as Postgres
+  participant Q as Qdrant
+  participant G as Graphiti (Neo4j)
+  participant L as Answerer (model)
+  participant C as Post-check (code)
+  U->>A: question
+  A->>M: classify
+  M-->>A: type, slots, indicators, entities, as-of
+  A->>P: city_facts, mentioned_entities
+  par R1 structured
+    A->>A: rank city_facts in memory
+  and R2 keyword
+    A->>P: full text (ts_rank_cd) + entity claims
+  and R3 semantic
+    A->>Q: claim_index top 20 (city, run, status)
+    A->>Q: source_chunks top 15 (city, run)
+  and R4 graph
+    A->>G: Cypher by relation type, limit 50
+    A->>P: graph_link edge to claim
+  end
+  A->>P: slot_results, contested_pairs, stored_facts
+  A->>A: revalidate, fuse (RRF), anchor, bundle
+  A->>L: fact lines, mentions, gaps
+  L-->>A: sentences with claim IDs
+  A->>C: check every sentence
+  C-->>A: kept, repaired, abstained
+  A->>P: answer row + trace
+</pre>
+<div class="scroll"><table>
+<thead><tr><th>Route</th><th>Store</th><th>What it does</th><th>Code</th></tr></thead>
+<tbody>
+<tr><td class="k">R1</td><td><span class="chip pg">Postgres</span></td><td>Confirmed claims for the asked slots or indicators, from <code>v_city_facts</code> (loaded once), ordered by the trust ranking key</td><td><a class="ref" data-ref="app/query/routes/structured.py#L12-L25">structured.py:12-25</a></td></tr>
+<tr><td class="k">R2</td><td><span class="chip pg">Postgres</span></td><td>Question words ORed in <code>to_tsquery('simple')</code> over <code>search_tsv</code>, top 20; plus claims of named entities found by alias, key, trigram or acronym</td><td><a class="ref" data-ref="app/adapters/postgres/repos/research.py#L363-L391">research.py:363-391</a></td></tr>
+<tr><td class="k">R3</td><td><span class="chip qd">Qdrant</span></td><td>Question embedded once; <code>claim_index</code> filtered by city, run, supported or contested; <code>source_chunks</code> by city and run, kept as mentions only when no confirmed quote overlaps</td><td><a class="ref" data-ref="app/query/routes/semantic.py#L23-L61">semantic.py:23-61</a></td></tr>
+<tr><td class="k">R4</td><td><span class="chip gr">Graphiti</span> <span class="chip pg">Postgres</span></td><td>Relationship and change questions only. <code>search_edges</code> with no query text, so plain Cypher by relation type and date, limit 50, then edges to claims through <code>graph_link</code></td><td><a class="ref" data-ref="app/query/routes/graph.py#L16-L45">graph.py:16-45</a></td></tr>
+</tbody></table></div>
+<p class="prose">Re-validation reads every candidate from Postgres and keeps it only for the asked city, its latest run, a supported or contested status and a supported verdict, and, with a date, true at that date <a class="ref" data-ref="app/query/revalidate.py#L38-L75">revalidate.py:38-75</a>.</p>
+</section>
+
+<section id="fusion">
+<h2><span class="n">5</span>Fusion and prompt assembly</h2>
+<ul class="prose">
+  <li><b>Reciprocal rank fusion on ranks only:</b> score = Σ 1 / (60 + rank), ties broken by the trust ranking key <a class="ref" data-ref="app/query/fuse.py#L14-L38">fuse.py:14-38</a>. Routes return bare claim IDs, so <b>Qdrant's cosine scores are dropped inside R3</b> <a class="ref" data-ref="app/query/routes/semantic.py#L40">semantic.py:40</a>, and no score threshold exists.</li>
+  <li><b>No reranker.</b> Graphiti's is disabled; nothing reranks after fusion.</li>
+  <li><b>Anchors:</b> each asked slot's best claim is injected if no route found it, or its gap record is attached <a class="ref" data-ref="app/query/fuse.py#L48-L72">fuse.py:48-72</a>.</li>
+  <li><b>Bundle:</b> asked slot order, anchored first, then score; at most 8 facts and 2 per slot; contested pairs kept whole; mentions only for open questions with fewer than 3 facts <a class="ref" data-ref="app/query/bundle.py#L18-L63">bundle.py:18-63</a>.</li>
+  <li><b>Prompt:</b> fact lines <a class="ref" data-ref="app/query/pipeline.py#L214-L233">pipeline.py:214-233</a>, mentions and gap lines, built by <code>context.build_user_message</code>; one repair on invalid output; fetched text escaped by <code>escape_untrusted</code> <a class="ref" data-ref="app/query/llm.py#L24-L61">llm.py:24-61</a>.</li>
+</ul>
+</section>
+
+<section id="checks">
+<h2><span class="n">6</span>Two fact-checking stages</h2>
+<div class="grid2">
+  <div class="card"><h3><span class="chip llm">Model</span> Checker, research</h3><p><a class="ref" data-ref="app/workflow/nodes/verify.py#L34-L60">verify.py:34-60</a></p><p><b>In:</b> one claim, its labels, and the passage code located in <code>source.parsed_text</code>.</p><p><b>Out:</b> a <code>verdict</code> row (supported, refuted, insufficient) that sets <code>claim.status</code>. Only a supported verdict can make a fact.</p></div>
+  <div class="card"><h3><span class="chip code">Code</span> Post-check, answering</h3><p><a class="ref" data-ref="app/query/postcheck.py#L1-L5">postcheck.py:1-5</a></p><p><b>In:</b> the answerer's sentences and the bundle's evidence, all from Postgres.</p><p><b>Out:</b> each sentence kept, repaired from stored values, or removed and replaced by an abstention; recorded in <code>trace.post_check</code>.</p></div>
+</div>
+</section>
+
+<section id="tracing">
+<h2><span class="n">7</span>Tracing that exists today</h2>
+<div class="scroll"><table>
+<thead><tr><th>Mechanism</th><th>Records</th><th>Where</th></tr></thead>
+<tbody>
+<tr><td class="k">Answer trace</td><td>Classification; per route the claim IDs with rank, time, status; removals by reason; fused list with scores; anchors; gaps; bundle; mentions; post-check; stores read. Saved in <code>answer.trace</code></td><td><a class="ref" data-ref="app/query/pipeline.py#L81-L185">pipeline.py:81-185</a>, <a class="ref" data-ref="app/adapters/postgres/repos/answers.py#L28">answers.py:28</a></td></tr>
+<tr><td class="k">Run events</td><td>Research workflow events, numbered and stored before they are streamed</td><td><a class="ref" data-ref="app/workflow/events.py#L1-L22">events.py</a></td></tr>
+<tr><td class="k">TracingPort</td><td>Nothing: no adapter is registered for <code>tracing: events</code> and nothing calls <code>span()</code></td><td><a class="ref" data-ref="app/ports/tracing.py#L1-L8">tracing.py</a>, <a class="ref" data-ref="app/container.py#L169-L171">container.py:169-171</a></td></tr>
+<tr><td class="k">Not recorded</td><td colspan="2">Prompts as sent, raw model output, SQL with parameters, raw Qdrant points and scores, raw Graphiti hits</td></tr>
+</tbody></table></div>
+<p class="prose">Phase 1 should extend the answer trace, not build a second system.</p>
+</section>
+
+<section id="risks">
+<h2><span class="n">8</span>Cross-store consistency risks</h2>
+<p class="prose">Reported only. Nothing here is fixed in this work.</p>
+<div class="scroll"><table>
+<thead><tr><th>#</th><th>Severity</th><th>Risk</th><th>Where</th><th>Effect today</th></tr></thead>
+<tbody>
+<tr><td class="k">R1</td><td><span class="sev med">Medium</span></td><td><b>Design drift.</b> The architecture says graph reads use Graphiti's hybrid search; R4 never passes query text, so edge and name embeddings are written and never queried</td><td><a class="ref" data-ref="app/query/routes/graph.py#L30-L31">graph.py:30</a> vs <a class="ref" data-ref="app/adapters/graph/graphiti.py#L226">graphiti.py:226</a></td><td>Graph retrieval is type-filtered Cypher only</td></tr>
+<tr><td class="k">R2</td><td><span class="sev high">Medium-high</span></td><td><b>Graph partitions are per city, not per run.</b> Older runs' edges stay in the group. R4's limit of 50, newest <code>valid_at</code> first, can let old-run edges crowd out the latest run's before re-validation drops them as <code>other_run</code></td><td><a class="ref" data-ref="app/adapters/graph/graphiti.py#L264-L275">graphiti.py:264-275</a></td><td>A recall loss that grows with every run of a city</td></tr>
+<tr><td class="k">R3</td><td><span class="sev med">Medium</span></td><td><b>Claim index has no retry.</b> A failed Qdrant upsert or delete is only logged</td><td><a class="ref" data-ref="app/workflow/claim_index.py#L81-L82">claim_index.py:81-82</a></td><td>Missing points cost recall (R1, R2 and anchors cover); stale points are caught by re-validation</td></tr>
+<tr><td class="k">R4</td><td><span class="sev low">Low</span></td><td><b>Chunk text duplicated without a hash.</b> Payload text and <code>source.parsed_text</code> are separate copies tied by offsets; if chunking settings change, extra old points of a source are not deleted</td><td><a class="ref" data-ref="app/workflow/nodes/fetch_parse.py#L40-L79">fetch_parse.py:40-79</a></td><td>Mentions could show outdated text; no integrity check</td></tr>
+<tr><td class="k">R5</td><td><span class="sev low">Low</span></td><td><b>Status duplicated</b> in the Qdrant payload and in edge attributes, each written separately and allowed to fail</td><td><a class="ref" data-ref="app/workflow/claim_index.py#L74">claim_index.py:74</a>, <a class="ref" data-ref="app/workflow/graph_writes.py#L157-L165">graph_writes.py:157-165</a></td><td>Safe through re-validation, but R3's payload filter could skip a claim whose stored status changed</td></tr>
+<tr><td class="k">R6</td><td><span class="sev low">Low</span></td><td><b>TracingPort configured but not built</b></td><td><a class="ref" data-ref="app/container.py#L169-L171">container.py:169-171</a></td><td>None; misleading configuration</td></tr>
+</tbody></table></div>
+</section>
+
+<section id="decisions">
+<h2><span class="n">9</span>Decisions before Phase 1</h2>
+<ol class="steps prose">
+  <li><b>Fetched text in traces.</b> CLAUDE.md says fetched text is untrusted and never logged; a full trace needs chunk text and prompts. Either (a) local, git-ignored trace files with tracing off in every deployed profile, recorded as a <code>BD-</code> row, or (b) fetched text kept only as length, hash and the first 80 characters.</li>
+  <li><b>Ingestion trace.</b> Trace one source of a real run by <code>source_id</code> (source row, chunks, claims, claim-index points, edges and <code>graph_link</code>) instead of ingesting a local file past the crawl gate.</li>
+  <li><b>"Identical answers" with tracing off.</b> The answerer runs with <code>effort</code> and no seed, so live answers vary. Compare the deterministic parts of the trace (routes, fused list, bundle) across live runs, and use the scripted-model tests for exact equality.</li>
+  <li><b>Data for the demo question.</b> The stores must be running (<code>uv run poe up</code>) to choose a question the loaded data can answer.</li>
+</ol>
+</section>
+
+<footer>
+  <p>Read from <span class="mono">rachanna/cardio4cities</span> at <span class="mono">7c0b1a6</span> on 15 October 2026. Every reference links to that commit. Source of truth for design: <code>docs/design/</code>; decisions: <code>docs/DECISIONS.md</code>.</p>
+</footer>
+</div>
+
+<script>
+(function () {
+  var base = "https://github.com/rachanna/cardio4cities/blob/7c0b1a6/";
+  var refs = document.querySelectorAll("a.ref[data-ref]");
+  for (var i = 0; i < refs.length; i++) {
+    refs[i].setAttribute("href", base + refs[i].getAttribute("data-ref"));
+    refs[i].setAttribute("rel", "noopener");
+  }
+})();
+</script>
+
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.esm.min.mjs";
+  const dark = document.documentElement.dataset.theme === "dark" ||
+    (!document.documentElement.dataset.theme && matchMedia("(prefers-color-scheme: dark)").matches);
+  mermaid.initialize({ startOnLoad: true, theme: dark ? "dark" : "default", securityLevel: "strict" });
+</script>
+</body>
+</html>

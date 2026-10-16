@@ -1,0 +1,308 @@
+<!doctype html>
+<!-- E-08: context engineering notes, written 2026-10-16 from the code at main 38fbe3c; also published as a private Claude artifact. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Context Engineering Notes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=JetBrains+Mono:wght@400;500&family=Source+Sans+3:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: a single reading column for argument, with the context-window "stacks" and the role table as the page's visual anchors */
+:root {
+  --paper: #f3f6f5;
+  --surface: #ffffff;
+  --ink: #142022;
+  --muted: #55666a;
+  --rule: #d5dfdd;
+  --accent: #0d6b6b;
+  --model: #2b5fb4;
+  --code: #4a5a60;
+  --shown: #1f7a4d;
+  --withheld: #b03a3a;
+  --untrusted: #9a5b00;
+  --tint: #e8efee;
+  --font-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Source Sans 3", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0f1617; --surface: #152021; --ink: #e2ebea; --muted: #97a9ab; --rule: #273537;
+    --accent: #4fc2bf; --model: #7fa8f0; --code: #a7b6ba; --shown: #5fd39a; --withheld: #ff8a8a;
+    --untrusted: #f2b45a; --tint: #1b2a2b; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #0f1617; --surface: #152021; --ink: #e2ebea; --muted: #97a9ab; --rule: #273537;
+  --accent: #4fc2bf; --model: #7fa8f0; --code: #a7b6ba; --shown: #5fd39a; --withheld: #ff8a8a;
+  --untrusted: #f2b45a; --tint: #1b2a2b; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--paper); color: var(--ink); font: 16px/1.62 var(--font-body); padding-inline: 16px; padding-block: 0 72px; }
+.wrap { max-width: 900px; margin: 0 auto; }
+.prose { max-width: 70ch; }
+header.top { padding-block: 44px 22px; border-bottom: 1px solid var(--rule); }
+.eyebrow { font: 600 12px/1.2 var(--font-body); letter-spacing: .1em; text-transform: uppercase; color: var(--accent); }
+h1 { font: 700 clamp(32px, 6vw, 50px)/1.04 var(--font-display); margin: 10px 0 14px; letter-spacing: -.015em; text-wrap: balance; }
+h2 { font: 700 27px/1.15 var(--font-display); margin: 56px 0 8px; text-wrap: balance; }
+h3 { font: 600 18px/1.3 var(--font-body); margin: 28px 0 6px; }
+p { margin: 8px 0; }
+.lead { font-size: 19px; color: var(--muted); }
+.def { font: 600 clamp(19px, 2.6vw, 23px)/1.4 var(--font-display); border-left: 4px solid var(--accent); padding: 4px 0 4px 16px; margin: 22px 0; max-width: 62ch; }
+code, .mono { font-family: var(--font-mono); font-size: .86em; }
+code { background: var(--tint); padding: 1px 5px; border-radius: 4px; }
+a { color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+nav.toc { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 14px; margin-top: 18px; }
+nav.toc a { text-decoration: none; }
+.tag { display: inline-block; font: 600 11px/1 var(--font-body); letter-spacing: .06em; text-transform: uppercase; padding: 4px 7px 3px; border-radius: 3px; border: 1px solid currentColor; white-space: nowrap; vertical-align: 1px; }
+.tag.model { color: var(--model); } .tag.code { color: var(--code); } .tag.shown { color: var(--shown); } .tag.withheld { color: var(--withheld); } .tag.untrusted { color: var(--untrusted); }
+
+/* the context-window stack */
+.stack { display: grid; gap: 6px; margin: 18px 0; }
+.layer { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 11px 14px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 14px; align-items: start; }
+.layer b { font-weight: 600; }
+.layer .what { color: var(--muted); font-size: 14.5px; grid-column: 1 / 2; }
+.layer .badges { grid-row: 1 / 3; grid-column: 2; display: flex; flex-direction: column; gap: 5px; align-items: flex-end; }
+.layer.sys { border-left: 5px solid var(--code); }
+.layer.task { border-left: 5px solid var(--accent); }
+.layer.ctx { border-left: 5px solid var(--shown); }
+.layer.src { border-left: 5px solid var(--untrusted); background: repeating-linear-gradient(135deg, var(--surface), var(--surface) 10px, var(--tint) 10px, var(--tint) 11px); }
+.layer.out { border-left: 5px solid var(--model); }
+.layer pre { grid-column: 1 / -1; margin: 6px 0 0; font: 12.5px/1.5 var(--font-mono); white-space: pre-wrap; color: var(--ink); background: var(--tint); padding: 8px 10px; border-radius: 4px; overflow-x: auto; }
+@media (max-width: 520px) { .layer { grid-template-columns: 1fr; } .layer .badges { grid-row: auto; grid-column: 1; flex-direction: row; flex-wrap: wrap; align-items: flex-start; } }
+
+.scroll { overflow-x: auto; margin: 14px 0; border: 1px solid var(--rule); border-radius: 6px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
+th, td { text-align: left; vertical-align: top; padding: 10px 12px; border-bottom: 1px solid var(--rule); }
+th { font: 600 12px/1.3 var(--font-body); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); background: var(--tint); }
+tr:last-child td { border-bottom: 0; }
+td.k { font-weight: 700; white-space: nowrap; }
+td .no { color: var(--withheld); }
+pre.mermaid { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 12px; overflow-x: auto; margin: 14px 0; font-size: 13px; }
+.cap { font-size: 14px; color: var(--muted); margin-top: -4px; }
+.split { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin: 14px 0; }
+.panel { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 14px 16px; min-width: 0; }
+.panel h3 { margin-top: 0; }
+.panel ul { margin: 6px 0 0; padding-left: 18px; }
+.panel li { margin: 5px 0; }
+.panel.shown { border-top: 4px solid var(--shown); } .panel.withheld { border-top: 4px solid var(--withheld); }
+.why { font-size: 15px; color: var(--muted); }
+.rules { counter-reset: rule; list-style: none; padding: 0; margin: 16px 0; display: grid; gap: 12px; }
+.rules > li { counter-increment: rule; background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 14px 16px 14px 58px; position: relative; }
+.rules > li::before { content: counter(rule); position: absolute; left: 16px; top: 12px; font: 700 22px/1 var(--font-display); color: var(--accent); width: 30px; text-align: center; }
+.rules b { display: block; font-size: 17px; margin-bottom: 2px; }
+.rules .here { font-size: 14.5px; color: var(--muted); margin-top: 4px; }
+.funnel { display: grid; gap: 6px; margin: 14px 0; }
+.funnel div { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 9px 14px; font-size: 15px; }
+.funnel div:nth-child(1) { margin-inline: 0; } .funnel div:nth-child(2) { margin-inline: 4%; } .funnel div:nth-child(3) { margin-inline: 8%; } .funnel div:nth-child(4) { margin-inline: 12%; } .funnel div:nth-child(5) { margin-inline: 16%; border-color: var(--accent); }
+footer { margin-top: 60px; padding-top: 16px; border-top: 1px solid var(--rule); font-size: 14px; color: var(--muted); }
+</style>
+
+</head>
+<body>
+<div class="wrap">
+<header class="top">
+  <div class="eyebrow">Notes · From Sketch to System</div>
+  <h1>Context engineering</h1>
+  <p class="lead prose">What context is, how this project decides what every model sees and what it never sees, how the same discipline shaped the build itself, and the ground rules that carry over to any agentic system.</p>
+  <nav class="toc" aria-label="Sections">
+    <a href="#what">What it is</a><a href="#anatomy">Anatomy</a><a href="#map">Project map</a><a href="#roles">Role by role</a><a href="#mechanisms">Mechanisms</a><a href="#build">The build</a><a href="#rules">Ground rules</a>
+  </nav>
+</header>
+
+<section id="what">
+<h2>Context is everything the model can see when it answers</h2>
+<p class="def">Context engineering is deciding, for every model call, what the model sees, in what form and order, how much of it, and what it must never see.</p>
+<p class="prose">A language model has no memory between calls and no view of your system. Whatever it knows about the task arrives in one request: the instructions, the data, the output format, and anything carried over from earlier steps. That request is its whole world. If a fact is not in it, the model either does without it or invents it.</p>
+<p class="prose">Prompt engineering is about the wording of instructions. Context engineering is about the system that fills the request: which records are retrieved, how a long page is cut, what an earlier step hands to a later one, where untrusted text sits, and what stays out on purpose.</p>
+<div class="scroll"><table>
+<thead><tr><th></th><th>Prompt engineering</th><th>Context engineering</th></tr></thead>
+<tbody>
+<tr><td class="k">Unit</td><td>One prompt</td><td>Every call in a system, and what flows between them</td></tr>
+<tr><td class="k">Main question</td><td>How should I phrase this?</td><td>What does this call need, and what must it not see?</td></tr>
+<tr><td class="k">Built by</td><td>A person writing text</td><td>Code that retrieves, selects, orders, bounds and escapes</td></tr>
+<tr><td class="k">Fails as</td><td>Unclear or ignored instructions</td><td>Missing facts, distracting noise, leaked reasoning, injected instructions, invented values for blanks</td></tr>
+<tr><td class="k">Tested by</td><td>Trying prompts</td><td>Golden sets per role, versioned with the code that builds the context</td></tr>
+</tbody></table></div>
+</section>
+
+<section id="anatomy">
+<h2>The anatomy of one call in this project</h2>
+<p class="prose">Every model call here has the same five layers, in the same order. Stable material comes first so it can be cached; untrusted material is fenced off; the expected output is a schema, not a hope.</p>
+<div class="stack" role="list">
+  <div class="layer sys" role="listitem"><div><b>System prompt</b> <span class="mono">checker v4, extractor v6, …</span></div><div class="what">The role's standing instructions and the untrusted-text rule. Identical for every call of that role.</div><div class="badges"><span class="tag code">versioned</span><span class="tag shown">cached</span></div></div>
+  <div class="layer task" role="listitem"><div><b>&lt;task&gt;</b></div><div class="what">One sentence: what this call must do.</div><div class="badges"><span class="tag code">built by code</span></div>
+    <pre>&lt;task&gt;Decide whether the passages support the claim exactly as labelled.&lt;/task&gt;</pre></div>
+  <div class="layer ctx" role="listitem"><div><b>&lt;context&gt;</b></div><div class="what">Labelled fields chosen for this role only: the claim, its labels in plain words, the catalogue of questions, the gaps. Missing values say "not stated".</div><div class="badges"><span class="tag code">built by code</span><span class="tag shown">need to know</span></div>
+    <pre>labels:
+  describes: Halden Bay (the whole city or town)
+  population: aged 30-79; sex both; group not stated; setting not stated
+  period: 2024</pre></div>
+  <div class="layer src" role="listitem"><div><b>&lt;source id="…"&gt;</b></div><div class="what">Fetched text, wrapped and escaped so it can never close the tag or pose as an instruction. Bounded: a 12,000-token window, a passage of ±600 characters, or a 400-character mention.</div><div class="badges"><span class="tag untrusted">untrusted</span><span class="tag code">escaped</span><span class="tag code">bounded</span></div></div>
+  <div class="layer out" role="listitem"><div><b>Output schema</b></div><div class="what">A Pydantic schema sent as structured output, with a token ceiling per role (classifier 400; checker 8,000; others 16,000). Code validates it before anything else sees it.</div><div class="badges"><span class="tag model">model writes</span><span class="tag code">code checks</span></div></div>
+</div>
+<p class="cap">Source: the six <code>app/prompts/&lt;role&gt;/context.py</code> builders, <code>app/prompts/safety.py</code>, <code>app/workflow/llm.py</code>.</p>
+</section>
+
+<section id="map">
+<h2>One map: what each model sees, and what it never sees</h2>
+<p class="prose">Six model roles, six deliberately different contexts. The right-hand column matters as much as the left: most of the trust in this system comes from what a model is kept from seeing.</p>
+<div class="scroll"><table>
+<thead><tr><th>Role</th><th>Sees</th><th>Never sees</th><th>Bounded by</th></tr></thead>
+<tbody>
+<tr><td class="k">Planner</td><td>City, region and country; the 16 research questions with their indicators; government site filters; on a re-plan, each question's status, queries tried, gap note and the sites that refused access</td><td><span class="no">Page content; earlier answers; anything it could mistake for a finding</span></td><td>Queries per question from config; at most two re-plans</td></tr>
+<tr><td class="k">Extractor</td><td>The city; the questions; the indicator catalogue; the allowed relation types; the page's title, publisher, date and URL (escaped); one source window</td><td><span class="no">Other pages; other windows; earlier claims; the checker's rules</span></td><td>12,000-token windows, 500 overlap, at most 4 per page, chosen by term hits; pages naming the city first</td></tr>
+<tr><td class="k">Checker</td><td>One claim, its value as written, its labels in plain words, the publisher and date, the passage around the quote, and the passage stating any label found elsewhere</td><td><span class="no">The extractor's prompt or output; other claims; other sources; the research question; the whole page</span></td><td>Quote ±600 characters; one claim per call</td></tr>
+<tr><td class="k">Classifier</td><td>The city; the question and indicator catalogues; today's date; the previous turn's <em>classification</em>; the question in its own tag</td><td><span class="no">The previous answer's text; any evidence</span></td><td>400 output tokens</td></tr>
+<tr><td class="k">Answerer</td><td>The question; up to 8 verified facts as data lines with IDs, labels, badges and contested partners; gap notes; unconfirmed mentions only when facts are thin</td><td><span class="no">Unverified claims; raw pages; other runs; rejected claims</span></td><td>8 facts, 2 per question; mentions at most 400 characters</td></tr>
+<tr><td class="k">Report writer</td><td>Placed facts (ID, statement, badge) and gap notes for one section</td><td><span class="no">Values to compute; pages; anything it could turn into a new fact</span></td><td>Intro word limit and number of points from config</td></tr>
+</tbody></table></div>
+<pre class="mermaid">
+flowchart LR
+  subgraph R["Research (LangGraph)"]
+    PL["Planner"] -->|queries| SE["Search: links only"]
+    SE --> CG["Crawl gate"] --> FP["Fetch + parse"]
+    FP -->|"4 windows, city pages first"| EX["Extractor"]
+    EX -->|"claims + quotes"| MQ["Match quotes (code)"]
+    MQ -->|"claim + labels + ±600 chars"| CK["Checker"]
+    CK -->|verdicts| PG[("Postgres")]
+    CV["Coverage (code)"] -->|"status, tried, refused sites"| PL
+  end
+  subgraph A["Answering"]
+    CL["Classifier"] -->|"slots, entities, as-of"| RT["4 routes + re-validate (code)"]
+    PG --> RT
+    RT -->|"≤8 verified facts, gaps"| AN["Answerer"]
+    AN -->|"sentences + claim IDs"| PC["Post-check (code)"]
+  end
+  PG --> RW["Report writer"]
+  classDef model stroke:#2b5fb4,stroke-width:2px
+  class PL,EX,CK,CL,AN,RW model
+</pre>
+<p class="cap">Every arrow into a model (blue) is built by code. Models hand back structured data; code decides what any later model sees of it.</p>
+</section>
+
+<section id="roles">
+<h2>Role by role: the decisions behind each context</h2>
+
+<h3>Extractor: choose the right slice of a long page</h3>
+<p class="prose">A page can be hundreds of thousands of characters. Sending all of it costs money, dilutes attention, and invites the model to pick the wrong figure. So code chooses what the extractor reads.</p>
+<div class="funnel" aria-label="Extraction context funnel">
+  <div><b>Pages for the question</b>: those naming the city first; once a wider-area fact is held, at most 1 page that never names the city</div>
+  <div><b>Cut each page</b> into 12,000-token windows with 500 tokens of overlap</div>
+  <div><b>Score each window</b> by whole-word hits on the city's names and the question's words</div>
+  <div><b>Keep the best 4</b> per page, returned in document order</div>
+  <div><b>One call per window</b>, wrapped as an untrusted &lt;source&gt;, with the allowed relation types listed so the model knows what code will drop</div>
+</div>
+<p class="why prose">Telling the model which relation pairs are allowed is context engineering too: code drops any other pair, so a model that does not know the rule wastes its output on claims that can never survive.</p>
+
+<h3>Checker: independence comes from what it cannot see</h3>
+<div class="split">
+  <div class="panel shown"><h3>Shown</h3><ul>
+    <li>The claim and its value as written</li>
+    <li>Labels in plain words: "the whole city or town", "prevalence, method not stated"</li>
+    <li>"not stated" wherever a label is empty</li>
+    <li>The passage around the quote, ±600 characters, located by code</li>
+    <li>The passage stating a label found elsewhere, such as the survey period in the methods</li>
+  </ul></div>
+  <div class="panel withheld"><h3>Withheld</h3><ul>
+    <li>The extractor's prompt, output and reasoning</li>
+    <li>Other claims and other sources</li>
+    <li>The research question it was meant to answer</li>
+    <li>The rest of the page</li>
+  </ul></div>
+</div>
+<p class="prose">The checker cannot be persuaded by the framing that misled the extractor, because that framing never reaches it. The builder <code>build_user_message</code> takes exactly these inputs, so nothing else can be added by accident. Two lessons from the golden set are built in: codes such as <code>city_wide</code> were read as mismatches, so labels are written in plain words; and a period of "2024" stays "2024", never an invented "2024-01-01 to 2024-12-31".</p>
+
+<h3>Planner: carry forward what was learned, not what was said</h3>
+<p class="prose">A re-plan gets one line per unfilled question: its status, the queries tried, the gap note, and the sites that refused access. That is enough to try something different and to stop searching blocked sites, and nothing in it is page content the planner could mistake for a finding.</p>
+
+<h3>Classifier: decisions travel between turns, answers do not</h3>
+<p class="prose">A follow-up question ("and in 2023?") reuses the previous turn's classification: its questions, indicators and entities. It never receives the previous answer's text. An earlier answer is model output; feeding it back would let an error, or an abstention's wording, shape the next turn. The question itself sits in its own escaped tag: it is user input to classify, not an instruction.</p>
+
+<h3>Answerer: facts as data, with an ID on every line</h3>
+<p class="prose">The answerer sees no pages. It sees verified facts as data lines, each with a claim ID, the value as written, the area level in words, the period, the badge, the confidence and any contested partner. It must cite one ID per sentence, and code checks every number, place, name and year against those lines. Gap notes are context too: "not found" has to be in the context for the model to say it.</p>
+<pre class="flat mono" style="font:12.5px/1.5 var(--font-mono);background:var(--surface);border:1px solid var(--rule);border-radius:6px;padding:12px 14px;overflow-x:auto;">- [clm_…] FACT: In Halden Bay, 31.2% of adults aged 30-79 had hypertension | value 31.2%
+  | describes the whole city or town (Halden Bay) | period 2024 | badge none
+  | confidence High | slot S03 | contested_with: none</pre>
+
+<h3>Report writer: linking prose only</h3>
+<p class="prose">Code assembles the report from stored facts. The model writes only introductions and analysis points from the facts and gaps it is given, and a post-check removes any sentence that adds something. Its context is designed so it has nothing to compute and nothing new to assert.</p>
+</section>
+
+<section id="mechanisms">
+<h2>Mechanisms that apply to every call</h2>
+<div class="scroll"><table>
+<thead><tr><th>Mechanism</th><th>What it does</th><th>Where</th></tr></thead>
+<tbody>
+<tr><td class="k">Untrusted fencing</td><td>Fetched text goes in <code>&lt;source&gt;</code>; tag lookalikes, including spaced and full-width brackets, are escaped; titles, URLs, claims and stored statements are escaped too, because they came from pages. The system prompt says text inside sources is never an instruction</td><td><code>safety.py</code></td></tr>
+<tr><td class="k">Plain words, not codes</td><td>Enum values become phrases a careful reader would use; a model reads codes as jargon or as mismatches</td><td><code>checker/context.py</code></td></tr>
+<tr><td class="k">Explicit absence</td><td>Every empty label reads "not stated"; gaps are listed; the vocabulary includes "method not stated", because without an honest option the model invents one</td><td>BD-48</td></tr>
+<tr><td class="k">State outside the model</td><td>The workflow state holds IDs; claims, verdicts and text live in Postgres. Search titles and snippets never enter run state</td><td>BD-36</td></tr>
+<tr><td class="k">Structured output</td><td>Every role answers in a schema with a token ceiling; code validates before the output can become anyone's context</td><td><code>&lt;role&gt;/schema.py</code></td></tr>
+<tr><td class="k">One repair, fenced</td><td>An invalid output is repaired once: the problem, plus at most 4,000 characters of the previous output inside an escaped <code>&lt;previous_output&gt;</code> tag, since it quotes the page</td><td><code>workflow/llm.py</code></td></tr>
+<tr><td class="k">Versioned context</td><td>A prompt's version hashes the prompt file, its schema, its context builder and <code>safety.py</code>; it is stored on every claim, verdict and answer</td><td><code>prompts/loader.py</code></td></tr>
+<tr><td class="k">Stable prefix first</td><td>The system prompt is identical across a role's calls and cached; the variable parts come after it</td><td>BD-30</td></tr>
+<tr><td class="k">Budget and time box</td><td>Every call reserves budget first and is cut off at the run's remaining time; no new extraction window starts with under 60 seconds left</td><td><code>budget.py</code></td></tr>
+</tbody></table></div>
+</section>
+
+<section id="build">
+<h2>The build was context-engineered too</h2>
+<p class="prose">The coding agent that built this system works under the same constraint as the models inside it: it knows only what is in its context. So the repository is organised to give it the right material for each task and nothing that would mislead it.</p>
+<pre class="mermaid">
+flowchart TB
+  C["CLAUDE.md: short, read every session<br/>stance, non-negotiables, easy-to-break rules"] --> B
+  B["BUILD_PLAN.md: the task's Load column<br/>names exactly which documents to read"] --> D
+  D["Design documents: REQUIREMENTS wins conflicts<br/>HLD, LLD-1 to LLD-5"] --> W["Work on one task branch"]
+  DEC["DECISIONS.md: why things are as they are<br/>(BD rows)"] --> W
+  M["Memory: owner preferences, decisions,<br/>progress across sessions"] --> W
+  T["Tests and golden sets: executable context<br/>that says what correct means"] --> W
+  W -->|"new decision"| DEC
+  W -->|"what to carry forward"| M
+</pre>
+<div class="scroll"><table>
+<thead><tr><th>Technique</th><th>Context engineering idea</th></tr></thead>
+<tbody>
+<tr><td class="k">A short CLAUDE.md</td><td>A small, always-present core: the stance, the nine non-negotiables, the rules that are easy to break, and pointers to where the truth lives. Detail is loaded only when a task needs it</td></tr>
+<tr><td class="k">The Load column</td><td>Retrieval for the agent: each task names the documents to read, so a session does not load all of them or guess</td></tr>
+<tr><td class="k">One source of truth per question</td><td>REQUIREMENTS wins every conflict; DECISIONS records why; nothing important lives only in a chat</td></tr>
+<tr><td class="k">Memory with a reason</td><td>Each memory holds one fact with its why and how to apply it, so a later session can judge an edge case instead of following a rule blindly</td></tr>
+<tr><td class="k">Measure, then decide</td><td>Golden sets, live timings and dry runs put evidence into the context before a design choice is made</td></tr>
+</tbody></table></div>
+</section>
+
+<section id="rules">
+<h2>Ground rules for agentic systems</h2>
+<p class="prose">General rules, each with where this project applies it.</p>
+<ol class="rules">
+  <li><b>Build context in code, per call.</b> Never let context accumulate as a running transcript; assemble exactly what this call needs from the stores.<div class="here">Here: six context builders, each a function with fixed inputs.</div></li>
+  <li><b>Give each role only what its job needs.</b> Need-to-know is a feature: it cuts cost and noise, and it creates independence.<div class="here">Here: the checker's restricted slice.</div></li>
+  <li><b>Separate instructions from data.</b> Fence untrusted text, escape anything that could pose as your tags, and treat model output derived from untrusted text as untrusted.<div class="here">Here: <code>wrap_source</code>, <code>escape_untrusted</code>, escaped claims and repairs.</div></li>
+  <li><b>Make absence explicit.</b> An empty field says "not stated"; gaps are listed; every vocabulary has an honest option for "the source doesn't say".<div class="here">Here: checker labels, gap notes, "method not stated" (BD-48).</div></li>
+  <li><b>Write context in the reader's words.</b> Labels, not codes; structure, not prose blobs; one fact per line with its ID.<div class="here">Here: <code>LEVEL_WORDS</code>, <code>MEASURE_WORDS</code>, fact lines.</div></li>
+  <li><b>Bound it, then rank inside the bound.</b> Fixed windows, caps and excerpt lengths; within them, the most relevant material first.<div class="here">Here: 12,000-token windows, best 4 by term hits, pages naming the city first, 8 facts.</div></li>
+  <li><b>Keep state outside the model.</b> Pass IDs between steps and resolve them in code; the store is the memory, not the context.<div class="here">Here: claim IDs in state and citations; Postgres re-validates every candidate.</div></li>
+  <li><b>Carry decisions forward, not prose.</b> Hand the next step what was decided and what failed, never the previous model's wording.<div class="here">Here: re-plan attempts and refused sites; classifier reuse without answer text.</div></li>
+  <li><b>Constrain and check the output.</b> Schemas, token ceilings and code checks before any output becomes another call's context.<div class="here">Here: structured outputs, quote matching, the post-check.</div></li>
+  <li><b>Put stable material first.</b> A fixed system prompt first, variable data last, so it caches and so each call reads the same way.<div class="here">Here: cached system prompts (BD-30).</div></li>
+  <li><b>Version the context, not only the prompt.</b> The code that builds a context changes behaviour as much as the wording does.<div class="here">Here: prompt versions hash the prompt, schema, builder and <code>safety.py</code>.</div></li>
+  <li><b>Test context with golden sets, one change at a time.</b> Measure each role on fixed cases, including attacks, before and after a context change.<div class="here">Here: extractor, checker, classifier and answerer golden sets with injected-instruction cases.</div></li>
+</ol>
+</section>
+
+<footer>
+  <p>Read from the project's code on 16 October 2026: <code>app/prompts/</code> (context builders, <code>safety.py</code>, <code>loader.py</code>), <code>app/workflow/llm.py</code>, <code>app/workflow/rules/chunking.py</code> and <code>selection.py</code>, <code>config/local-free.yaml</code>, and <code>docs/DECISIONS.md</code>. Examples use the project's fictional city, Halden Bay.</p>
+</footer>
+</div>
+
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.esm.min.mjs";
+  const dark = document.documentElement.dataset.theme === "dark" ||
+    (!document.documentElement.dataset.theme && matchMedia("(prefers-color-scheme: dark)").matches);
+  mermaid.initialize({ startOnLoad: true, theme: dark ? "dark" : "default", securityLevel: "strict" });
+</script>
+</body>
+</html>

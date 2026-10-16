@@ -25,3 +25,6 @@ web/lib/openapi.json
 tests/e2e/screenshots/
 web/tsconfig.tsbuildinfo
 web/next-env.d.ts
+
+# local trace files: fetched text and prompts (E-09, BD-58)
+traces/

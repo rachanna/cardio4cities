@@ -55,16 +55,21 @@ async def _call_once[T: BaseModel](
     # A call never outlives the run's wall clock (BD-15): its timeout is the time left
     left = deps.ledger.time_left_s()
     params = _params(role, binding).model_copy(update={"timeout_s": left})
-    try:
-        result = await asyncio.wait_for(
-            deps.llm[binding.provider].complete(role, system, user, schema, params), left
-        )
-    except TimeoutError as exc:
-        raise ProviderUnavailableError(f"{role}: the run's time ran out") from exc
-    except PortError as exc:
-        if exc.usage is not None:  # a failed call the provider billed (BD-30)
-            await _record(deps, exc.usage)
-        raise
+    tracer = deps.tracer
+    async with tracer.span(f"llm:{role}", provider=binding.provider, model=binding.model):
+        tracer.event("llm.request", system=system, user=user, params=params)
+        try:
+            result = await asyncio.wait_for(
+                deps.llm[binding.provider].complete(role, system, user, schema, params), left
+            )
+        except TimeoutError as exc:
+            raise ProviderUnavailableError(f"{role}: the run's time ran out") from exc
+        except PortError as exc:
+            if exc.usage is not None:  # a failed call the provider billed (BD-30)
+                await _record(deps, exc.usage)
+            tracer.event("llm.failed", error=type(exc).__name__, detail=str(exc))
+            raise
+        tracer.event("llm.response", output=result.raw_text, usage=result.usage())
     await _record(deps, result.usage())
     if not isinstance(result.parsed, schema):
         raise LLMOutputValidationError(f"{role}: unexpected output type", result.raw_text)

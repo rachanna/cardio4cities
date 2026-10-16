@@ -300,7 +300,8 @@ graph:      { provider: graphiti_neo4j, uri_env: NEO4J_URI, user_env: NEO4J_USER
 snapshots:  { provider: postgres, max_bytes: 10485760 }
 renderer:   { provider: fpdf2 }   # BD-40: pure-Python PDF
 report:     { intro_max_words: 120, analysis_max_points: 5, min_paragraph_words: 20, wall_clock_s: 120, max_cost_micro_usd: 100000 }   # BD-40
-tracing:    { providers: [events] }   # langsmith only once its adapter exists (BD-36)
+tracing:    { providers: [events], jsonl_dir: traces, max_text_chars: 4000 }   # RAG_TRACE=1 adds jsonl locally (BD-58); langsmith only once its adapter exists (BD-36)
+logging:    { level: INFO, format: text }   # json in the deployed profile (BD-58)
 budget:     { wall_clock_s: 420, searches: 64, fetches: 60, tokens: 1500000, cost_micro_usd: 3000000, wind_down_at: 0.85 }   # BD-15
 limits:     { runs_per_day: 20, ask_per_min: 20, resolve_per_min: 30 }
 fetch:      { concurrency: 6, min_interval_s: 1, max_bytes: 10485760, connect_timeout_s: 5, read_timeout_s: 20,
@@ -526,7 +527,7 @@ Not built (BD-36): `tavily`, `browser_print`, `otel` and `langsmith`; `weasyprin
 | Graph | `graphiti_neo4j` | same |
 | Snapshots | `postgres` | `s3` (COULD) |
 | Renderer | `fpdf2` (BD-40: pure Python, bundled DejaVu fonts; WeasyPrint needed Pango system libraries) | `browser_print` (not built) |
-| Tracing | `events` (`langsmith` once its adapter exists, BD-36) | `events` + `otel` |
+| Tracing | `events` (`langsmith` once its adapter exists, BD-36) | `events` + `jsonl` local trace files (`RAG_TRACE=1`; refused when deployed, BD-58); `otel` not built |
 
 ### 8.2 Contract-test highlights
 
@@ -547,7 +548,8 @@ Not built (BD-36): `tavily`, `browser_print`, `otel` and `langsmith`; `weasyprin
 |---|---|
 | Run events | LLD-2 §10; always on; the primary record of a run |
 | Tracing spans | `run`, `node:<name>`, `slot:<slot_id>`, `llm:<role>`, `fetch`, `search`, `graph:write`; attributes include `run_id`, `slot_id`, model ID, tokens, outcome |
-| Logs | JSON lines with `request_id` and `run_id`; never the access codes, cookies or API keys; page content never logged |
+| Logs | One set-up (`app/logs.py`): text locally, JSON lines deployed, each with the trace ID (run ID, or `<conversation>_t<turn>` for a question; BD-58); never the access codes, cookies or API keys; page content never logged |
+| Local trace files | `traces/<trace id>/trace.jsonl` when `RAG_TRACE=1`: spans and events with prompts and outputs, secrets redacted, long text bounded; git-ignored; refused when deployed (BD-58) |
 | Run summary | LLD-1 §2.7; shown in the UI and the report |
 
 ---

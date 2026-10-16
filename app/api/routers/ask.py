@@ -15,6 +15,7 @@ from app.api.errors import ApiError, dependency_unavailable
 from app.api.limits import FailureLimiter
 from app.api.schemas import AnswerSentenceOut, AnswerTraceResponse, AskRequest, AskResponse
 from app.ports.errors import PortError
+from app.ports.tracing import TRACE_ID
 from app.query.pipeline import answer_question
 from app.workflow.budget import BudgetExhaustedError
 from app.workflow.ids import new_id
@@ -61,6 +62,7 @@ async def ask(city_id: str, body: AskRequest, request: Request, session: Session
         previous, turn = last["classification"], int(last["turn"]) + 1
 
     deps = await ask_deps(request, row, graph_on=body.options.graph == "on")
+    TRACE_ID.set(f"{conversation_id}_t{turn}")  # the question's logs and trace (E-09)
     try:
         outcome = await answer_question(deps, body.question, previous)
     except (PortError, BudgetExhaustedError) as exc:

@@ -184,6 +184,7 @@ async def answer_question(
         "neo4j": graph_used,
     }
     cited = list(dict.fromkeys(r for s in checked.sentences for r in s.refs if r in evidence))
+    deps.tracer.event("ask.retrieval", trace=trace, cited=cited)  # E-09: the stored trace too
     return AnswerOutcome(u.question_type, checked.sentences, cited, graph_used, u, models, trace)
 
 

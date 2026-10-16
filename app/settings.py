@@ -176,6 +176,16 @@ class RendererSection(_Section):
 class TracingSection(_Section):
     providers: list[str]
     langsmith_api_key_env: str | None = None
+    # E-09 (BD-58): local trace files, git-ignored [tunable]
+    jsonl_dir: str
+    max_text_chars: int
+
+
+class LoggingSection(_Section):
+    """E-09 (BD-58): root log level and line format [tunable]."""
+
+    level: Literal["DEBUG", "INFO", "WARNING", "ERROR"]
+    format: Literal["text", "json"]
 
 
 class BudgetSection(_Section):
@@ -349,6 +359,7 @@ class Config(_Section):
     snapshots: SnapshotsSection
     renderer: RendererSection
     tracing: TracingSection
+    logging: LoggingSection
     budget: BudgetSection
     limits: LimitsSection
     retrieval: RetrievalSection
@@ -421,6 +432,9 @@ def load_settings(env: Mapping[str, str] | None = None, config_dir: Path = CONFI
         raise ConfigError(
             [f"{path.name}: {'.'.join(map(str, e['loc']))}: {e['msg']}" for e in exc.errors()]
         ) from None
+    # RAG_TRACE=1 adds the local trace files (E-09, BD-58); never in the deployed profile
+    if env.get("RAG_TRACE", "").strip() == "1" and "jsonl" not in config.tracing.providers:
+        config.tracing.providers.append("jsonl")
 
     required = required_secrets(config)
     problems = [
@@ -437,6 +451,11 @@ def load_settings(env: Mapping[str, str] | None = None, config_dir: Path = CONFI
     ]
     if app_env == "deployed":
         problems += check_deployed_placeholders(config, raw)
+        if "jsonl" in config.tracing.providers:
+            problems.append(
+                "tracing.providers: local trace files (jsonl, RAG_TRACE=1) hold fetched text "
+                "and prompts and are refused with APP_ENV=deployed (BD-58)"
+            )
     if problems:
         raise ConfigError(problems)
 

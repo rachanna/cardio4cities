@@ -119,6 +119,11 @@ From 2026-10-14 the system keeps growing as practice in building systems. Task I
 | E-06 | Warm-up at start-up | LLD-4 §7 | Load the embedding model and set up the graph when the app starts, not on the first question | No first-question spike | 1 h |
 | E-07 | Graph read shaped by the question | LLD-5 §4.3, BD-56 | Graphiti hybrid edge search with the question, relation types, date filters, the run as a property filter, and node-distance reranking around a named entity | Retrieval recall on the golden set holds; graph read latency measured before and after | 3 h |
 | E-08 | Context engineering notes | LLD-3 §2, the six context builders | `docs/CONTEXT_ENGINEERING.html`: what each model role sees and never sees, the mechanisms on every call, how the build was context-engineered, and ground rules for agentic systems | Every project figure read from the code | 1 h |
+| E-09 | Observability foundation | HLD §13.4 (observability), R-71, LLD-4 §8 | Structured logs with run and question IDs; the tracing port built as a local trace-file adapter (git-ignored, refused in the deployed profile); spans for every workflow node and model call | Every run and question leaves a step-by-step trace with timing, cost and model inputs and outputs; off and unchanged when disabled | 3 h |
+| E-10 | Data safety | LLD-1 §4, BD-56 | Postgres backup and restore commands (the only store that needs a backup: Qdrant and the graph rebuild with `poe reindex`); a drift check across the three stores | A restore into an empty database followed by a reindex reproduces the stores; the drift check reports zero on a fresh rebuild | 2 h |
+| E-11 | Reliability | LLD-2 §17, BD-56 | Retries for derived-store writes (claim index, graph); E-06 warm-up; an E-03 soak run on the free profile | No silently missing index points; first question has no cold-start spike | 3 h |
+| E-12 | Security and supply chain | R-50, R-51, LLD-4 §6 | Dependency vulnerability audits in CI (Python and web), security headers, an audit trail of who asked what | CI fails on a known vulnerable dependency; headers present | 2 h |
+| E-13 | Real-world quality | LLD-3 §9, LLD-5 §12 | A human-curated validation set for a few real cities (kept out of the repository) and a scheduled evaluation on free models | Precision and recall reported per role on real data | 4 h |
 
 ---
 

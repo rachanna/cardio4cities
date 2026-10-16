@@ -18,6 +18,7 @@ from app.domain.cards import FactCard, SlotRow, slot_row, summary
 from app.domain.models import StoredFact
 from app.domain.wording import DIMENSION_NAMES
 from app.ports.errors import PortError
+from app.ports.tracing import TracingPort, tracer_of
 from app.prompts.loader import load_prompt
 from app.prompts.reporter import context
 from app.prompts.reporter.schema import AnalysisOutput, DimensionIntro
@@ -39,6 +40,7 @@ class _Deps:
     ledger: BudgetLedger
     llm: Mapping[str, Any]
     roles: Mapping[str, ModelRole]
+    tracer: TracingPort  # E-09, BD-58
 
 
 @dataclass(frozen=True)
@@ -115,7 +117,7 @@ async def _prose(
     if roles["reporter"].provider not in container.llm:
         return {}, (), {"skipped": "no reporter model"}
     ledger = question_ledger(cfg.wall_clock_s, cfg.max_cost_micro_usd)
-    deps = cast(AskDeps, _Deps(ledger, container.llm, roles))
+    deps = cast(AskDeps, _Deps(ledger, container.llm, roles, tracer_of(container.tracing)))
     prompt = load_prompt("reporter")
     evidence = {f.claim.claim_id: Evidence(f, cards[f.claim.claim_id]) for f in facts}
     names = tuple(n for n in (city.get("country_name"), city.get("admin1_name")) if n)

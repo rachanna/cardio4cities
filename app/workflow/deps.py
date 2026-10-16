@@ -21,6 +21,7 @@ from app.ports.repos import RelationalPort
 from app.ports.search import SearchPort
 from app.ports.snapshots import SnapshotPort
 from app.ports.structured import StructuredDataPort
+from app.ports.tracing import NoTracing, TracingPort
 from app.ports.vector import VectorPort
 from app.workflow.budget import BudgetLedger
 from app.workflow.collection import Collector
@@ -101,6 +102,7 @@ class RunDeps:
     checkpointed: bool = True  # False when no checkpoint can be saved: no resume (BD-25)
     prefer_local: bool = True  # select.prefer_local [tunable] (BD-50)
     max_per_domain: int = 2  # select.max_per_domain_per_round [tunable] (BD-51)
+    tracer: TracingPort = field(default_factory=NoTracing)  # E-09, BD-58
     # (slot, source) pairs this process extracted: a later round never repeats one (BD-29)
     extracted: set[tuple[str, str]] = field(default_factory=set)
 

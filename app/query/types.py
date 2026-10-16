@@ -12,6 +12,7 @@ from app.ports.embeddings import EmbeddingsPort
 from app.ports.graph import GraphPort
 from app.ports.llm import LLMParams, LLMPort
 from app.ports.repos import RelationalPort
+from app.ports.tracing import NoTracing, TracingPort
 from app.ports.vector import VectorPort
 from app.prompts.classifier.schema import EntityMention, QuestionType
 
@@ -86,6 +87,7 @@ class AskDeps:
     chunk_collection: str  # source_chunks__{key}
     today: date
     graph_on: bool = True  # admin switch (R-88)
+    tracer: TracingPort = field(default_factory=NoTracing)  # E-09, BD-58
 
 
 @dataclass(frozen=True)

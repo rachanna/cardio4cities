@@ -80,6 +80,8 @@ ADAPTERS: AdapterRegistry = {
         "who_gho": "app.adapters.structured.who_gho:make",
         "world_bank": "app.adapters.structured.world_bank:make",
     },
+    # local trace files (E-09, BD-58); `events` is the run event log, not an adapter
+    "tracing": {"jsonl": "app.adapters.tracing.jsonl:make"},
     # model providers (D2-3)
     "llm": {
         "anthropic": "app.adapters.llm.anthropic:make",

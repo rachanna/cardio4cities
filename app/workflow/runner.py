@@ -46,6 +46,7 @@ from app.ports.robots import RobotsParser
 from app.ports.search import SearchPort
 from app.ports.snapshots import SnapshotPort
 from app.ports.structured import StructuredDataPort
+from app.ports.tracing import TRACE_ID, TracingPort, tracer_of
 from app.ports.vector import VectorPort
 from app.prompts.loader import load_prompt
 from app.settings import Config, ModelRef, RoleConfig, Settings
@@ -83,6 +84,7 @@ class RunPorts(Protocol):
     graph: GraphPort | None
     structured: dict[str, StructuredDataPort]
     checkpointer: CheckpointPort | None
+    tracing: list[TracingPort]  # E-09, BD-58
 
 
 class RunInProgressError(Exception):
@@ -270,6 +272,7 @@ class RunManager:
         """`state` None: resume the run from its last checkpoint. A cancelled run (the
         process is stopping) stays `running`, so another process resumes it (BD-25)."""
         RUN_ID.set(deps.run_id)  # every task the run starts copies this context (BD-27)
+        TRACE_ID.set(deps.run_id)  # the run's logs and trace carry its ID (E-09)
         try:
             saver = await self._saver()
             deps.checkpointed = saver is not None  # shown in the run summary (BD-25)
@@ -422,6 +425,7 @@ class RunManager:
         events = EventEmitter(self.relational.runs)
         deps = RunDeps(
             run_id=run_id,
+            tracer=tracer_of(p.tracing),
             relational=self.relational,
             llm=limited_llms(p.llm, cfg.llm.concurrency),  # a gate per provider (BD-47)
             roles=role_bindings(self.settings),

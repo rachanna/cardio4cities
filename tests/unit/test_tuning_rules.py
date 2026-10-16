@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from app.domain.models import CityIdentity
 from app.ports.errors import ProviderUnavailableError
 from app.ports.llm import LLMParams, LLMResult
+from app.ports.tracing import NoTracing
 from app.prompts.planner.schema import (
     PlannedQuery,
     PlannerOutput,
@@ -124,7 +125,7 @@ async def test_a_model_call_is_cut_off_when_the_run_has_no_time_left() -> None:
     )  # fmt: skip
     clock[0] = 419.95  # 50 ms left
     slow = Slow()
-    deps: Any = type("Deps", (), {"ledger": ledger, "llm": {"p": slow}})()
+    deps: Any = type("Deps", (), {"ledger": ledger, "llm": {"p": slow}, "tracer": NoTracing()})()
     binding = Binding(provider="p", model="m", family="f")
     with pytest.raises(ProviderUnavailableError, match="time ran out"):
         await _call_once(deps, "checker", binding, "system", "user", BaseModel)

@@ -15,6 +15,7 @@ from app.api import reading
 from app.api.errors import dependency_unavailable
 from app.domain.params import BadgeParams, ConfidenceParams
 from app.ports.llm import LLMParams
+from app.ports.tracing import tracer_of
 from app.query.types import AskDeps, AskParams, ModelRole
 from app.settings import Settings
 from app.workflow.budget import BudgetLedger, BudgetLimits
@@ -82,6 +83,7 @@ async def ask_deps(request: Request, city_row: dict[str, object], graph_on: bool
         relational=store,
         vector=container.vector,
         graph=container.graph,
+        tracer=tracer_of(container.tracing),
         embeddings=container.embeddings,
         embedding_model=cfg.embeddings.model,
         llm=container.llm,

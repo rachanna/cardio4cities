@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from app.domain.prices import cost_micro_usd, embedding_cost_micro_usd
 from app.ports.errors import LLMOutputValidationError
 from app.ports.llm import LLMUsage
+from app.ports.tracing import NoTracing
 from app.workflow.budget import BudgetLedger, BudgetLimits
 from app.workflow.deps import Binding
 from app.workflow.limits import LimitedEmbeddings
@@ -79,7 +80,9 @@ async def test_a_failed_call_the_provider_billed_is_recorded() -> None:
                                    cost_micro_usd=4090)  # fmt: skip
             raise error
 
-    deps: Any = type("D", (), {"ledger": book, "llm": {"openai": Failing()}})()
+    deps: Any = type(
+        "D", (), {"ledger": book, "llm": {"openai": Failing()}, "tracer": NoTracing()}
+    )()
     binding = Binding(provider="openai", model="gpt-6-luna", family="openai", effort="low",
                       temperature=None)  # fmt: skip
     with pytest.raises(LLMOutputValidationError):

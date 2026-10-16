@@ -13,6 +13,7 @@ import pytest
 from app.domain.vocab import ClaimKind
 from app.ports.errors import LLMOutputValidationError
 from app.ports.llm import LLMParams, LLMResult
+from app.ports.tracing import NoTracing
 from app.prompts.extractor import context
 from app.prompts.extractor.schema import ExtractorOutput, ExtractorWire
 from app.workflow.deps import Binding, RoleBinding
@@ -86,6 +87,7 @@ def run_deps(model: Scripted, escalate: bool) -> Any:
         roles={"extractor": RoleBinding(PRIMARY, STRONGER if escalate else None)},
         llm={"openai": model},
         events=Events(),
+        tracer=NoTracing(),
     )
 
 

@@ -22,6 +22,7 @@ from app.ports.robots import RobotsParser
 from app.ports.search import SearchHit, SearchPort
 from app.ports.snapshots import SnapshotPort
 from app.ports.structured import StructuredDataPort
+from app.ports.tracing import TracingPort
 from app.ports.vector import VectorHit, VectorPoint, VectorPort
 
 Handler = Callable[[str], BaseModel]  # user message -> parsed output
@@ -167,3 +168,4 @@ class Ports:
     graph: GraphPort | None
     structured: dict[str, StructuredDataPort] = field(default_factory=dict)
     checkpointer: CheckpointPort | None = None
+    tracing: list[TracingPort] = field(default_factory=list)  # E-09: no tracer in tests

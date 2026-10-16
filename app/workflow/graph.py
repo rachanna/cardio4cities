@@ -47,10 +47,14 @@ def guarded(name: str, node: SlotNode) -> SlotNode:
     following nodes see empty inputs (LLD-2 §17). Budget exhaustion is not an error."""
 
     async def run(state: SlotState, config: RunnableConfig) -> dict[str, Any]:
-        clock = deps(config).stages
+        d = deps(config)
+        clock = d.stages
         started = clock.start()
         try:
-            return await node(state, config)
+            async with d.tracer.span(
+                f"node:{name}", slot_id=state.get("slot_id"), round=state.get("round", 0)
+            ):
+                return await node(state, config)
         except BudgetExhaustedError:
             return {}
         except Exception as exc:  # recorded on the slot report and stored (BD-21)
@@ -65,10 +69,12 @@ def guarded(name: str, node: SlotNode) -> SlotNode:
 
 def timed(name: str, node: RunNode) -> RunNode:
     async def run(state: RunState, config: RunnableConfig) -> dict[str, Any]:
-        clock = deps(config).stages
+        d = deps(config)
+        clock = d.stages
         started = clock.start()
         try:
-            return await node(state, config)
+            async with d.tracer.span(f"node:{name}"):
+                return await node(state, config)
         finally:
             clock.stop(name, started)
 

@@ -26,6 +26,7 @@ from app.api.limits import FailureLimiter
 from app.api.routers import ask, cities, facts, health, reports, runs, session, workflow
 from app.api.routers.health import HealthService
 from app.container import ADAPTERS, AdapterRegistry, Container, build_container
+from app.logs import setup_logging
 from app.ports.graph import GraphPort
 from app.settings import (
     ConfigError,
@@ -158,6 +159,7 @@ def _lifespan(
         if env_file is not None:
             load_dotenv(env_file, override=False)  # never overrides real environment variables
         settings = load_settings()
+        setup_logging(settings.config.logging.level, settings.config.logging.format)  # E-09
         container = build_container(settings, registry)
         manager: RunManager | None = None
         try:

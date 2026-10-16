@@ -153,17 +153,19 @@ async def test_an_unreachable_langsmith_never_fails_the_step() -> None:
 def test_langsmith_is_off_unless_asked_for(valid_env: dict[str, str]) -> None:
     assert "langsmith" not in load_settings(valid_env).config.tracing.providers
 
-    valid_env["RAG_TRACE_LANGSMITH"] = "1"
+    valid_env.update(RAG_TRACE_LANGSMITH="1", LANGSMITH_ENDPOINT="https://api.smith.langchain.com")
     assert "langsmith" in load_settings(valid_env).config.tracing.providers
 
 
-def test_langsmith_needs_its_key(valid_env: dict[str, str]) -> None:
+def test_langsmith_needs_its_key_and_its_regions_endpoint(valid_env: dict[str, str]) -> None:
     valid_env["RAG_TRACE_LANGSMITH"] = "1"
     del valid_env["LANGSMITH_API_KEY"]
     with pytest.raises(ConfigError) as exc:
         load_settings(valid_env)
 
-    assert any("LANGSMITH_API_KEY is not set" in p for p in exc.value.problems)
+    problems = "\n".join(exc.value.problems)
+    assert "LANGSMITH_API_KEY is not set" in problems
+    assert "LANGSMITH_ENDPOINT is not set" in problems
 
 
 def test_the_deployed_profile_refuses_langsmith(valid_env: dict[str, str]) -> None:
@@ -186,7 +188,7 @@ def test_langgraphs_own_tracing_is_refused(valid_env: dict[str, str], name: str)
 def test_the_adapter_is_built_from_the_profile_without_a_network_call(
     valid_env: dict[str, str],
 ) -> None:
-    valid_env["RAG_TRACE_LANGSMITH"] = "1"
+    valid_env.update(RAG_TRACE_LANGSMITH="1", LANGSMITH_ENDPOINT="https://api.smith.langchain.com")
     built = make(load_settings(valid_env))
     try:
         assert isinstance(built, LangsmithTracer)

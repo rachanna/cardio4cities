@@ -177,7 +177,7 @@ class LangsmithSection(_Section):
     """E-14 (BD-59): LangSmith on the free Developer plan, local profiles only [tunable]."""
 
     project: str
-    endpoint: str
+    endpoint_env: str  # the organisation's regional API; a key works in its region only
     max_traces_per_day: int  # root runs a UTC day; 150 a day stays inside 5,000 a month
     flush_timeout_s: float  # how long shutdown waits to send what is queued
 
@@ -628,6 +628,8 @@ def required_secrets(config: Config) -> dict[str, str]:
     need(config.graph.password_env, "graph.password_env")
     if "langsmith" in config.tracing.providers:
         need(config.tracing.langsmith_api_key_env, "tracing.langsmith_api_key_env")
+        if config.tracing.langsmith is not None:
+            need(config.tracing.langsmith.endpoint_env, "tracing.langsmith.endpoint_env")
     return needed
 
 

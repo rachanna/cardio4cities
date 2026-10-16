@@ -300,7 +300,7 @@ graph:      { provider: graphiti_neo4j, uri_env: NEO4J_URI, user_env: NEO4J_USER
 snapshots:  { provider: postgres, max_bytes: 10485760 }
 renderer:   { provider: fpdf2 }   # BD-40: pure-Python PDF
 report:     { intro_max_words: 120, analysis_max_points: 5, min_paragraph_words: 20, wall_clock_s: 120, max_cost_micro_usd: 100000 }   # BD-40
-tracing:    { providers: [events], jsonl_dir: traces, max_text_chars: 4000 }   # RAG_TRACE=1 adds jsonl, RAG_TRACE_LANGSMITH=1 adds langsmith, locally (BD-58, BD-59); local profiles also set langsmith_api_key_env and langsmith: { project, endpoint, max_traces_per_day, flush_timeout_s }
+tracing:    { providers: [events], jsonl_dir: traces, max_text_chars: 4000 }   # RAG_TRACE=1 adds jsonl, RAG_TRACE_LANGSMITH=1 adds langsmith, locally (BD-58, BD-59); local profiles also set langsmith_api_key_env and langsmith: { project, endpoint_env, max_traces_per_day, flush_timeout_s }
 logging:    { level: INFO, format: text }   # json in the deployed profile (BD-58)
 budget:     { wall_clock_s: 420, searches: 64, fetches: 60, tokens: 1500000, cost_micro_usd: 3000000, wind_down_at: 0.85 }   # BD-15
 limits:     { runs_per_day: 20, ask_per_min: 20, resolve_per_min: 30 }

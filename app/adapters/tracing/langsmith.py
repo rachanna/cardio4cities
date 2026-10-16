@@ -166,7 +166,7 @@ def make(settings: Settings) -> LangsmithTracer:
     if not t.langsmith_api_key_env or t.langsmith is None:
         raise ValueError("tracing.langsmith_api_key_env and tracing.langsmith are required")
     client = Client(
-        api_url=t.langsmith.endpoint,
+        api_url=settings.secret(t.langsmith.endpoint_env),
         api_key=settings.secret(t.langsmith_api_key_env),
         tracing_error_callback=_report_failure,
     )

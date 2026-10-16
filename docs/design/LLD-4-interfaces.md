@@ -300,7 +300,7 @@ graph:      { provider: graphiti_neo4j, uri_env: NEO4J_URI, user_env: NEO4J_USER
 snapshots:  { provider: postgres, max_bytes: 10485760 }
 renderer:   { provider: fpdf2 }   # BD-40: pure-Python PDF
 report:     { intro_max_words: 120, analysis_max_points: 5, min_paragraph_words: 20, wall_clock_s: 120, max_cost_micro_usd: 100000 }   # BD-40
-tracing:    { providers: [events], jsonl_dir: traces, max_text_chars: 4000 }   # RAG_TRACE=1 adds jsonl locally (BD-58); langsmith only once its adapter exists (BD-36)
+tracing:    { providers: [events], jsonl_dir: traces, max_text_chars: 4000 }   # RAG_TRACE=1 adds jsonl, RAG_TRACE_LANGSMITH=1 adds langsmith, locally (BD-58, BD-59); local profiles also set langsmith_api_key_env and langsmith: { project, endpoint_env, max_traces_per_day, flush_timeout_s }
 logging:    { level: INFO, format: text }   # json in the deployed profile (BD-58)
 budget:     { wall_clock_s: 420, searches: 64, fetches: 60, tokens: 1500000, cost_micro_usd: 3000000, wind_down_at: 0.85 }   # BD-15
 limits:     { runs_per_day: 20, ask_per_min: 20, resolve_per_min: 30 }
@@ -514,7 +514,7 @@ Relational access uses repository classes per aggregate (`RunRepo`, `ClaimRepo`,
 
 ### 8.1 Adapters for the PoC
 
-Not built (BD-36): `tavily`, `browser_print`, `otel` and `langsmith`; `weasyprint` is replaced by `fpdf2` (BD-40). A workflow port whose adapter is not built is refused at start-up (§5.2, BD-25), so no profile selects one of these for search; the `ollama` LLM adapter was added in E-01 (BD-54); the renderer and tracing are not workflow ports, and start-up lists the deployed profile's `weasyprint` as not built yet until D3-3.
+Not built (BD-36): `tavily`, `browser_print` and `otel` (`langsmith` was built in E-14, BD-59); `weasyprint` is replaced by `fpdf2` (BD-40). A workflow port whose adapter is not built is refused at start-up (§5.2, BD-25), so no profile selects one of these for search; the `ollama` LLM adapter was added in E-01 (BD-54); the renderer and tracing are not workflow ports, and start-up lists the deployed profile's `weasyprint` as not built yet until D3-3.
 
 | Port | Deployed default | Local or alternative |
 |---|---|---|
@@ -527,7 +527,7 @@ Not built (BD-36): `tavily`, `browser_print`, `otel` and `langsmith`; `weasyprin
 | Graph | `graphiti_neo4j` | same |
 | Snapshots | `postgres` | `s3` (COULD) |
 | Renderer | `fpdf2` (BD-40: pure Python, bundled DejaVu fonts; WeasyPrint needed Pango system libraries) | `browser_print` (not built) |
-| Tracing | `events` (`langsmith` once its adapter exists, BD-36) | `events` + `jsonl` local trace files (`RAG_TRACE=1`; refused when deployed, BD-58); `otel` not built |
+| Tracing | `events` (LangSmith refused when deployed, BD-59) | `events` + `jsonl` local trace files (`RAG_TRACE=1`, BD-58) and `langsmith` (`RAG_TRACE_LANGSMITH=1`, free Developer plan, BD-59); `otel` not built |
 
 ### 8.2 Contract-test highlights
 
@@ -550,6 +550,7 @@ Not built (BD-36): `tavily`, `browser_print`, `otel` and `langsmith`; `weasyprin
 | Tracing spans | `run`, `node:<name>`, `slot:<slot_id>`, `llm:<role>`, `fetch`, `search`, `graph:write`; attributes include `run_id`, `slot_id`, model ID, tokens, outcome |
 | Logs | One set-up (`app/logs.py`): text locally, JSON lines deployed, each with the trace ID (run ID, or `<conversation>_t<turn>` for a question; BD-58); never the access codes, cookies or API keys; page content never logged |
 | Local trace files | `traces/<trace id>/trace.jsonl` when `RAG_TRACE=1`: spans and events with prompts and outputs, secrets redacted, long text bounded; git-ignored; refused when deployed (BD-58) |
+| LangSmith | When `RAG_TRACE_LANGSMITH=1`: one trace per run (`run`), question (`ask`) or report (`report`); `llm:<role>` runs carry the prompt, output, model and usage; cleaned as the trace files are; daily cap; refused when deployed; LangGraph's own tracing refused at start-up (BD-59) |
 | Run summary | LLD-1 §2.7; shown in the UI and the report |
 
 ---

@@ -124,6 +124,7 @@ From 2026-10-14 the system keeps growing as practice in building systems. Task I
 | E-11 | Reliability | LLD-2 §17, BD-56 | Retries for derived-store writes (claim index, graph); E-06 warm-up; an E-03 soak run on the free profile | No silently missing index points; first question has no cold-start spike | 3 h |
 | E-12 | Security and supply chain | R-50, R-51, LLD-4 §6 | Dependency vulnerability audits in CI (Python and web), security headers, an audit trail of who asked what | CI fails on a known vulnerable dependency; headers present | 2 h |
 | E-13 | Real-world quality | LLD-3 §9, LLD-5 §12 | A human-curated validation set for a few real cities (kept out of the repository) and a scheduled evaluation on free models | Precision and recall reported per role on real data | 4 h |
+| E-14 | LangSmith tracing (local, free tier) | LLD-4 §8, BD-58, BD-59 | A `langsmith` adapter behind the tracing port; root spans for runs, questions and reports; opt-in with `RAG_TRACE_LANGSMITH=1`; refused when deployed; LangGraph's own tracing refused; daily trace cap | A run, a question or a report is one LangSmith trace with every node and model call, prompts and outputs redacted and bounded; nothing sent when off | 3 h |
 
 ---
 

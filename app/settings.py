@@ -173,9 +173,19 @@ class RendererSection(_Section):
     provider: str
 
 
+class LangsmithSection(_Section):
+    """E-14 (BD-59): LangSmith on the free Developer plan, local profiles only [tunable]."""
+
+    project: str
+    endpoint_env: str  # the organisation's regional API; a key works in its region only
+    max_traces_per_day: int  # root runs a UTC day; 150 a day stays inside 5,000 a month
+    flush_timeout_s: float  # how long shutdown waits to send what is queued
+
+
 class TracingSection(_Section):
     providers: list[str]
     langsmith_api_key_env: str | None = None
+    langsmith: LangsmithSection | None = None
     # E-09 (BD-58): local trace files, git-ignored [tunable]
     jsonl_dir: str
     max_text_chars: int
@@ -435,6 +445,10 @@ def load_settings(env: Mapping[str, str] | None = None, config_dir: Path = CONFI
     # RAG_TRACE=1 adds the local trace files (E-09, BD-58); never in the deployed profile
     if env.get("RAG_TRACE", "").strip() == "1" and "jsonl" not in config.tracing.providers:
         config.tracing.providers.append("jsonl")
+    # RAG_TRACE_LANGSMITH=1 adds LangSmith (E-14, BD-59); never in the deployed profile
+    langsmith_on = env.get("RAG_TRACE_LANGSMITH", "").strip() == "1"
+    if langsmith_on and "langsmith" not in config.tracing.providers:
+        config.tracing.providers.append("langsmith")
 
     required = required_secrets(config)
     problems = [
@@ -448,6 +462,7 @@ def load_settings(env: Mapping[str, str] | None = None, config_dir: Path = CONFI
             if not env.get(name, "").strip()
         ],
         *check_access_codes(config, env),
+        *check_framework_tracing_off(env),
     ]
     if app_env == "deployed":
         problems += check_deployed_placeholders(config, raw)
@@ -455,6 +470,11 @@ def load_settings(env: Mapping[str, str] | None = None, config_dir: Path = CONFI
             problems.append(
                 "tracing.providers: local trace files (jsonl, RAG_TRACE=1) hold fetched text "
                 "and prompts and are refused with APP_ENV=deployed (BD-58)"
+            )
+        if "langsmith" in config.tracing.providers:
+            problems.append(
+                "tracing.providers: LangSmith (RAG_TRACE_LANGSMITH=1) sends prompts and "
+                "fetched text off this machine and is refused with APP_ENV=deployed (BD-59)"
             )
     if problems:
         raise ConfigError(problems)
@@ -464,6 +484,22 @@ def load_settings(env: Mapping[str, str] | None = None, config_dir: Path = CONFI
 
 
 # --- Checks (pure) ---------------------------------------------------------
+
+
+_FRAMEWORK_TRACING = (
+    "LANGSMITH_TRACING", "LANGSMITH_TRACING_V2", "LANGCHAIN_TRACING_V2", "LANGCHAIN_TRACING",
+)  # fmt: skip
+
+
+def check_framework_tracing_off(env: Mapping[str, str]) -> list[str]:
+    """LangGraph traces itself to LangSmith when one of these is on, sending the whole
+    graph state unredacted; tracing goes through the tracing port only (BD-59)."""
+    return [
+        f"{name} must not be on: LangSmith tracing goes through the tracing port "
+        "(RAG_TRACE_LANGSMITH=1), which redacts and bounds what it sends (BD-59)"
+        for name in _FRAMEWORK_TRACING
+        if env.get(name, "").strip().lower() in ("1", "true", "yes", "on")
+    ]
 
 
 def check_checker_independence(config: Config) -> list[str]:
@@ -530,6 +566,8 @@ def check_adapter_settings(config: Config) -> list[str]:
         problems.append("search.base_url is required for provider 'searxng'")
     if "langsmith" in config.tracing.providers and not config.tracing.langsmith_api_key_env:
         problems.append("tracing.langsmith_api_key_env is required when langsmith is enabled")
+    if "langsmith" in config.tracing.providers and config.tracing.langsmith is None:
+        problems.append("tracing.langsmith is required when langsmith is enabled")
     problems += _check_ollama(config)
     return problems
 
@@ -590,6 +628,8 @@ def required_secrets(config: Config) -> dict[str, str]:
     need(config.graph.password_env, "graph.password_env")
     if "langsmith" in config.tracing.providers:
         need(config.tracing.langsmith_api_key_env, "tracing.langsmith_api_key_env")
+        if config.tracing.langsmith is not None:
+            need(config.tracing.langsmith.endpoint_env, "tracing.langsmith.endpoint_env")
     return needed
 
 

@@ -18,7 +18,7 @@ from app.domain.cards import FactCard, SlotRow, slot_row, summary
 from app.domain.models import StoredFact
 from app.domain.wording import DIMENSION_NAMES
 from app.ports.errors import PortError
-from app.ports.tracing import TracingPort, tracer_of
+from app.ports.tracing import TRACE_ID, TracingPort, tracer_of
 from app.prompts.loader import load_prompt
 from app.prompts.reporter import context
 from app.prompts.reporter.schema import AnalysisOutput, DimensionIntro
@@ -198,7 +198,9 @@ async def build(request: Request, city_row: Mapping[str, Any]) -> Built:
     cards = {i: c for i, c in cards.items() if i in shown}
     run = await store.runs.run_row(run_id) or {}
     city = dict(city_row["identity"])
-    intros, analysis, spent = await _prose(request, city, rows, facts, cards)
+    TRACE_ID.set(f"{run_id}_report")  # the report's logs and trace (E-09, E-14)
+    async with tracer_of(request.app.state.container.tracing).span("report"):
+        intros, analysis, spent = await _prose(request, city, rows, facts, cards)
     log.info("report for %s: prose %s", run_id, spent)
     report = assemble(
         city, run, rows, facts, cards, pairs, maker.slots, intros, analysis,

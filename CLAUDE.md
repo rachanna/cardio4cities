@@ -48,7 +48,7 @@ Start each session by naming the task ID from `BUILD_PLAN.md` and reading the do
 - **Models never produce numbers.** They copy `value_as_written`; code parses it (LLD-2 §4.2).
 - **No fuzzy quote matching.** Normalise both sides, then exact match (LLD-2 §4.1). If too many claims drop, fix parsing.
 - **Search is links only.** Never enable a search provider's page-content features. Every page goes through the crawl gate.
-- **Fetched text is untrusted.** Always wrapped and escaped by `app/prompts/safety.py`. Never logged. The one exception is local trace files (`RAG_TRACE=1`, git-ignored, refused when deployed; BD-58).
+- **Fetched text is untrusted.** Always wrapped and escaped by `app/prompts/safety.py`. Never logged. The exceptions are traces for local debugging: trace files (`RAG_TRACE=1`, git-ignored; BD-58) and LangSmith (`RAG_TRACE_LANGSMITH=1`; BD-59), both refused when deployed.
 - **Question answering never writes facts and never searches the web.**
 - **Only confirmed claims support facts in answers.** Every candidate from Qdrant or Graphiti is re-checked against Postgres before use.
 - **Both sides of a disagreement are always shown together.**

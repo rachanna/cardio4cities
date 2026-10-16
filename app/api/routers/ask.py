@@ -64,7 +64,8 @@ async def ask(city_id: str, body: AskRequest, request: Request, session: Session
     deps = await ask_deps(request, row, graph_on=body.options.graph == "on")
     TRACE_ID.set(f"{conversation_id}_t{turn}")  # the question's logs and trace (E-09)
     try:
-        outcome = await answer_question(deps, body.question, previous)
+        async with deps.tracer.span("ask", question=body.question, turn=turn):  # E-14
+            outcome = await answer_question(deps, body.question, previous)
     except (PortError, BudgetExhaustedError) as exc:
         log.warning("ask: answering failed (%s)", type(exc).__name__)
         raise dependency_unavailable(

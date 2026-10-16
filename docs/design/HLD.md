@@ -525,7 +525,7 @@ One configuration file per environment selects adapters and parameters; secrets 
 | **Security** | Access code; admin code for admin parameters; rate limits; stores on private network only; SSRF protection in the fetch adapter (private, loopback and metadata addresses refused; size and type limits); no secrets in the repository |
 | **Prompt injection** | Fetched text is passed to models as delimited data; extraction and checking have no tools and no ability to act; outputs schema-validated; planted injection case in tests (AT-22) |
 | **Cost** | Run budgets (§5.4); one run at a time; daily run limit; per-run model cost in the summary; provider-level limits as backup |
-| **Observability** | Run events (always); per-step tracing through the tracing port (local trace files today, BD-58; LangSmith or OpenTelemetry later); structured logs with a trace ID; run summary; crawl-decision log |
+| **Observability** | Run events (always); per-step tracing through the tracing port (local trace files, BD-58, and LangSmith for local runs on its free plan, BD-59; OpenTelemetry later); structured logs with a trace ID; run summary; crawl-decision log |
 | **Reproducibility** | Model IDs and prompt versions stamped on runs and verdicts; snapshots; Docker Compose |
 | **Responsible collection** | Standards-based gate; honest user-agent; one request at a time per domain; crawl-delay honoured |
 

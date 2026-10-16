@@ -277,15 +277,16 @@ class RunManager:
             saver = await self._saver()
             deps.checkpointed = saver is not None  # shown in the run summary (BD-25)
             graph = build_graph(saver)
-            await graph.ainvoke(
-                state,
-                {
-                    "configurable": {"deps": deps, "thread_id": deps.run_id},
-                    # Slots run side by side; what they share is limited per resource
-                    # (model, embeddings, fetch, search), not by the number of slots.
-                    "max_concurrency": max(len(deps.slots), 1),
-                },
-            )
+            async with deps.tracer.span("run", resumed=state is None):  # one trace (E-14)
+                await graph.ainvoke(
+                    state,
+                    {
+                        "configurable": {"deps": deps, "thread_id": deps.run_id},
+                        # Slots run side by side; what they share is limited per resource
+                        # (model, embeddings, fetch, search), not by the number of slots.
+                        "max_concurrency": max(len(deps.slots), 1),
+                    },
+                )
         except asyncio.CancelledError:
             # LangGraph can leave sibling nodes running after a cancel (seen when the
             # cancel lands during a node's call): refuse their external calls and cancel

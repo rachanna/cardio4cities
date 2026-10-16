@@ -80,8 +80,12 @@ ADAPTERS: AdapterRegistry = {
         "who_gho": "app.adapters.structured.who_gho:make",
         "world_bank": "app.adapters.structured.world_bank:make",
     },
-    # local trace files (E-09, BD-58); `events` is the run event log, not an adapter
-    "tracing": {"jsonl": "app.adapters.tracing.jsonl:make"},
+    # local trace files (E-09, BD-58) and LangSmith (E-14, BD-59); `events` is the run
+    # event log, not an adapter
+    "tracing": {
+        "jsonl": "app.adapters.tracing.jsonl:make",
+        "langsmith": "app.adapters.tracing.langsmith:make",  # E-14, BD-59
+    },
     # model providers (D2-3)
     "llm": {
         "anthropic": "app.adapters.llm.anthropic:make",
@@ -118,7 +122,7 @@ class Container:
         adapters = (
             *self.probes, *self.provider_probes, self.relational, self.vector,
             self.snapshots, self.graph,
-            self.checkpointer,
+            self.checkpointer, *self.tracing,
         )  # fmt: skip
         for adapter in adapters:
             close = getattr(adapter, "close", None)

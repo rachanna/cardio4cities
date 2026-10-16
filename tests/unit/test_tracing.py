@@ -14,7 +14,8 @@ from typing import Any
 import pytest
 from pydantic import BaseModel
 
-from app.adapters.tracing.jsonl import JsonlTracer, clean
+from app.adapters.tracing.jsonl import JsonlTracer
+from app.adapters.tracing.redact import clean
 from app.logs import JsonFormatter, _TraceId
 from app.ports.llm import LLMParams, LLMResult
 from app.ports.tracing import TRACE_ID, NoTracing, Tracers, tracer_of

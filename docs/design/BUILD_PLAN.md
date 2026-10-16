@@ -118,6 +118,7 @@ From 2026-10-14 the system keeps growing as practice in building systems. Task I
 | E-05 | Rebuild derived stores from Postgres | LLD-1 §5, §6, BD-14, BD-56 | `poe reindex`: claim index, chunks (stored or exactly re-parsed table spans) and graph embeddings for the configured local model; `source.table_spans` (0016); one builder for chunk and claim points | Live rebuild matches Postgres (claims 343 = 343); the free profile has semantic retrieval | 3 h |
 | E-06 | Warm-up at start-up | LLD-4 §7 | Load the embedding model and set up the graph when the app starts, not on the first question | No first-question spike | 1 h |
 | E-07 | Graph read shaped by the question | LLD-5 §4.3, BD-56 | Graphiti hybrid edge search with the question, relation types, date filters, the run as a property filter, and node-distance reranking around a named entity | Retrieval recall on the golden set holds; graph read latency measured before and after | 3 h |
+| E-08 | Context engineering notes | LLD-3 §2, the six context builders | `docs/CONTEXT_ENGINEERING.html`: what each model role sees and never sees, the mechanisms on every call, how the build was context-engineered, and ground rules for agentic systems | Every project figure read from the code | 1 h |
 
 ---
 

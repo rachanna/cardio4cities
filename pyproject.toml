@@ -30,6 +30,7 @@ dependencies = [
     "certifi>=2024.2",
     "jinja2>=3.1.6",
     "fpdf2>=2.8.9",
+    "mcp==2.3.0",
 ]
 
 [dependency-groups]
@@ -79,7 +80,8 @@ migrate = { cmd = "alembic upgrade head", help = "Run database migrations (needs
 geonames = { cmd = "python -m scripts.reference.load_geonames --download-only", help = "Download GeoNames dumps if missing" }
 web = { cmd = "python -m scripts.web build", help = "Build the web app's static export into web/out (served by the API at /)" }
 types = { cmd = "python -m scripts.web types", help = "Regenerate the web app's API types from the OpenAPI document" }
-dev = { cmd = "python -m scripts.dev", help = "API on :8000 and the web app on :3000 (next dev, proxying /api)" }
+dev = { cmd = "python -m scripts.dev", help = "MCP server on :8100, API on :8000 and the web app on :3000 (next dev, proxying /api); TOOLS_VIA_MCP=0 skips the MCP server" }
+mcp = { cmd = "python -m app.mcp_server", help = "Tools-and-prompts MCP server on 127.0.0.1:8100: search links and the agent's prompts (E-15, BD-60)" }
 purge = { cmd = "python -m scripts.purge_city", help = "Remove a city from every store: --list, then CITY_ID (dry run) and CITY_ID --yes (BD-42)" }
 purge-graph = { cmd = "python -m scripts.purge_graph", help = "Delete the local Neo4j graph and its embedding marker (refuses when APP_ENV=deployed)" }
 reindex = { cmd = "python -m scripts.reindex", help = "Rebuild Qdrant collections and graph embeddings from Postgres for the configured local embedding model: --dry-run, --recreate, --only claims|chunks|graph (E-05, BD-56)" }
@@ -185,13 +187,14 @@ source_modules = [
     "app.ports",
     "app.domain",
 ]
-forbidden_modules = ["app.adapters", "app.container", "app.main"]
+forbidden_modules = ["app.adapters", "app.container", "app.main", "app.mcp_server"]
 
 [[tool.importlinter.contracts]]
 name = "Adapters depend only on ports and domain"
 type = "forbidden"
 source_modules = ["app.adapters"]
 forbidden_modules = [
+    "app.mcp_server",
     "app.api",
     "app.workflow",
     "app.query",
@@ -232,6 +235,8 @@ forbidden_modules = [
     "weasyprint",
     "fpdf",
     "langsmith",
+    "mcp",
+    "mcp_types",
     "opentelemetry",
     "asyncpg",
     "sqlalchemy",

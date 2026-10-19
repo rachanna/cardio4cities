@@ -56,6 +56,7 @@ ADAPTERS: AdapterRegistry = {
     "probe:search": {
         "searxng": "app.adapters.search.searxng:make_probe",
         "brave": "app.adapters.search.brave:make_probe",
+        "mcp": "app.adapters.mcp.search:make_probe",  # E-15, BD-60
     },
     # collection (D2-2)
     "fetch": {"httpx_pinned": "app.adapters.fetch.httpx_pinned:make"},
@@ -64,6 +65,7 @@ ADAPTERS: AdapterRegistry = {
     "search": {
         "searxng": "app.adapters.search.searxng:make",
         "brave": "app.adapters.search.brave:make",
+        "mcp": "app.adapters.mcp.search:make",  # through the tools-and-prompts server (BD-60)
     },
     "embeddings": {
         "openai": "app.adapters.embeddings.openai:make",
@@ -121,7 +123,7 @@ class Container:
         """Close every adapter that holds connections."""
         adapters = (
             *self.probes, *self.provider_probes, self.relational, self.vector,
-            self.snapshots, self.graph,
+            self.snapshots, self.graph, self.search,
             self.checkpointer, *self.tracing,
         )  # fmt: skip
         for adapter in adapters:
@@ -161,7 +163,9 @@ def build_container(settings: Settings, registry: AdapterRegistry | None = None)
             container.llm[provider] = adapter
 
     container.embeddings = build("embeddings", config.embeddings.provider)
-    container.search = build("search", config.search.provider)
+    # The agent reaches search through the tools-and-prompts server when configured (BD-60)
+    search_provider = "mcp" if "search" in config.mcp.agent_uses else config.search.provider
+    container.search = build("search", search_provider)
     container.fetch = build("fetch", "httpx_pinned")
     container.robots = build("robots", "protego")
     container.parser = build("parser", "trafilatura_pdfplumber")
@@ -180,7 +184,7 @@ def build_container(settings: Settings, registry: AdapterRegistry | None = None)
     providers = [("probe:llm", p, f"llm_{p}") for p in llm_providers]
     providers += [
         ("probe:embeddings", config.embeddings.provider, "embeddings"),
-        ("probe:search", config.search.provider, "search"),
+        ("probe:search", search_provider, "search"),
     ]
     adapters = {"probe:embeddings": container.embeddings, "probe:search": container.search}
     for port, provider, component in providers:

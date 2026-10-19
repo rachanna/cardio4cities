@@ -41,6 +41,9 @@ renderer:   { provider: fpdf2 }   # BD-40: pure-Python PDF
 report:     { intro_max_words: 120, analysis_max_points: 5, min_paragraph_words: 20, wall_clock_s: 120, max_cost_micro_usd: 100000 }   # LLD-3 §8; budget: BD-40
 tracing:    { providers: [events], jsonl_dir: traces, max_text_chars: 4000 }   # LangSmith is refused when deployed (BD-59)
 logging:    { level: INFO, format: json }   # E-09, BD-58
+mcp:        { host: 127.0.0.1, port: 8100, path: /mcp, timeout_s: 30, max_query_chars: 300, max_links: 20, agent_uses: [], agent_client: agent,
+              clients: [ { name: agent, token_env: MCP_AGENT_TOKEN, calls_per_minute: 600, searches_per_day: 2000 },
+                         { name: external, token_env: MCP_CLIENT_TOKEN, calls_per_minute: 30, searches_per_day: 100 } ] }   # TOOLS_VIA_MCP=1 (E-15, BD-60)
 # Provisional until spike S-6 (BD-05): estimate ~1.4M tokens, ~$4.10 a run with gpt-6.1-sol low
 budget:     { wall_clock_s: 420, searches: 64, fetches: 120, tokens: 3000000, cost_micro_usd: 3000000, wind_down_at: 0.85 }   # BD-15; fetches 120, tokens 3M: BD-46
 limits:     { runs_per_day: 20, ask_per_min: 20, resolve_per_min: 30 }

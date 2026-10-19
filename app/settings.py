@@ -191,6 +191,37 @@ class TracingSection(_Section):
     max_text_chars: int
 
 
+class McpClientSection(_Section):
+    """One caller of the tools-and-prompts server and its limits (E-15, BD-60) [tunable]."""
+
+    name: str
+    token_env: str  # the bearer token this caller presents
+    calls_per_minute: int
+    searches_per_day: int
+
+
+class McpSection(_Section):
+    """E-15 (BD-60): the tools-and-prompts MCP server (`poe mcp`), who may call it, and what
+    the agent reaches through it instead of in-process [tunable]."""
+
+    host: str  # loopback only: the server is local until it has OAuth (BD-60)
+    port: int
+    path: str
+    timeout_s: float
+    max_query_chars: int
+    max_links: int
+    agent_uses: list[Literal["search", "prompts"]]  # TOOLS_VIA_MCP=1 sets both
+    agent_client: str  # which `clients` entry is this agent
+    clients: list[McpClientSection]
+
+    @property
+    def url(self) -> str:
+        return f"http://{self.host}:{self.port}{self.path}"
+
+    def client(self, name: str) -> McpClientSection | None:
+        return next((c for c in self.clients if c.name == name), None)
+
+
 class LoggingSection(_Section):
     """E-09 (BD-58): root log level and line format [tunable]."""
 
@@ -370,6 +401,7 @@ class Config(_Section):
     renderer: RendererSection
     tracing: TracingSection
     logging: LoggingSection
+    mcp: McpSection
     budget: BudgetSection
     limits: LimitsSection
     retrieval: RetrievalSection
@@ -445,6 +477,9 @@ def load_settings(env: Mapping[str, str] | None = None, config_dir: Path = CONFI
     # RAG_TRACE=1 adds the local trace files (E-09, BD-58); never in the deployed profile
     if env.get("RAG_TRACE", "").strip() == "1" and "jsonl" not in config.tracing.providers:
         config.tracing.providers.append("jsonl")
+    # TOOLS_VIA_MCP=1: the agent reaches search and its prompts through the MCP server (E-15)
+    if env.get("TOOLS_VIA_MCP", "").strip() == "1" and not config.mcp.agent_uses:
+        config.mcp.agent_uses.extend(["search", "prompts"])
     # RAG_TRACE_LANGSMITH=1 adds LangSmith (E-14, BD-59); never in the deployed profile
     langsmith_on = env.get("RAG_TRACE_LANGSMITH", "").strip() == "1"
     if langsmith_on and "langsmith" not in config.tracing.providers:
@@ -470,6 +505,11 @@ def load_settings(env: Mapping[str, str] | None = None, config_dir: Path = CONFI
             problems.append(
                 "tracing.providers: local trace files (jsonl, RAG_TRACE=1) hold fetched text "
                 "and prompts and are refused with APP_ENV=deployed (BD-58)"
+            )
+        if config.mcp.agent_uses:
+            problems.append(
+                "mcp.agent_uses: the tools-and-prompts server is local only until it has "
+                "OAuth, and is refused with APP_ENV=deployed (BD-60)"
             )
         if "langsmith" in config.tracing.providers:
             problems.append(
@@ -566,6 +606,11 @@ def check_adapter_settings(config: Config) -> list[str]:
         problems.append("search.base_url is required for provider 'searxng'")
     if "langsmith" in config.tracing.providers and not config.tracing.langsmith_api_key_env:
         problems.append("tracing.langsmith_api_key_env is required when langsmith is enabled")
+    mcp = config.mcp
+    if mcp.client(mcp.agent_client) is None:
+        problems.append(f"mcp.agent_client {mcp.agent_client!r} is not one of mcp.clients")
+    if mcp.host not in ("127.0.0.1", "localhost", "::1"):
+        problems.append("mcp.host: the tools-and-prompts server binds to loopback only (BD-60)")
     if "langsmith" in config.tracing.providers and config.tracing.langsmith is None:
         problems.append("tracing.langsmith is required when langsmith is enabled")
     problems += _check_ollama(config)
@@ -608,6 +653,8 @@ def required_secrets(config: Config) -> dict[str, str]:
             needed.setdefault(name, needed_by)
 
     access = config.access
+    if config.mcp.agent_uses and (agent := config.mcp.client(config.mcp.agent_client)):
+        need(agent.token_env, f"mcp.clients.{agent.name}.token_env")
     need(access.access_code_env, "access.access_code_env")
     need(access.admin_code_env, "access.admin_code_env")
     need(access.session_secret_env, "access.session_secret_env")

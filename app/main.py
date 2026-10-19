@@ -20,6 +20,8 @@ from starlette.responses import Response
 from starlette.routing import Match
 from starlette.types import Scope
 
+from app.adapters.mcp.prompts import served_prompts
+from app.adapters.mcp.search import connection as mcp_connection
 from app.api import errors
 from app.api.auth import AccessConfig
 from app.api.limits import FailureLimiter
@@ -28,6 +30,7 @@ from app.api.routers.health import HealthService
 from app.container import ADAPTERS, AdapterRegistry, Container, build_container
 from app.logs import setup_logging
 from app.ports.graph import GraphPort
+from app.prompts.loader import served_roles, use_served
 from app.settings import (
     ConfigError,
     Settings,
@@ -151,6 +154,16 @@ async def _checkpoints(manager: RunManager) -> bool | None:
         return None
 
 
+async def _use_served_prompts(settings: Settings) -> None:
+    """The prompts the tools-and-prompts server serves, checked against this code (E-15)."""
+    conn = mcp_connection(settings)
+    try:
+        use_served(await served_prompts(conn))
+    finally:
+        await conn.close()
+    log.info("prompts from the tools-and-prompts server: %s", ", ".join(served_roles()))
+
+
 def _lifespan(
     env_file: Path | None, registry: AdapterRegistry | None
 ) -> Callable[[FastAPI], AbstractAsyncContextManager[None]]:
@@ -164,6 +177,8 @@ def _lifespan(
         manager: RunManager | None = None
         try:
             check_adapters(container.missing, ADAPTERS if registry is None else registry)
+            if "prompts" in settings.config.mcp.agent_uses:
+                await _use_served_prompts(settings)  # refuses to start on a mismatch (BD-60)
             await check_reference_data(container)
             await check_vector_store(container, settings)
             await check_graph_marker(container.graph, settings.config.embeddings.key)

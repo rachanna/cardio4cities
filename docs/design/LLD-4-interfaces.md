@@ -302,6 +302,9 @@ renderer:   { provider: fpdf2 }   # BD-40: pure-Python PDF
 report:     { intro_max_words: 120, analysis_max_points: 5, min_paragraph_words: 20, wall_clock_s: 120, max_cost_micro_usd: 100000 }   # BD-40
 tracing:    { providers: [events], jsonl_dir: traces, max_text_chars: 4000 }   # RAG_TRACE=1 adds jsonl, RAG_TRACE_LANGSMITH=1 adds langsmith, locally (BD-58, BD-59); local profiles also set langsmith_api_key_env and langsmith: { project, endpoint_env, max_traces_per_day, flush_timeout_s }
 logging:    { level: INFO, format: text }   # json in the deployed profile (BD-58)
+mcp:        { host: 127.0.0.1, port: 8100, path: /mcp, timeout_s: 30, max_query_chars: 300, max_links: 20, agent_uses: [], agent_client: agent,
+              clients: [ { name: agent, token_env: MCP_AGENT_TOKEN, calls_per_minute: 600, searches_per_day: 2000 },
+                         { name: external, token_env: MCP_CLIENT_TOKEN, calls_per_minute: 30, searches_per_day: 100 } ] }   # TOOLS_VIA_MCP=1 sets agent_uses to [search, prompts]; refused when deployed (BD-60)
 budget:     { wall_clock_s: 420, searches: 64, fetches: 60, tokens: 1500000, cost_micro_usd: 3000000, wind_down_at: 0.85 }   # BD-15
 limits:     { runs_per_day: 20, ask_per_min: 20, resolve_per_min: 30 }
 fetch:      { concurrency: 6, min_interval_s: 1, max_bytes: 10485760, connect_timeout_s: 5, read_timeout_s: 20,
@@ -520,7 +523,7 @@ Not built (BD-36): `tavily`, `browser_print` and `otel` (`langsmith` was built i
 |---|---|---|
 | LLM | `anthropic`, `openai` | `ollama` |
 | Embeddings | `openai` | `sentence_transformers` |
-| Search | `brave` | `searxng`; `tavily` (content retrieval forced off) |
+| Search | `brave` | `searxng`; `mcp` (the tools-and-prompts server, `TOOLS_VIA_MCP=1`, BD-60); `tavily` (content retrieval forced off) |
 | Fetch | `httpx` with pinned-IP transport | same |
 | Structured data | `who_gho`, `world_bank` (DHS dropped, BD-13) | same |
 | Vector | `qdrant` | same |
@@ -534,7 +537,7 @@ Not built (BD-36): `tavily`, `browser_print` and `otel` (`langsmith` was built i
 | Port | Must prove |
 |---|---|
 | LLM | Returns a parsed object of the requested schema; reports model ID, family and token counts; a validation failure surfaces as a typed error |
-| Search | Hits contain URL, title and snippet only; the request sent to the provider has content retrieval disabled (AT-33) |
+| Search | Hits contain URL, title and snippet only; the request sent to the provider has content retrieval disabled (AT-33); the `mcp` adapter runs the same contract over the MCP protocol (BD-60) |
 | Fetch | Refuses a URL whose host resolves to a private address; honours size limit; reports redirect chains |
 | Vector | Upsert is idempotent by point ID; filter by `city_id` never returns another city's points |
 | Graph | Entity UUIDs are preserved; an invalidated edge is still returned with `include_ended=True` |

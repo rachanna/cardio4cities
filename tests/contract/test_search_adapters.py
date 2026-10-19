@@ -1,5 +1,6 @@
 """Search adapters against a local stand-in provider (AT-33). No paid calls. The shared
-contract at the end runs every search adapter through the same tests (AT-35)."""
+contract at the end runs every search adapter through the same tests (AT-35), including
+the MCP adapter in front of SearXNG over the real MCP protocol, in-process (E-15, BD-60)."""
 
 import http.server
 import json
@@ -11,8 +12,12 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
+from app.adapters.mcp.connection import InProcessCaller
+from app.adapters.mcp.search import McpSearch
 from app.adapters.search.brave import BraveSearch
 from app.adapters.search.searxng import SearxngSearch
+from app.mcp_server.access import Access, Caller
+from app.mcp_server.tools import build_server
 from app.ports.errors import ProviderUnavailableError
 from app.ports.search import SearchHit, SearchPort
 
@@ -130,18 +135,26 @@ async def test_brave_recorded_response_yields_links_titles_and_snippets_only(
 
 # --- the shared SearchPort contract: every adapter, the same tests (AT-35, RV-102) ----------
 
-ADAPTERS = ("searxng", "brave")
+ADAPTERS = ("searxng", "brave", "mcp")
+TEST_CALLER = Caller("test", calls_per_minute=1000, searches_per_day=1000)
 
 
 def adapter(name: str, base: str) -> SearchPort:
     if name == "searxng":
         return SearxngSearch(base, rate_per_s=100, user_agent="test")
+    if name == "mcp":  # the tools-and-prompts server, its search backed by SearXNG
+        server = build_server(
+            search=SearxngSearch(base, rate_per_s=100, user_agent="test"),
+            prompts=[], access=Access({}), max_query_chars=300, max_links=20,
+            in_process=TEST_CALLER,
+        )  # fmt: skip
+        return McpSearch(InProcessCaller(server))
     return BraveSearch("test-key", 100, base_url=f"{base}/res/v1/web/search")
 
 
 def payload(name: str, results: list[dict[str, str]]) -> dict[str, Any]:
     """The provider's own layout for neutral results (url, title, snippet)."""
-    if name == "searxng":
+    if name in ("searxng", "mcp"):
         return {"results": [{**r, "content": r.get("snippet", "")} for r in results]}
     return {"web": {"results": [{**r, "description": r.get("snippet", "")} for r in results]}}
 

@@ -75,7 +75,8 @@ uv run poe down        # stop local stores
 uv run poe migrate     # database migrations
 uv run poe reference   # load gazetteer and reference YAML (downloads GeoNames if missing)
 uv run poe geonames    # download GeoNames only (needed by the AT-02 scan)
-uv run poe dev         # API on :8000 and web on :3000 (from D3-4)
+uv run poe dev         # MCP server on :8100, API on :8000 and web on :3000 (from D3-4; BD-60)
+uv run poe mcp         # tools-and-prompts MCP server alone (E-15, BD-60)
 uv run poe test        # unit, contract, architecture, acceptance (recorded responses)
 uv run poe lint        # ruff, mypy, import-linter
 uv run poe fmt         # ruff format and auto-fix

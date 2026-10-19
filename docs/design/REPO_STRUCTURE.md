@@ -53,6 +53,7 @@ cardio4cities/
 │   ├── main.py                   # FastAPI app factory; mounts /api/v1 and serves web/out at / (ID-01)
 │   ├── settings.py               # config loading and start-up validation (LLD-4 §5.2)
 │   ├── container.py              # builds adapters from config and wires them into services
+│   ├── mcp_server/               # tools-and-prompts MCP server, a second composition root (`poe mcp`, BD-60)
 │   ├── api/
 │   │   ├── routers/              # session, cities, runs, events, facts, snapshots, ask, reports, health, workflow, admin
 │   │   ├── schemas.py            # request/response models (LLD-4 §2–3)
@@ -204,12 +205,12 @@ prompts  → domain
 domain   → nothing in app
 ports    → domain
 adapters → ports, domain                     (vendor SDKs allowed only here)
-container, main → everything                 (composition root)
+container, main, mcp_server → everything     (composition roots; nothing imports mcp_server)
 ```
 
-The fetch adapter uses `httpx`, chosen over `httpx2` for the security-critical path (BD-07); `httpx2` is a test-only dependency.
+The fetch adapter uses `httpx`, chosen over `httpx2` for the security-critical path (BD-07); `httpx2` is used only by the MCP adapters, because the MCP SDK requires it (BD-60), and by tests.
 
-**Vendor packages allowed only under `app/adapters/`:** `anthropic`, `openai`, `ollama`, `sentence_transformers`, `qdrant_client`, `graphiti_core`, `neo4j`, `httpx`, `httpx2`, `httpcore`, `httpcore2`, `protego`, `trafilatura`, `lxml`, `pdfplumber`, `weasyprint`, `fpdf` (PDF rendering, BD-40), `langsmith`, `opentelemetry`, `asyncpg`, `sqlalchemy`, `alembic`, `psycopg`, `psycopg_pool` (the LangGraph checkpointer's driver, BD-14), `cryptography` (reading a certificate's issuer URL, BD-15; verifying a completed chain, BD-16), `certifi` (the trusted roots for that check, BD-16).
+**Vendor packages allowed only under `app/adapters/`:** `anthropic`, `openai`, `ollama`, `sentence_transformers`, `qdrant_client`, `graphiti_core`, `neo4j`, `httpx`, `httpx2`, `httpcore`, `httpcore2`, `protego`, `trafilatura`, `lxml`, `pdfplumber`, `weasyprint`, `fpdf` (PDF rendering, BD-40), `langsmith`, `mcp`, `mcp_types` (the MCP client, BD-60; the server in `app/mcp_server/` is a composition root), `opentelemetry`, `asyncpg`, `sqlalchemy`, `alembic`, `psycopg`, `psycopg_pool` (the LangGraph checkpointer's driver, BD-14), `cryptography` (reading a certificate's issuer URL, BD-15; verifying a completed chain, BD-16), `certifi` (the trusted roots for that check, BD-16).
 
 Expressed as import-linter `layers` and `forbidden` contracts. The architecture test fails the build on any violation.
 
@@ -225,7 +226,8 @@ Run as `uv run poe <task>`; tasks are defined in `pyproject.toml` under `[tool.p
 | `poe migrate` | Run Alembic migrations; needs `DATABASE_URL` only |
 | `poe reference` | Download GeoNames (if missing) and load all reference data; needs `DATABASE_URL` only |
 | `poe geonames` | Download GeoNames only (the AT-02 scan reads it) |
-| `poe dev` | API with reload on :8000, plus the `next dev` server on :3000 proxying `/api` (BD-41) |
+| `poe dev` | The tools-and-prompts MCP server on :8100 (unless `TOOLS_VIA_MCP=0`), the API with reload on :8000 reaching search and prompts through it, plus the `next dev` server on :3000 proxying `/api` (BD-41, BD-60) |
+| `poe mcp` | The tools-and-prompts MCP server alone on 127.0.0.1:8100: `search_links` and one prompt per role; bearer token per client; refused when deployed (BD-60) |
 | `poe web` | `npm ci`, then build the static export into `web/out` (BD-41); the browser smoke test needs it |
 | `poe test` | Unit, contract, architecture and acceptance tests (recorded responses) |
 | `poe lint` | ruff, mypy, import-linter |

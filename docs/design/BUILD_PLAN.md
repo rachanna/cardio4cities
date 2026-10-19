@@ -125,6 +125,7 @@ From 2026-10-14 the system keeps growing as practice in building systems. Task I
 | E-12 | Security and supply chain | R-50, R-51, LLD-4 §6 | Dependency vulnerability audits in CI (Python and web), security headers, an audit trail of who asked what | CI fails on a known vulnerable dependency; headers present | 2 h |
 | E-13 | Real-world quality | LLD-3 §9, LLD-5 §12 | A human-curated validation set for a few real cities (kept out of the repository) and a scheduled evaluation on free models | Precision and recall reported per role on real data | 4 h |
 | E-14 | LangSmith tracing (local, free tier) | LLD-4 §8, BD-58, BD-59 | A `langsmith` adapter behind the tracing port; root spans for runs, questions and reports; opt-in with `RAG_TRACE_LANGSMITH=1`; refused when deployed; LangGraph's own tracing refused; daily trace cap | A run, a question or a report is one LangSmith trace with every node and model call, prompts and outputs redacted and bounded; nothing sent when off | 3 h |
+| E-15 | Tools and prompts MCP server, phase 1 | BD-60, LLD-4 §8, LLD-3 §2.5 | `app/mcp_server/` (`poe mcp`): `search_links` and one prompt per role over local Streamable HTTP; `mcp` adapters for search and prompts behind `TOOLS_VIA_MCP=1`; served prompt versions checked at start-up; per-client tokens, rate limits, daily search quota, audit log | The agent runs with search and prompts through the server and identical prompt versions; the MCP adapter passes the shared search contract; outside clients need a token and keep to their limits | 1.5 days |
 
 ---
 

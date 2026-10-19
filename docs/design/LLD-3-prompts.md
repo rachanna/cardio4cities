@@ -78,6 +78,8 @@ Few-shot examples use the fictional city **"Halden Bay"** in the fictional count
 
 Since BD-26 the hash also covers the role's `context.py` and the shared `safety.py`, which build and escape what the model sees: a change there changes the version.
 
+Since BD-60 the prompt text can be served by the tools-and-prompts MCP server. With `TOOLS_VIA_MCP=1` the agent reads every current prompt from it once at start-up and recomputes each version from the served text with its own schema, `context.py` and `safety.py`; any difference, an older version or a missing role refuses start-up, so served text always matches the code that parses its output.
+
 ---
 
 ## 3. Planner

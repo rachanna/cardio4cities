@@ -39,6 +39,9 @@ report:     { intro_max_words: 120, analysis_max_points: 5, min_paragraph_words:
 tracing:    { providers: [events], jsonl_dir: traces, max_text_chars: 4000, langsmith_api_key_env: LANGSMITH_API_KEY,
               langsmith: { project: cardio4cities-local, endpoint_env: LANGSMITH_ENDPOINT, max_traces_per_day: 150, flush_timeout_s: 5 } }   # RAG_TRACE_LANGSMITH=1 (E-14, BD-59)
 logging:    { level: INFO, format: text }   # E-09, BD-58
+mcp:        { host: 127.0.0.1, port: 8100, path: /mcp, timeout_s: 30, max_query_chars: 300, max_links: 20, agent_uses: [], agent_client: agent,
+              clients: [ { name: agent, token_env: MCP_AGENT_TOKEN, calls_per_minute: 600, searches_per_day: 2000 },
+                         { name: external, token_env: MCP_CLIENT_TOKEN, calls_per_minute: 30, searches_per_day: 100 } ] }   # TOOLS_VIA_MCP=1 (E-15, BD-60)
 # Estimate ~$0.15 a run (BD-23); the owner's cap for every profile (BD-15)
 budget:     { wall_clock_s: 420, searches: 64, fetches: 120, tokens: 3000000, cost_micro_usd: 3000000, wind_down_at: 0.85 }   # BD-15; fetches 120, tokens 3M: BD-46
 limits:     { runs_per_day: 20, ask_per_min: 20, resolve_per_min: 30 }

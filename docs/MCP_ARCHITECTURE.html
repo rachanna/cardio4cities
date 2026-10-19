@@ -1,0 +1,746 @@
+<title>MCP in Cardio4Cities</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=JetBrains+Mono:wght@400;500&family=Source+Sans+3:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: engineering notes. A sticky contents rail on wide screens, one reading column, figures and tables allowed to run wider than the text. */
+:root {
+  --paper: #f3f6f5;
+  --surface: #ffffff;
+  --ink: #142022;
+  --muted: #55666a;
+  --rule: #d5dfdd;
+  --tint: #e8efee;
+  --accent: #0d6b6b;      /* the MCP boundary: client, transport, server */
+  --agent: #2b5fb4;       /* our agent's own code */
+  --outside: #7a4fb0;     /* outside MCP clients */
+  --ok: #1f7a4d;
+  --refused: #b03a3a;
+  --untrusted: #9a5b00;
+  --font-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Source Sans 3", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  --measure: 68ch;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0f1617; --surface: #152021; --ink: #e2ebea; --muted: #97a9ab; --rule: #273537; --tint: #1b2a2b;
+    --accent: #4fc2bf; --agent: #7fa8f0; --outside: #b996ec; --ok: #5fd39a; --refused: #ff8a8a; --untrusted: #f2b45a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #0f1617; --surface: #152021; --ink: #e2ebea; --muted: #97a9ab; --rule: #273537; --tint: #1b2a2b;
+  --accent: #4fc2bf; --agent: #7fa8f0; --outside: #b996ec; --ok: #5fd39a; --refused: #ff8a8a; --untrusted: #f2b45a;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--paper); color: var(--ink);
+  font-family: var(--font-body); font-size: 17px; line-height: 1.6;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 1180px; margin: 0 auto; padding-block: 40px 80px; display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 48px; }
+@media (max-width: 900px) { .wrap { grid-template-columns: minmax(0, 1fr); gap: 24px; padding-block: 24px 56px; } }
+
+nav.toc { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 24px); align-self: start; font-size: 14px; }
+nav.toc h2 { font-family: var(--font-body); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; }
+nav.toc ol { list-style: none; margin: 0 0 18px; padding: 0; display: grid; gap: 4px; }
+nav.toc a { color: var(--ink); text-decoration: none; display: block; padding: 2px 0 2px 10px; border-left: 2px solid var(--rule); }
+nav.toc a:hover, nav.toc a:focus-visible { border-left-color: var(--accent); color: var(--accent); }
+@media (max-width: 900px) {
+  nav.toc { position: static; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 14px 16px; }
+  nav.toc ol { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
+}
+
+main { min-width: 0; }
+header.hero { padding-bottom: 28px; border-bottom: 1px solid var(--rule); margin-bottom: 8px; }
+.eyebrow { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); font-weight: 600; margin: 0 0 10px; }
+h1 { font-family: var(--font-display); font-size: clamp(36px, 6vw, 56px); line-height: 1.05; margin: 0 0 16px; text-wrap: balance; letter-spacing: -.01em; }
+.lede { font-size: 20px; max-width: var(--measure); margin: 0 0 18px; color: var(--ink); }
+.meta { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.meta li { font-family: var(--font-mono); font-size: 12.5px; padding: 3px 9px; border: 1px solid var(--rule); border-radius: 999px; background: var(--surface); color: var(--muted); }
+
+.part { font-family: var(--font-body); font-size: 13px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 56px 0 0; padding-top: 14px; border-top: 3px solid var(--ink); font-weight: 700; }
+h2 { font-family: var(--font-display); font-size: clamp(26px, 3.4vw, 32px); line-height: 1.15; margin: 44px 0 12px; text-wrap: balance; }
+h3 { font-family: var(--font-body); font-size: 19px; margin: 28px 0 8px; font-weight: 700; }
+p, ul, ol { max-width: var(--measure); }
+p { margin: 0 0 14px; }
+ul, ol { padding-left: 22px; margin: 0 0 14px; }
+li { margin: 0 0 6px; }
+a { color: var(--accent); }
+strong { font-weight: 700; }
+code { font-family: var(--font-mono); font-size: .86em; background: var(--tint); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+
+pre.code { font-family: var(--font-mono); font-size: 13.5px; line-height: 1.55; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 14px 16px; overflow-x: auto; margin: 0 0 18px; max-width: 100%; }
+pre.code .c { color: var(--muted); }
+pre.code .k { color: var(--accent); font-weight: 500; }
+pre.code .s { color: var(--agent); }
+.label { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; margin: 18px 0 6px; }
+
+.table-wrap { overflow-x: auto; margin: 0 0 20px; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 15px; }
+th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--rule); }
+th { font-size: 12.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); font-weight: 700; background: var(--tint); }
+tr:last-child td { border-bottom: 0; }
+td code { white-space: nowrap; }
+
+figure { margin: 22px 0 26px; }
+.fig { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 14px; overflow-x: auto; }
+.fig svg { display: block; width: 100%; height: auto; min-width: 640px; color: var(--ink); font-family: var(--font-body); }
+figcaption { font-size: 14.5px; color: var(--muted); margin-top: 8px; max-width: var(--measure); }
+
+/* SVG roles, all from tokens so both themes read */
+.box { fill: var(--surface); stroke: var(--rule); stroke-width: 1.5; }
+.box-agent { fill: var(--surface); stroke: var(--agent); stroke-width: 1.6; }
+.box-mcp { fill: var(--tint); stroke: var(--accent); stroke-width: 1.8; }
+.box-outside { fill: var(--surface); stroke: var(--outside); stroke-width: 1.6; stroke-dasharray: 5 4; }
+.region { fill: none; stroke: var(--muted); stroke-width: 1.2; stroke-dasharray: 3 5; }
+.ln { stroke: currentColor; stroke-width: 1.4; fill: none; }
+.ln-mcp { stroke: var(--accent); stroke-width: 2; fill: none; }
+.ln-out { stroke: var(--outside); stroke-width: 1.8; fill: none; stroke-dasharray: 6 4; }
+.ln-ret { stroke: currentColor; stroke-width: 1.2; fill: none; stroke-dasharray: 4 4; }
+.ln-faint { stroke: var(--muted); stroke-width: 1; fill: none; }
+.lane { stroke: var(--rule); stroke-width: 1.4; stroke-dasharray: 2 4; }
+.t { fill: currentColor; font-size: 13px; }
+.t-s { fill: var(--muted); font-size: 11.5px; }
+.t-b { fill: currentColor; font-size: 14px; font-weight: 700; }
+.t-mcp { fill: var(--accent); font-size: 12px; font-weight: 600; }
+.t-out { fill: var(--outside); font-size: 12px; font-weight: 600; }
+.t-ok { fill: var(--ok); font-size: 13px; font-weight: 700; }
+.t-no { fill: var(--refused); font-size: 13px; font-weight: 700; }
+.mono { font-family: var(--font-mono); font-size: 11.5px; }
+.ah { fill: currentColor; }
+.ah-mcp { fill: var(--accent); }
+.ah-out { fill: var(--outside); }
+.chip-ok { fill: var(--surface); stroke: var(--ok); stroke-width: 1.8; }
+.chip-no { fill: var(--surface); stroke: var(--refused); stroke-width: 1.8; }
+.note-box { fill: var(--tint); stroke: none; }
+
+.callout { max-width: var(--measure); border-left: 3px solid var(--accent); background: var(--surface); padding: 12px 16px; border-radius: 0 8px 8px 0; margin: 0 0 18px; }
+.callout.warn { border-left-color: var(--untrusted); }
+.callout p:last-child { margin-bottom: 0; }
+
+.pill { display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: .03em; padding: 1px 8px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
+.pill.live { color: var(--ok); }
+.pill.dep { color: var(--untrusted); }
+.pill.next { color: var(--muted); }
+.pill.no { color: var(--refused); }
+
+.rules { counter-reset: r; list-style: none; padding: 0; display: grid; gap: 12px; max-width: var(--measure); }
+.rules li { counter-increment: r; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 12px 14px 12px 50px; position: relative; margin: 0; }
+.rules li::before { content: counter(r); position: absolute; left: 14px; top: 11px; font-family: var(--font-display); font-weight: 700; font-size: 20px; color: var(--accent); width: 24px; text-align: center; }
+.rules strong { display: block; margin-bottom: 2px; }
+
+.sources { font-size: 14.5px; color: var(--muted); }
+.sources a { overflow-wrap: anywhere; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+</style>
+
+<div class="wrap">
+<nav class="toc" aria-label="Contents">
+  <h2>Concepts</h2>
+  <ol>
+    <li><a href="#why">The problem MCP solves</a></li>
+    <li><a href="#roles">Host, client, server</a></li>
+    <li><a href="#primitives">What a server offers</a></li>
+    <li><a href="#wire">The wire</a></li>
+    <li><a href="#stateless">The 2026-07-28 revision</a></li>
+    <li><a href="#tool">Anatomy of a tool</a></li>
+    <li><a href="#prompt">Anatomy of a prompt</a></li>
+    <li><a href="#security">Security model</a></li>
+  </ol>
+  <h2>Our implementation</h2>
+  <ol>
+    <li><a href="#scope">What moved, and what did not</a></li>
+    <li><a href="#architecture">Architecture</a></li>
+    <li><a href="#adapter">MCP as an adapter</a></li>
+    <li><a href="#search-call">One search, end to end</a></li>
+    <li><a href="#prompts">Prompts at start-up</a></li>
+    <li><a href="#access">Who may call, and how much</a></li>
+    <li><a href="#threats">Threats and controls</a></li>
+    <li><a href="#config">Configuration and code</a></li>
+    <li><a href="#tests">How it is tested</a></li>
+    <li><a href="#run">Running it</a></li>
+    <li><a href="#next">Phase 2 and beyond</a></li>
+    <li><a href="#rules">Ground rules</a></li>
+  </ol>
+</nav>
+
+<main>
+<header class="hero">
+  <p class="eyebrow">Cardio4Cities · engineering notes</p>
+  <h1>MCP in Cardio4Cities</h1>
+  <p class="lede">The Model Context Protocol is a contract between an AI application and the capabilities it uses. These notes explain the protocol from first principles, then walk through how our research agent now gets its search and its prompts from an MCP server of its own, and what we did to keep every guarantee the agent made before.</p>
+  <ul class="meta" aria-label="Versions">
+    <li>MCP spec 2026-07-28</li>
+    <li>Python SDK mcp 2.3.0</li>
+    <li>E-15 phase 1 · BD-60</li>
+    <li>19 October 2026</li>
+  </ul>
+</header>
+
+<p class="part">Part 1 · MCP concepts</p>
+
+<section id="why">
+<h2>The problem MCP solves</h2>
+<p>Every AI application needs to reach things outside the model: search, files, databases, internal APIs, prompt libraries. Without a shared contract, each application writes its own integration for each capability, and each integration has its own way to describe inputs, report errors and authenticate. Three applications and three capabilities need nine integrations, and the tenth capability needs three more.</p>
+<p>MCP replaces that with one protocol. A capability is wrapped once as an <strong>MCP server</strong>; an application speaks MCP once through an <strong>MCP client</strong>. Any client can then use any server, and the description of each capability (its name, its input schema, what it returns, whether it changes anything) travels with it.</p>
+
+<figure>
+  <div class="fig">
+  <svg viewBox="0 0 1000 270" role="img" aria-label="Without a protocol, three applications and three capabilities need nine custom integrations; with MCP, each application has one client and each capability one server.">
+    <defs>
+      <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah"/></marker>
+    </defs>
+    <text x="230" y="22" text-anchor="middle" class="t-b">Without a protocol</text>
+    <text x="760" y="22" text-anchor="middle" class="t-b">With MCP</text>
+    <line x1="500" y1="10" x2="500" y2="260" class="ln-faint"/>
+    <!-- left: apps -->
+    <rect x="40" y="44" width="110" height="38" rx="6" class="box-agent"/><text x="95" y="68" text-anchor="middle" class="t">Agent</text>
+    <rect x="175" y="44" width="110" height="38" rx="6" class="box-agent"/><text x="230" y="68" text-anchor="middle" class="t">Assistant</text>
+    <rect x="310" y="44" width="110" height="38" rx="6" class="box-agent"/><text x="365" y="68" text-anchor="middle" class="t">IDE</text>
+    <!-- left: capabilities -->
+    <rect x="40" y="196" width="110" height="38" rx="6" class="box"/><text x="95" y="220" text-anchor="middle" class="t">Search</text>
+    <rect x="175" y="196" width="110" height="38" rx="6" class="box"/><text x="230" y="220" text-anchor="middle" class="t">Prompts</text>
+    <rect x="310" y="196" width="110" height="38" rx="6" class="box"/><text x="365" y="220" text-anchor="middle" class="t">Database</text>
+    <g class="ln-faint">
+      <line x1="95" y1="82" x2="95" y2="196"/><line x1="95" y1="82" x2="230" y2="196"/><line x1="95" y1="82" x2="365" y2="196"/>
+      <line x1="230" y1="82" x2="95" y2="196"/><line x1="230" y1="82" x2="230" y2="196"/><line x1="230" y1="82" x2="365" y2="196"/>
+      <line x1="365" y1="82" x2="95" y2="196"/><line x1="365" y1="82" x2="230" y2="196"/><line x1="365" y1="82" x2="365" y2="196"/>
+    </g>
+    <text x="230" y="256" text-anchor="middle" class="t-s">9 custom integrations, each with its own shapes and errors</text>
+    <!-- right: apps with clients -->
+    <rect x="570" y="44" width="110" height="38" rx="6" class="box-agent"/><text x="625" y="68" text-anchor="middle" class="t">Agent</text>
+    <rect x="705" y="44" width="110" height="38" rx="6" class="box-agent"/><text x="760" y="68" text-anchor="middle" class="t">Assistant</text>
+    <rect x="840" y="44" width="110" height="38" rx="6" class="box-agent"/><text x="895" y="68" text-anchor="middle" class="t">IDE</text>
+    <rect x="570" y="124" width="380" height="34" rx="6" class="box-mcp"/>
+    <text x="760" y="146" text-anchor="middle" class="t-mcp">one protocol: JSON-RPC over stdio or Streamable HTTP</text>
+    <line x1="625" y1="82" x2="625" y2="124" class="ln-mcp"/><line x1="760" y1="82" x2="760" y2="124" class="ln-mcp"/><line x1="895" y1="82" x2="895" y2="124" class="ln-mcp"/>
+    <rect x="570" y="196" width="110" height="38" rx="6" class="box"/><text x="625" y="220" text-anchor="middle" class="t">Search</text>
+    <rect x="705" y="196" width="110" height="38" rx="6" class="box"/><text x="760" y="220" text-anchor="middle" class="t">Prompts</text>
+    <rect x="840" y="196" width="110" height="38" rx="6" class="box"/><text x="895" y="220" text-anchor="middle" class="t">Database</text>
+    <line x1="625" y1="158" x2="625" y2="196" class="ln-mcp"/><line x1="760" y1="158" x2="760" y2="196" class="ln-mcp"/><line x1="895" y1="158" x2="895" y2="196" class="ln-mcp"/>
+    <text x="760" y="256" text-anchor="middle" class="t-s">3 clients + 3 servers; a new capability is one more server</text>
+  </svg>
+  </div>
+  <figcaption>Integrations grow as applications × capabilities without a protocol, and as applications + capabilities with one.</figcaption>
+</figure>
+
+<p>The protocol does not make a capability safe or correct. It makes it <em>describable</em> and <em>reachable</em>. Whether a tool's output can be trusted, whether a call should be allowed, and what it may cost stay the job of the people who build the client and the server. Most of Part 2 is about those decisions.</p>
+</section>
+
+<section id="roles">
+<h2>Host, client, server</h2>
+<p>MCP names three roles. They are easy to blur, and the distinction matters for security: the host decides what the model sees and what the user must approve; the server decides what it will do for whom.</p>
+<div class="table-wrap"><table>
+  <thead><tr><th>Role</th><th>What it is</th><th>In Cardio4Cities</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Host</strong></td><td>The AI application. It owns the conversation or workflow, decides which servers to connect to, and decides what reaches the model.</td><td>The agent: the API process that runs research workflows and answers questions. An outside assistant or IDE is a host too.</td></tr>
+    <tr><td><strong>Client</strong></td><td>The connector inside a host that speaks MCP to one server.</td><td>The <code>mcp</code> adapters in <code>app/adapters/mcp/</code>, built on the SDK's <code>Client</code>.</td></tr>
+    <tr><td><strong>Server</strong></td><td>A program that offers tools, resources and prompts over MCP.</td><td>The tools-and-prompts server in <code>app/mcp_server/</code>, on <code>127.0.0.1:8100</code>.</td></tr>
+  </tbody>
+</table></div>
+<p>A single host can hold many clients, one per server. Our agent holds one: the server that serves search and prompts. The stores and the model providers are not MCP servers; the agent talks to them directly through its own adapters.</p>
+</section>
+
+<section id="primitives">
+<h2>What a server offers</h2>
+<p>A server can expose three kinds of thing. The difference between them is <strong>who decides when they are used</strong>.</p>
+<div class="table-wrap"><table>
+  <thead><tr><th>Primitive</th><th>Chosen by</th><th>What it is for</th><th>Our server</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Tools</strong></td><td>The model (through the host)</td><td>Actions and queries with typed inputs and outputs: search, look something up, change something.</td><td><code>search_links</code> <span class="pill live">live</span></td></tr>
+    <tr><td><strong>Prompts</strong></td><td>The user or the application</td><td>Reusable message templates, listed by name with optional arguments.</td><td>One per model role: planner, extractor, checker, classifier, answerer, reporter <span class="pill live">live</span></td></tr>
+    <tr><td><strong>Resources</strong></td><td>The application</td><td>Readable data addressed by URI: files, records, documents.</td><td>None yet</td></tr>
+  </tbody>
+</table></div>
+<p>Clients can offer features back to servers. In the current revision most of these are being retired, which is a deliberate simplification of the protocol:</p>
+<div class="table-wrap"><table>
+  <thead><tr><th>Client feature</th><th>What it did</th><th>Status in 2026-07-28</th></tr></thead>
+  <tbody>
+    <tr><td>Sampling</td><td>The server asks the client's model to generate text.</td><td><span class="pill dep">deprecated</span> call model APIs directly instead</td></tr>
+    <tr><td>Roots</td><td>The client tells the server which directories it may use.</td><td><span class="pill dep">deprecated</span> pass paths as tool arguments or configuration</td></tr>
+    <tr><td>Logging</td><td>The server streams log messages to the client.</td><td><span class="pill dep">deprecated</span> log to stderr or OpenTelemetry</td></tr>
+    <tr><td>Elicitation</td><td>The server asks the user for input mid-request.</td><td><span class="pill live">active</span> now through multi round-trip requests</td></tr>
+  </tbody>
+</table></div>
+<p>Our server uses none of the client features. The agent never lets a server drive its model, which would be a second way for untrusted text to reach a prompt.</p>
+</section>
+
+<section id="wire">
+<h2>The wire</h2>
+<p>MCP messages are JSON-RPC 2.0: a request has a method and parameters, a response has a result or an error. Two transports carry them.</p>
+<div class="table-wrap"><table>
+  <thead><tr><th>Transport</th><th>How</th><th>When to use it</th></tr></thead>
+  <tbody>
+    <tr><td><strong>stdio</strong></td><td>The host starts the server as a child process and writes JSON-RPC to its stdin, reading replies from stdout.</td><td>A local server used by one host. Only that host can reach it.</td></tr>
+    <tr><td><strong>Streamable HTTP</strong></td><td>Each request is an HTTP POST to one endpoint; the reply is JSON or a short event stream.</td><td>A server shared by several hosts or processes, local or remote. Ours: one server used by the API, research runs and outside clients.</td></tr>
+  </tbody>
+</table></div>
+<p>Here is a real call from our agent, with the two headers the current revision requires on every Streamable HTTP POST. The city is the project's fictional test city.</p>
+<p class="label">Request · POST /mcp</p>
+<pre class="code"><span class="c">Authorization: Bearer &lt;MCP_AGENT_TOKEN&gt;
+Mcp-Method: tools/call
+Mcp-Name: search_links</span>
+
+{
+  <span class="k">"jsonrpc"</span>: <span class="s">"2.0"</span>, <span class="k">"id"</span>: 7, <span class="k">"method"</span>: <span class="s">"tools/call"</span>,
+  <span class="k">"params"</span>: {
+    <span class="k">"name"</span>: <span class="s">"search_links"</span>,
+    <span class="k">"arguments"</span>: { <span class="k">"query"</span>: <span class="s">"Halden Bay hypertension programme"</span>, <span class="k">"lang"</span>: <span class="s">"en"</span>, <span class="k">"limit"</span>: 10 },
+    <span class="k">"_meta"</span>: {
+      <span class="k">"io.modelcontextprotocol/protocolVersion"</span>: <span class="s">"2026-07-28"</span>,
+      <span class="k">"io.modelcontextprotocol/clientCapabilities"</span>: {}
+    }
+  }
+}</pre>
+<p class="label">Response · 200</p>
+<pre class="code">{
+  <span class="k">"jsonrpc"</span>: <span class="s">"2.0"</span>, <span class="k">"id"</span>: 7,
+  <span class="k">"result"</span>: {
+    <span class="k">"resultType"</span>: <span class="s">"complete"</span>,
+    <span class="k">"isError"</span>: false,
+    <span class="k">"structuredContent"</span>: {
+      <span class="k">"links"</span>: [
+        { <span class="k">"url"</span>: <span class="s">"https://health.halden-bay.test/hypertension"</span>, <span class="k">"title"</span>: <span class="s">"Blood pressure programme"</span>,
+          <span class="k">"snippet"</span>: <span class="s">"…"</span>, <span class="k">"rank"</span>: 1 }
+      ]
+    },
+    <span class="k">"content"</span>: [ { <span class="k">"type"</span>: <span class="s">"text"</span>, <span class="k">"text"</span>: <span class="s">"{\"links\": [ … ]}"</span> } ]
+  }
+}</pre>
+<p><code>structuredContent</code> is the typed result that code reads; <code>content</code> is the same result as text for hosts that only show text to a model. A tool that fails returns <code>isError: true</code> with an explanation in <code>content</code>, rather than a protocol error, so the model or the code can react to it.</p>
+</section>
+
+<section id="stateless">
+<h2>The 2026-07-28 revision: stateless MCP</h2>
+<p>Earlier revisions opened a session with an <code>initialize</code> handshake and tracked it with an <code>Mcp-Session-Id</code> header. The current revision removes both. Every request stands alone and carries what the server needs to know about the client in <code>_meta</code>. This is the change that shaped our design most.</p>
+<div class="table-wrap"><table>
+  <thead><tr><th>What changed</th><th>What it means for us</th></tr></thead>
+  <tbody>
+    <tr><td>No sessions, no <code>initialize</code>; version and capabilities in each request's <code>_meta</code>.</td><td>The server runs in stateless mode. Each agent call opens a short-lived client over a shared HTTP connection, and nothing has to outlive the task that made the call.</td></tr>
+    <tr><td><code>server/discover</code> advertises versions and capabilities.</td><td>The SDK client calls it first; it appears in our audit log as the first line of every connection.</td></tr>
+    <tr><td>Cross-call state uses <strong>server-minted handles</strong> passed as tool arguments.</td><td>Phase 2's per-run "collection" handle follows this pattern (proposal).</td></tr>
+    <tr><td>Multi round-trip requests replace server-initiated requests.</td><td>The server can never call back into the agent in the middle of a call, which is why phase 2 needs a hold-and-settle budget.</td></tr>
+    <tr><td>Long-running work moved to an optional <code>tasks</code> extension.</td><td>Not needed in phase 1: a search takes seconds.</td></tr>
+    <tr><td><code>Mcp-Method</code> and <code>Mcp-Name</code> headers on every POST.</td><td>The access gate logs which method and tool each request was for without parsing the body.</td></tr>
+    <tr><td>List results carry cache hints; tools should be listed in a fixed order.</td><td>Our tool and prompt lists are deterministic (prompts sorted by role).</td></tr>
+  </tbody>
+</table></div>
+</section>
+
+<section id="tool">
+<h2>Anatomy of a tool</h2>
+<p>A tool is described by what a host sees in <code>tools/list</code>. Ours, as the server lists it:</p>
+<pre class="code">{
+  <span class="k">"name"</span>: <span class="s">"search_links"</span>,
+  <span class="k">"title"</span>: <span class="s">"Search the web for links"</span>,
+  <span class="k">"description"</span>: <span class="s">"Web search that returns links only (URL, title, snippet, rank). Snippets rank links
+                  and are never evidence. Read-only; counts against your daily search quota."</span>,
+  <span class="k">"inputSchema"</span>:  { <span class="k">"query"</span>: string, <span class="k">"lang"</span>: string = <span class="s">"en"</span>, <span class="k">"limit"</span>: integer = 10 },
+  <span class="k">"outputSchema"</span>: { <span class="k">"links"</span>: [ { <span class="k">"url"</span>, <span class="k">"title"</span>, <span class="k">"snippet"</span>, <span class="k">"rank"</span> } ] },
+  <span class="k">"annotations"</span>: { <span class="k">"readOnlyHint"</span>: true, <span class="k">"destructiveHint"</span>: false,
+                   <span class="k">"idempotentHint"</span>: false, <span class="k">"openWorldHint"</span>: true }
+}</pre>
+<ul>
+  <li><strong>The description is for a model.</strong> An outside host's model decides when to call the tool from this text, so it states the one rule that matters most: a snippet is never evidence.</li>
+  <li><strong>The schemas are for code.</strong> The SDK builds them from the Python signature and the Pydantic return type, and validates both directions.</li>
+  <li><strong>Annotations are hints, not guarantees.</strong> A host may use them to skip a confirmation for read-only tools. A host must not trust them from a server it does not trust, and our server enforces its own limits whatever the hints say.</li>
+  <li><strong><code>idempotentHint: false</code></strong> because the same query can return different links tomorrow, and each call spends from a quota.</li>
+</ul>
+</section>
+
+<section id="prompt">
+<h2>Anatomy of a prompt</h2>
+<p>A prompt has a name, a description, optional arguments, and the messages it returns from <code>prompts/get</code>. Two details shaped how we serve ours.</p>
+<ul>
+  <li><strong>Messages are <code>user</code> or <code>assistant</code>.</strong> MCP prompt messages have no system role. Our prompts are system prompts, so each is served as one message that the agent uses as its system text.</li>
+  <li><strong>A prompt result carries no metadata.</strong> The version therefore travels in the prompt's description, in one fixed form the agent parses: <code>version=checker@v4+82603e11</code>.</li>
+</ul>
+<pre class="code"><span class="c"># prompts/list (one of six)</span>
+{ <span class="k">"name"</span>: <span class="s">"checker"</span>, <span class="k">"title"</span>: <span class="s">"Check one claim against its passage"</span>,
+  <span class="k">"description"</span>: <span class="s">"System prompt of the checker role, as one message. version=checker@v4+82603e11"</span> }</pre>
+</section>
+
+<section id="security">
+<h2>Security model</h2>
+<p>MCP joins three parties that do not fully trust each other: the host and its user, the server, and whatever the server reaches. The specification's security guidance names the attacks that follow from that, and the ones below are those that apply to a server like ours.</p>
+<div class="table-wrap"><table>
+  <thead><tr><th>Risk</th><th>What goes wrong</th><th>What the specification asks</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Tool poisoning</strong></td><td>A server hides instructions in a tool's description or results; the host's model follows them.</td><td>Hosts treat server metadata and results as untrusted unless the server is trusted.</td></tr>
+    <tr><td><strong>Prompt injection through results</strong></td><td>Web text returned by a tool carries instructions to the model that reads it.</td><td>Treat tool output as data; keep consent and approval in the host.</td></tr>
+    <tr><td><strong>Token passthrough</strong></td><td>A server accepts a token meant for another service, or forwards the caller's token downstream.</td><td>"MCP servers MUST NOT accept any tokens that were not explicitly issued for the MCP server."</td></tr>
+    <tr><td><strong>State handle hijacking</strong></td><td>Someone guesses or steals another caller's handle.</td><td>Servers "MUST NOT treat possession of a state handle as authentication"; bind handles to the caller.</td></tr>
+    <tr><td><strong>Local server reachable by others</strong></td><td>A web page or another process on the machine calls a local HTTP server, for example through DNS rebinding.</td><td>Use stdio, or restrict HTTP access with an authorization token; validate Host and Origin.</td></tr>
+    <tr><td><strong>Over-broad access</strong></td><td>One credential opens everything.</td><td>Least privilege; separate scopes per kind of operation.</td></tr>
+  </tbody>
+</table></div>
+<p>Remote servers use OAuth 2.1, with the server acting as a resource server that validates tokens issued for it. Our server is local only, so phase 1 uses a bearer token per client on loopback, which the guidance allows for local HTTP servers. A deployed server would need OAuth first, and the deployed profile refuses ours until then.</p>
+</section>
+
+<p class="part">Part 2 · Our implementation</p>
+
+<section id="scope">
+<h2>What moved, and what did not</h2>
+<p>The owner's direction was to move the agent's tools and prompts out of code and behind an MCP server the agent calls, open to outside MCP clients too. Phase 1 moved the two pieces that could move without touching any of the agent's guarantees.</p>
+<div class="table-wrap"><table>
+  <thead><tr><th>Piece</th><th>Where it is now</th><th>Why</th></tr></thead>
+  <tbody>
+    <tr><td>Search (links only)</td><td><span class="pill live">MCP server</span></td><td>Stateless and narrow. The server enforces "links only", so no caller can switch on a provider's page-content feature.</td></tr>
+    <tr><td>Prompts (six roles)</td><td><span class="pill live">MCP server</span></td><td>Fits MCP prompts. The agent checks every served version against its own code (see <a href="#prompts">Prompts at start-up</a>).</td></tr>
+    <tr><td>Crawl gate, fetching, parsing</td><td><span class="pill next">phase 2</span></td><td>A bare fetch tool would bypass the crawl gate, which must decide before any content request. They move together, as one gated collector.</td></tr>
+    <tr><td>Structured data (official APIs)</td><td><span class="pill next">phase 2</span></td><td>Its requests use the collector's pinned fetch path, and the stored bytes are re-parsed to verify facts, so it moves with fetch.</td></tr>
+    <tr><td>Postgres, Qdrant, Neo4j</td><td><span class="pill no">stays in the agent</span></td><td>These are data, not tools. Answers re-check every candidate against Postgres directly.</td></tr>
+    <tr><td>Model calls, the checker</td><td><span class="pill no">stays in the agent</span></td><td>Not tools. Sampling, the MCP way to route model calls through a server, is deprecated.</td></tr>
+  </tbody>
+</table></div>
+</section>
+
+<section id="architecture">
+<h2>Architecture</h2>
+<figure>
+  <div class="fig">
+  <svg viewBox="0 0 1000 640" role="img" aria-label="The agent process reaches search and prompts through its MCP client adapters, over loopback HTTP with a bearer token, into the MCP server's access gate, transport security and tools; outside MCP clients reach the same gate with their own token; stores and model providers stay connected to the agent directly.">
+    <defs>
+      <marker id="b1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah"/></marker>
+      <marker id="b2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah-mcp"/></marker>
+      <marker id="b3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah-out"/></marker>
+    </defs>
+
+    <!-- agent process -->
+    <rect x="20" y="110" width="440" height="330" rx="12" class="region"/>
+    <text x="36" y="134" class="t-s">AGENT PROCESS · API :8000 · MCP host</text>
+    <rect x="40" y="20" width="180" height="40" rx="6" class="box"/><text x="130" y="45" text-anchor="middle" class="t">Web app :3000</text>
+    <line x1="130" y1="60" x2="130" y2="150" class="ln" marker-end="url(#b1)"/>
+    <text x="138" y="100" class="t-s">/api</text>
+
+    <rect x="40" y="152" width="180" height="56" rx="6" class="box-agent"/>
+    <text x="130" y="176" text-anchor="middle" class="t-b">Research workflow</text>
+    <text x="130" y="195" text-anchor="middle" class="t-s">LangGraph · budget ledger</text>
+    <rect x="250" y="152" width="190" height="56" rx="6" class="box-agent"/>
+    <text x="345" y="176" text-anchor="middle" class="t-b">Question answering</text>
+    <text x="345" y="195" text-anchor="middle" class="t-s">routes R1–R4 · post-check</text>
+
+    <rect x="40" y="240" width="400" height="36" rx="6" class="box"/>
+    <text x="240" y="263" text-anchor="middle" class="t">Ports: search · prompts · vector · graph · relational · LLM</text>
+    <line x1="130" y1="208" x2="130" y2="240" class="ln" marker-end="url(#b1)"/>
+    <line x1="345" y1="208" x2="345" y2="240" class="ln" marker-end="url(#b1)"/>
+
+    <rect x="40" y="310" width="180" height="62" rx="6" class="box-mcp"/>
+    <text x="130" y="334" text-anchor="middle" class="t-b">mcp adapters</text>
+    <text x="130" y="353" text-anchor="middle" class="t-s">McpSearch · served_prompts</text>
+    <text x="130" y="366" text-anchor="middle" class="t-mcp">MCP client</text>
+    <rect x="250" y="310" width="190" height="62" rx="6" class="box"/>
+    <text x="345" y="336" text-anchor="middle" class="t-b">Store and model adapters</text>
+    <text x="345" y="356" text-anchor="middle" class="t-s">unchanged</text>
+    <line x1="130" y1="276" x2="130" y2="310" class="ln" marker-end="url(#b1)"/>
+    <line x1="345" y1="276" x2="345" y2="310" class="ln" marker-end="url(#b1)"/>
+    <text x="40" y="404" class="t-s">TOOLS_VIA_MCP=1 picks the mcp adapters;</text>
+    <text x="40" y="420" class="t-s">=0 picks SearXNG and the prompt files in-process.</text>
+
+    <!-- stores -->
+    <rect x="250" y="488" width="190" height="40" rx="6" class="box"/><text x="345" y="513" text-anchor="middle" class="t">Postgres · Qdrant · Neo4j</text>
+    <rect x="250" y="548" width="190" height="40" rx="6" class="box"/><text x="345" y="573" text-anchor="middle" class="t">Model providers</text>
+    <line x1="345" y1="372" x2="345" y2="488" class="ln" marker-end="url(#b1)"/>
+    <path d="M440 341 H470 V568 H440" class="ln" marker-end="url(#b1)"/>
+    <text x="476" y="460" class="t-s">direct, not</text>
+    <text x="476" y="475" class="t-s">through MCP</text>
+
+    <!-- agent to server -->
+    <path d="M220 341 H520 V196 H590" class="ln-mcp" marker-end="url(#b2)"/>
+    <text x="230" y="333" class="t-mcp" dx="2">HTTP on loopback</text>
+    <text x="528" y="272" class="t-mcp">Bearer</text>
+    <text x="528" y="287" class="t-mcp">agent token</text>
+
+    <!-- outside client -->
+    <rect x="740" y="20" width="240" height="46" rx="6" class="box-outside"/>
+    <text x="860" y="40" text-anchor="middle" class="t-b">Outside MCP client</text>
+    <text x="860" y="57" text-anchor="middle" class="t-s">another assistant, IDE or agent</text>
+    <line x1="860" y1="66" x2="860" y2="172" class="ln-out" marker-end="url(#b3)"/>
+    <text x="868" y="120" class="t-out">Bearer outside token</text>
+
+    <!-- server process -->
+    <rect x="570" y="110" width="410" height="420" rx="12" class="region"/>
+    <text x="586" y="134" class="t-s">MCP SERVER PROCESS · 127.0.0.1:8100/mcp · poe mcp</text>
+
+    <rect x="590" y="174" width="370" height="50" rx="6" class="box-mcp"/>
+    <text x="775" y="195" text-anchor="middle" class="t-b">Access gate</text>
+    <text x="775" y="213" text-anchor="middle" class="t-s">token → caller · 401 · calls per minute → 429 · audit line</text>
+
+    <rect x="590" y="240" width="370" height="44" rx="6" class="box-mcp"/>
+    <text x="775" y="259" text-anchor="middle" class="t-b">Transport security</text>
+    <text x="775" y="275" text-anchor="middle" class="t-s">Host and Origin allow-lists (DNS rebinding)</text>
+    <line x1="775" y1="224" x2="775" y2="240" class="ln-mcp" marker-end="url(#b2)"/>
+
+    <rect x="590" y="300" width="370" height="132" rx="6" class="box-mcp"/>
+    <text x="775" y="322" text-anchor="middle" class="t-b">MCPServer · Streamable HTTP, stateless</text>
+    <line x1="775" y1="284" x2="775" y2="300" class="ln-mcp" marker-end="url(#b2)"/>
+    <rect x="606" y="336" width="166" height="80" rx="6" class="box"/>
+    <text x="689" y="358" text-anchor="middle" class="t-b">search_links</text>
+    <text x="689" y="377" text-anchor="middle" class="t-s">bounds · daily quota</text>
+    <text x="689" y="393" text-anchor="middle" class="t-s">links only</text>
+    <rect x="782" y="336" width="162" height="80" rx="6" class="box"/>
+    <text x="863" y="358" text-anchor="middle" class="t-b">6 prompts</text>
+    <text x="863" y="377" text-anchor="middle" class="t-s">one per model role</text>
+    <text x="863" y="393" text-anchor="middle" class="t-s">version in description</text>
+
+    <rect x="606" y="456" width="166" height="44" rx="6" class="box"/>
+    <text x="689" y="483" text-anchor="middle" class="t">SearXNG adapter</text>
+    <line x1="689" y1="416" x2="689" y2="456" class="ln" marker-end="url(#b1)"/>
+    <rect x="782" y="456" width="162" height="44" rx="6" class="box"/>
+    <text x="863" y="483" text-anchor="middle" class="t">Prompt files</text>
+    <line x1="863" y1="416" x2="863" y2="456" class="ln" marker-end="url(#b1)"/>
+
+    <rect x="606" y="572" width="166" height="44" rx="6" class="box"/>
+    <text x="689" y="599" text-anchor="middle" class="t">SearXNG (Docker)</text>
+    <line x1="689" y1="500" x2="689" y2="572" class="ln" marker-end="url(#b1)"/>
+    <text x="697" y="545" class="t-s">GET /search · JSON</text>
+  </svg>
+  </div>
+  <figcaption>The agent and outside clients reach the same access gate, each with its own token. The stores and model providers never sit behind MCP.</figcaption>
+</figure>
+<p>Three boundaries carry the design:</p>
+<ul>
+  <li><strong>Process boundary.</strong> The server is a separate process with its own composition root (<code>app/mcp_server/main.py</code>), started by <code>poe mcp</code> or by <code>poe dev</code> before the API. Nothing in the agent's core can import it; an import-linter contract enforces that.</li>
+  <li><strong>Network boundary.</strong> The server binds to loopback only, and the settings refuse any other host. Every request must carry a bearer token and pass the Host and Origin checks.</li>
+  <li><strong>Trust boundary.</strong> The agent trusts its own server's prompts only after verifying them against its own code, and treats search results exactly as before: links to rank, never evidence.</li>
+</ul>
+</section>
+
+<section id="adapter">
+<h2>MCP as an adapter</h2>
+<p>The agent is built as ports and adapters: core code depends on interfaces such as <code>SearchPort</code>, and adapters implement them. MCP fits in as one more adapter. The workflow's search node calls <code>search(query, lang, limit)</code> exactly as it did, and the container decides which adapter answers.</p>
+<pre class="code"><span class="c"># app/container.py: the agent reaches search through the server when configured (BD-60)</span>
+search_provider = <span class="s">"mcp"</span> <span class="k">if</span> <span class="s">"search"</span> <span class="k">in</span> config.mcp.agent_uses <span class="k">else</span> config.search.provider
+container.search = build(<span class="s">"search"</span>, search_provider)</pre>
+<pre class="code"><span class="c"># app/adapters/mcp/search.py: the same port, over the protocol</span>
+<span class="k">class</span> McpSearch:
+    <span class="k">async def</span> search(self, query, lang, limit=10) -&gt; list[SearchHit]:
+        data = <span class="k">await</span> self._caller.call_tool(<span class="s">"search_links"</span>, {<span class="s">"query"</span>: query, <span class="s">"lang"</span>: lang, <span class="s">"limit"</span>: limit})
+        <span class="k">return</span> [SearchHit.model_validate(link) <span class="k">for</span> link <span class="k">in</span> data[<span class="s">"links"</span>]]</pre>
+<p>This has three consequences worth stating plainly:</p>
+<ul>
+  <li><strong>The budget still holds.</strong> The research workflow reserves from its budget ledger before every search, in the node, before the adapter is called. Moving search behind MCP did not move that check.</li>
+  <li><strong>Failures look the same.</strong> A refused token, a dead server or a tool error all become <code>ProviderUnavailableError</code>, the error every search adapter raises, so the workflow's handling did not change.</li>
+  <li><strong>One switch.</strong> <code>TOOLS_VIA_MCP=1</code> routes search and prompts through the server; <code>poe dev</code> sets it. With <code>TOOLS_VIA_MCP=0</code> the agent runs in-process, which is also how most tests run.</li>
+</ul>
+</section>
+
+<section id="search-call">
+<h2>One search, end to end</h2>
+<figure>
+  <div class="fig">
+  <svg viewBox="0 0 1000 520" role="img" aria-label="A search: the node reserves budget, calls the MCP search adapter, which posts tools/call with its token; the access gate identifies the caller and checks its rate; the server checks bounds and the daily quota, queries SearXNG, and the links return as structured content to the node, which ranks them without treating snippets as evidence.">
+    <defs>
+      <marker id="c1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah"/></marker>
+      <marker id="c2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah-mcp"/></marker>
+    </defs>
+    <!-- lane heads -->
+    <g>
+      <rect x="20" y="16" width="120" height="40" rx="6" class="box-agent"/><text x="80" y="40" text-anchor="middle" class="t">Search node</text>
+      <rect x="180" y="16" width="120" height="40" rx="6" class="box-agent"/><text x="240" y="40" text-anchor="middle" class="t">Budget ledger</text>
+      <rect x="340" y="16" width="120" height="40" rx="6" class="box-mcp"/><text x="400" y="40" text-anchor="middle" class="t">McpSearch</text>
+      <rect x="520" y="16" width="120" height="40" rx="6" class="box-mcp"/><text x="580" y="40" text-anchor="middle" class="t">Access gate</text>
+      <rect x="690" y="16" width="140" height="40" rx="6" class="box-mcp"/><text x="760" y="40" text-anchor="middle" class="t">search_links</text>
+      <rect x="870" y="16" width="110" height="40" rx="6" class="box"/><text x="925" y="40" text-anchor="middle" class="t">SearXNG</text>
+    </g>
+    <g class="lane">
+      <line x1="80" y1="56" x2="80" y2="505"/><line x1="240" y1="56" x2="240" y2="505"/><line x1="400" y1="56" x2="400" y2="505"/>
+      <line x1="580" y1="56" x2="580" y2="505"/><line x1="760" y1="56" x2="760" y2="505"/><line x1="925" y1="56" x2="925" y2="505"/>
+    </g>
+    <line x1="80" y1="88" x2="236" y2="88" class="ln" marker-end="url(#c1)"/><text x="90" y="81" class="t-s">reserve("search")</text>
+    <line x1="240" y1="112" x2="84" y2="112" class="ln-ret" marker-end="url(#c1)"/><text x="150" y="106" class="t-s">ok, or stop</text>
+    <line x1="80" y1="146" x2="396" y2="146" class="ln" marker-end="url(#c1)"/><text x="90" y="139" class="t-s mono">search(query, "en", 10)</text>
+    <line x1="400" y1="186" x2="576" y2="186" class="ln-mcp" marker-end="url(#c2)"/><text x="408" y="179" class="t-mcp">POST tools/call · Bearer</text>
+    <rect x="586" y="200" width="168" height="40" rx="5" class="note-box"/>
+    <text x="594" y="216" class="t-s">token → "agent"</text><text x="594" y="232" class="t-s">calls/min ok · Host ok</text>
+    <line x1="580" y1="262" x2="756" y2="262" class="ln-mcp" marker-end="url(#c2)"/><text x="590" y="255" class="t-mcp">pass</text>
+    <rect x="766" y="276" width="150" height="40" rx="5" class="note-box"/>
+    <text x="774" y="292" class="t-s">query, lang, limit bounds</text><text x="774" y="308" class="t-s">daily quota for caller</text>
+    <line x1="760" y1="336" x2="921" y2="336" class="ln" marker-end="url(#c1)"/><text x="768" y="329" class="t-s mono">GET /search</text>
+    <line x1="925" y1="362" x2="764" y2="362" class="ln-ret" marker-end="url(#c1)"/><text x="800" y="356" class="t-s">results</text>
+    <line x1="760" y1="400" x2="404" y2="400" class="ln-mcp" marker-end="url(#c2)" stroke-dasharray="5 4"/><text x="430" y="393" class="t-mcp">structuredContent {links}</text>
+    <line x1="400" y1="436" x2="84" y2="436" class="ln-ret" marker-end="url(#c1)"/><text x="120" y="430" class="t-s">SearchHit[]: URL, title, snippet, rank</text>
+    <rect x="20" y="452" width="330" height="44" rx="5" class="note-box"/>
+    <text x="30" y="470" class="t-s">titles and snippets rank candidates only;</text>
+    <text x="30" y="486" class="t-s">pages are read later, through the crawl gate</text>
+  </svg>
+  </div>
+  <figcaption>The budget is reserved before the call leaves the agent; the gate and the tool add their own limits on the server side.</figcaption>
+</figure>
+<p>Two sets of limits apply to every search, on purpose. The agent's budget ledger caps what a research run may spend. The server's limits (calls per minute, searches per day, query and limit bounds) cap what each caller may spend, and they are the only limits an outside client meets, because outside callers do not spend from any run's budget.</p>
+</section>
+
+<section id="prompts">
+<h2>Prompts at start-up</h2>
+<p>A prompt is more than its text. What the model sees is the system text plus the user message that the role's <code>context.py</code> builds from typed data, escaped by <code>safety.py</code>; what comes back is parsed by the role's <code>schema.py</code>. The version stamped on every claim, verdict and answer covers all four:</p>
+<pre class="code">prompt_version = <span class="s">"&lt;role&gt;@v&lt;n&gt;+"</span> + sha256(text + schema.py + context.py + safety.py)[:8]
+               <span class="c"># e.g. checker@v4+82603e11</span></pre>
+<p>The server owns the text; the agent keeps the schema, the context builder and the escaping, because those are code that runs where untrusted page text enters. So at start-up the agent reads all six prompts and recomputes each version itself.</p>
+<figure>
+  <div class="fig">
+  <svg viewBox="0 0 1040 250" role="img" aria-label="The served text and the agent's local schema, context builder and safety rules are hashed together; the result must equal the served version, or start-up is refused.">
+    <defs>
+      <marker id="d1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah"/></marker>
+    </defs>
+    <rect x="20" y="20" width="200" height="38" rx="6" class="box-mcp"/><text x="120" y="44" text-anchor="middle" class="t">served text (MCP)</text>
+    <rect x="20" y="74" width="200" height="38" rx="6" class="box-agent"/><text x="120" y="98" text-anchor="middle" class="t">schema.py (local)</text>
+    <rect x="20" y="128" width="200" height="38" rx="6" class="box-agent"/><text x="120" y="152" text-anchor="middle" class="t">context.py (local)</text>
+    <rect x="20" y="182" width="200" height="38" rx="6" class="box-agent"/><text x="120" y="206" text-anchor="middle" class="t">safety.py (local)</text>
+    <path d="M220 39 H260 V120 H300" class="ln"/><path d="M220 93 H260" class="ln"/><path d="M220 147 H260" class="ln"/><path d="M220 201 H260 V120" class="ln"/>
+    <line x1="260" y1="120" x2="296" y2="120" class="ln" marker-end="url(#d1)"/>
+    <rect x="300" y="96" width="170" height="48" rx="6" class="box"/><text x="385" y="117" text-anchor="middle" class="t mono">sha256(…)[:8]</text><text x="385" y="134" text-anchor="middle" class="t-s">recomputed here</text>
+    <line x1="470" y1="120" x2="516" y2="120" class="ln" marker-end="url(#d1)"/>
+    <rect x="520" y="96" width="190" height="48" rx="6" class="box"/><text x="615" y="117" text-anchor="middle" class="t mono">checker@v4+82603e11</text><text x="615" y="134" text-anchor="middle" class="t-s">expected version</text>
+    <line x1="710" y1="120" x2="756" y2="120" class="ln" marker-end="url(#d1)"/>
+    <rect x="760" y="96" width="120" height="48" rx="6" class="box"/><text x="820" y="117" text-anchor="middle" class="t">= served</text><text x="820" y="134" text-anchor="middle" class="t">version?</text>
+    <path d="M880 108 H905 V48 H920" class="ln" marker-end="url(#d1)"/>
+    <path d="M880 132 H905 V192 H920" class="ln" marker-end="url(#d1)"/>
+    <rect x="924" y="28" width="104" height="40" rx="6" class="chip-ok"/><text x="976" y="53" text-anchor="middle" class="t-ok">install</text>
+    <rect x="924" y="172" width="104" height="40" rx="6" class="chip-no"/><text x="976" y="190" text-anchor="middle" class="t-no">refuse</text><text x="976" y="205" text-anchor="middle" class="t-s">start-up</text>
+  </svg>
+  </div>
+  <figcaption>A served prompt is installed only if it hashes, with this agent's own code, to the version the server claims.</figcaption>
+</figure>
+<p>All six are checked or none is installed. The check refuses three cases: text changed without a new version, a version other than the one this code runs, and a role the server did not serve. Prompts are read once, so a research run can never change prompts halfway through.</p>
+<pre class="code"><span class="c"># app/prompts/loader.py (abridged)</span>
+<span class="k">def</span> use_served(served):
+    <span class="k">for</span> role, text, prompt_version <span class="k">in</span> served:
+        expected = _version_of(role, CURRENT[role], text)   <span class="c"># local schema, context, safety</span>
+        <span class="k">if</span> prompt_version != expected:
+            <span class="k">raise</span> PromptMismatchError(...)                  <span class="c"># the app does not start</span>
+    <span class="k">if</span> missing := set(CURRENT) - served_roles:
+        <span class="k">raise</span> PromptMismatchError(<span class="s">f"not served: {missing}"</span>)
+    install(checked)                                     <span class="c"># load_prompt() now returns these</span></pre>
+<div class="callout"><p>The first live start-up served exactly the versions the prompt files produce (for example <code>checker@v4+82603e11</code>), so moving the prompts behind MCP changed nothing that is stamped on the agent's outputs.</p></div>
+</section>
+
+<section id="access">
+<h2>Who may call, and how much</h2>
+<p>Each caller is an entry in the profile's <code>mcp.clients</code> list with its own token and limits. A client whose token is not set cannot connect at all.</p>
+<div class="table-wrap"><table>
+  <thead><tr><th>Client</th><th>Token</th><th>Calls per minute</th><th>Searches per day</th><th>Who it is</th></tr></thead>
+  <tbody>
+    <tr><td><code>agent</code></td><td><code>MCP_AGENT_TOKEN</code></td><td style="font-variant-numeric: tabular-nums">600</td><td style="font-variant-numeric: tabular-nums">2,000</td><td>Our API and research runs (also capped by each run's budget)</td></tr>
+    <tr><td><code>external</code></td><td><code>MCP_CLIENT_TOKEN</code></td><td style="font-variant-numeric: tabular-nums">30</td><td style="font-variant-numeric: tabular-nums">100</td><td>An outside MCP client: another assistant, IDE or agent</td></tr>
+  </tbody>
+</table></div>
+<p>The access gate compares tokens in constant time and answers 401 with a <code>WWW-Authenticate</code> header when the token is missing or unknown, and 429 when a caller exceeds its calls per minute. The search tool counts the daily quota. Every request leaves one audit line; arguments and results are never logged, because a query can carry a city name and results carry web text.</p>
+<p class="label">Audit log, from the first live run</p>
+<pre class="code">mcp server/discover - by agent: 200 in 7 ms
+mcp prompts/list - by agent: 200 in 1 ms
+mcp prompts/get checker by agent: 200 in 2 ms
+mcp tools/call search_links by agent: 200 in 3143 ms
+mcp tools/call search_links by external: 200 in 873 ms</pre>
+</section>
+
+<section id="threats">
+<h2>Threats and controls</h2>
+<div class="table-wrap"><table>
+  <thead><tr><th>Threat</th><th>Control in our server</th></tr></thead>
+  <tbody>
+    <tr><td>Another process or a web page calls the local server</td><td>Bearer token per client; loopback bind enforced by settings; Host and Origin allow-lists against DNS rebinding.</td></tr>
+    <tr><td>A caller spends without limit</td><td>Calls per minute and searches per day per caller; query length, language format and link limit bounded by config.</td></tr>
+    <tr><td>A caller turns on page content in search</td><td>The tool calls the links-only adapter; there is no argument that changes the mode.</td></tr>
+    <tr><td>A served prompt drifts from the code that uses it</td><td>Start-up recomputes every version against local schema, context builder and safety rules, and refuses on any difference.</td></tr>
+    <tr><td>Search results steer a model</td><td>Unchanged agent rule: titles and snippets only rank links and never become evidence or prompt text; pages are read through the crawl gate.</td></tr>
+    <tr><td>Token passthrough</td><td>The server accepts only its own configured tokens and never forwards them; the SearXNG call carries no caller credential.</td></tr>
+    <tr><td>Secrets or web text in logs</td><td>Audit lines hold caller, method, tool name, status and time only.</td></tr>
+    <tr><td>Exposure beyond this machine</td><td>Refused with <code>APP_ENV=deployed</code> until the server has OAuth.</td></tr>
+  </tbody>
+</table></div>
+<div class="callout warn"><p>An outside client's own model reads whatever our tools return. Search results are links and short snippets today. When collection tools arrive in phase 2, page text returned to an outside client must be marked as untrusted web content, and those tools stay agent-only unless the owner opens them.</p></div>
+</section>
+
+<section id="config">
+<h2>Configuration and code</h2>
+<p class="label">Every profile · config/*.yaml</p>
+<pre class="code"><span class="k">mcp</span>: { host: 127.0.0.1, port: 8100, path: /mcp, timeout_s: 30,
+       max_query_chars: 300, max_links: 20,
+       agent_uses: [],                 <span class="c"># TOOLS_VIA_MCP=1 sets [search, prompts]</span>
+       agent_client: agent,
+       clients: [ { name: agent,    token_env: MCP_AGENT_TOKEN,  calls_per_minute: 600, searches_per_day: 2000 },
+                  { name: external, token_env: MCP_CLIENT_TOKEN, calls_per_minute: 30,  searches_per_day: 100 } ] }</pre>
+<div class="table-wrap"><table>
+  <thead><tr><th>File</th><th>What it does</th></tr></thead>
+  <tbody>
+    <tr><td><code>app/mcp_server/main.py</code></td><td>The server's composition root: builds the profile's search adapter and the current prompts, wraps the endpoint, serves it on loopback.</td></tr>
+    <tr><td><code>app/mcp_server/tools.py</code></td><td><code>search_links</code> and the six prompts on an <code>MCPServer</code>.</td></tr>
+    <tr><td><code>app/mcp_server/access.py</code></td><td>Callers, tokens, limits, and the access gate (ASGI middleware) with its audit line.</td></tr>
+    <tr><td><code>app/adapters/mcp/connection.py</code></td><td>The MCP client over Streamable HTTP with the agent's token; any failure becomes <code>ProviderUnavailableError</code>.</td></tr>
+    <tr><td><code>app/adapters/mcp/search.py</code></td><td><code>McpSearch</code>, the search port over the protocol, and its health probe.</td></tr>
+    <tr><td><code>app/adapters/mcp/prompts.py</code></td><td>Reads every served prompt and its version.</td></tr>
+    <tr><td><code>app/prompts/loader.py</code></td><td><code>use_served</code>: the version check and install.</td></tr>
+    <tr><td><code>scripts/dev.py</code></td><td>Starts the server, waits until it listens, then starts the API with <code>TOOLS_VIA_MCP=1</code>.</td></tr>
+  </tbody>
+</table></div>
+<p>Import rules, enforced on every build: <code>mcp</code> and <code>mcp_types</code> may be imported only by adapters and by the server; no core module and no adapter may import <code>app.mcp_server</code>.</p>
+</section>
+
+<section id="tests">
+<h2>How it is tested</h2>
+<ul>
+  <li><strong>The shared search contract.</strong> The same tests that every search adapter must pass (links, titles and snippets only; the limit kept; no results; provider failures mapped to the port error) now run against <code>McpSearch</code> too, over the real MCP protocol, in-process, with SearXNG behind the server.</li>
+  <li><strong>The server.</strong> The tool list and its hints; every prompt served with its version; search bounds; the daily quota; a call without a token refused.</li>
+  <li><strong>The prompt check.</strong> Served prompts install unchanged; text changed without its version, an older version and a missing role are each refused, and a refused set leaves the prompt files in use.</li>
+  <li><strong>Over real HTTP.</strong> One test runs the server on a loopback port: the agent searches and reads prompts with its token, an unknown token is refused, and a request with a foreign Host header is rejected.</li>
+  <li><strong>Configuration.</strong> <code>TOOLS_VIA_MCP=1</code> needs the agent's token; the deployed profile refuses the server; the server refuses to start with no client token.</li>
+</ul>
+<p>No test reaches the internet. The full suite (1,190 tests) passes, and continuous integration ran it again before the merge.</p>
+</section>
+
+<section id="run">
+<h2>Running it</h2>
+<pre class="code">uv run poe up      <span class="c"># stores and SearXNG (Docker)</span>
+uv run poe dev     <span class="c"># MCP server :8100, then the API :8000 through it, then the web app :3000</span>
+uv run poe mcp     <span class="c"># the MCP server alone</span>
+TOOLS_VIA_MCP=0 uv run poe dev   <span class="c"># everything in-process, no MCP server</span></pre>
+<p>To connect another MCP client on this machine, give it the endpoint <code>http://127.0.0.1:8100/mcp</code> and the header <code>Authorization: Bearer</code> followed by the value of <code>MCP_CLIENT_TOKEN</code> from <code>.env</code>. It will see one tool and six prompts, and its calls are logged as <code>external</code>.</p>
+</section>
+
+<section id="next">
+<h2>Phase 2 and beyond</h2>
+<p>Phase 2 is a proposal awaiting the owner's decisions (<code>docs/design/MCP_PHASE2.md</code>). It moves the crawl gate, fetching, parsing and official-API requests into the server, making the server the only part of the system that touches the web.</p>
+<div class="table-wrap"><table>
+  <thead><tr><th>Problem</th><th>Proposed answer</th></tr></thead>
+  <tbody>
+    <tr><td>The collector keeps per-run state (robots.txt, certificate chains, per-site spacing).</td><td>A server-minted <strong>collection handle</strong> per run, random, expiring, bound to the caller's token.</td></tr>
+    <tr><td>The server cannot ask the agent's ledger for budget mid-call.</td><td><strong>Hold and settle</strong>: hold a per-call allowance before the call, give back what was not used.</td></tr>
+    <tr><td>Stored bytes must be the bytes parsed.</td><td>Raw bytes returned with their SHA-256; the agent checks the hash and stores the snapshot.</td></tr>
+    <tr><td>The agent still parses snapshots for verification and reindexing.</td><td>A <strong>parser version</strong> checked at start-up, like prompt versions.</td></tr>
+  </tbody>
+</table></div>
+<p>Beyond that, a deployed server would add OAuth 2.1 with tokens issued for this server only, and per-client tool allow-lists so outside clients see only what they are meant to use.</p>
+</section>
+
+<section id="rules">
+<h2>Ground rules</h2>
+<p>What this build suggests for putting MCP inside an agentic system, rather than only in front of one:</p>
+<ol class="rules">
+  <li><strong>Put MCP behind a port.</strong> Make the MCP client one adapter among others, so the workflow cannot tell the difference and every existing contract test applies to it.</li>
+  <li><strong>Keep the checks on the agent's side of the wire.</strong> Budget reservation, the crawl gate's decision and the evidence rules belong to the code that answers for the outcome, not to a server it calls.</li>
+  <li><strong>Never expose a capability that skips a gate.</strong> If a tool would let a caller bypass a rule the system depends on, move the rule into the tool with it, or do not ship the tool.</li>
+  <li><strong>Version what you serve, and verify it where it is used.</strong> A served prompt is safe only if the client proves it matches the code that builds its input and parses its output.</li>
+  <li><strong>Treat annotations as hints and enforce limits yourself.</strong> Read-only hints help hosts; tokens, quotas and bounds protect the server.</li>
+  <li><strong>Give every caller its own identity and budget.</strong> Outside callers do not spend from your run budgets, so the server's limits are their budget.</li>
+  <li><strong>Audit the call, never the content.</strong> Log who called what and how it ended; leave arguments and results out of logs.</li>
+  <li><strong>Design for the stateless protocol.</strong> Pass state as server-minted handles bound to the caller, and never let a handle stand in for authentication.</li>
+</ol>
+</section>
+
+<section>
+<h2>Sources</h2>
+<ul class="sources">
+  <li><a href="https://modelcontextprotocol.io/specification/latest/changelog" target="_blank" rel="noopener">MCP specification changelog, 2026-07-28</a></li>
+  <li><a href="https://modelcontextprotocol.io/specification/latest/basic/security_best_practices" target="_blank" rel="noopener">MCP security best practices</a></li>
+  <li><a href="https://pypi.org/project/mcp/" target="_blank" rel="noopener">mcp on PyPI</a> and <a href="https://py.sdk.modelcontextprotocol.io/" target="_blank" rel="noopener">the Python SDK documentation</a></li>
+  <li>Repository: <code>docs/DECISIONS.md</code> BD-60; <code>docs/design/MCP_PHASE2.md</code>; LLD-3 §2.5; LLD-4 §5 and §8</li>
+</ul>
+</section>
+</main>
+</div>
